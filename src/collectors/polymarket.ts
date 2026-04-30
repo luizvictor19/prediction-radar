@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabase.js';
 import { fetchActiveMarkets } from '../lib/polymarket-api.js';
-import { categorizeMarket, isRelevantMarket } from './categorizer.js';
+import { categorizeMarket, isRelevantMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
+import { logEvent } from '../lib/logger.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MIN_VOLUME_24H = 5000;
@@ -21,7 +22,8 @@ function passesLocalFilters(market: GammaMarket): boolean {
     return false;
   }
   if (!market.active || market.closed) return false;
-  if (market.volume24hr < MIN_VOLUME_24H) return false;
+  const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
+  if (volume24h < MIN_VOLUME_24H) return false;
   if (!isWithinResolutionWindow(market.endDate)) return false;
   if (!isRelevantMarket(market)) return false;
   return true;
@@ -31,11 +33,13 @@ function passesLocalFilters(market: GammaMarket): boolean {
 // upsert events, and write snapshots — no CLOB API calls needed.
 export async function collectAll(): Promise<void> {
   console.log('[collector] Starting collection pass...');
+  const startMs = Date.now();
 
   let offset = 0;
   let scanned = 0;
   let upserted = 0;
   let snapshots = 0;
+  let errorsCount = 0;
 
   while (true) {
     const markets = await fetchActiveMarkets({ limit: 500, offset });
@@ -55,6 +59,7 @@ export async function collectAll(): Promise<void> {
 
       if (upsertErr || !eventRow) {
         console.error(`[collector] Upsert failed for ${market.id}:`, upsertErr?.message);
+        errorsCount++;
         continue;
       }
 
@@ -76,11 +81,12 @@ export async function collectAll(): Promise<void> {
         spread: market.spread || null,
         bid_depth: null,
         ask_depth: null,
-        volume_24h: market.volume24hr,
+        volume_24h: Number(market.volume24hr ?? market.volume24hrClob ?? 0),
       });
 
       if (snapErr) {
         console.error(`[collector] Snapshot failed for ${market.id}:`, snapErr.message);
+        errorsCount++;
       } else {
         snapshots++;
       }
@@ -91,6 +97,18 @@ export async function collectAll(): Promise<void> {
 
     if (markets.length < 500) break;
   }
+
+  const durationMs = Date.now() - startMs;
+  const status = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
+
+  await logEvent({
+    component: 'collector',
+    status,
+    message: `Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots`,
+    metadata: { scanned, upserted_events: upserted, upserted_snapshots: snapshots, duration_ms: durationMs, errors_count: errorsCount },
+  });
+
+  await logCategorizerStats();
 
   console.log(`[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`);
 }

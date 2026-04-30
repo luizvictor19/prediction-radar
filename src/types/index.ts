@@ -80,11 +80,12 @@ export interface GammaMarket {
   description: string;
   outcomes: string;         // JSON string: '["Yes", "No"]'
   outcomePrices: string;    // JSON string: '["0.57", "0.43"]'
-  volume: string;           // string — use volumeNum instead
-  volumeNum: number;
-  volume24hr: number;
-  liquidity: string;        // string — use liquidityNum instead
-  liquidityNum: number;
+  volume?: string;
+  volumeNum?: number;
+  volume24hr?: number;
+  volume24hrClob?: number;
+  liquidity?: string;
+  liquidityNum?: number;
   endDate: string;
   active: boolean;
   closed: boolean;
