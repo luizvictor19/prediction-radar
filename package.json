@@ -1,0 +1,19 @@
+{
+  "name": "prediction-radar",
+  "version": "0.1.0",
+  "description": "Personal Polymarket signal detection system focused on AI and Big Tech markets",
+  "keywords": [
+    "polymarket",
+    "prediction-markets",
+    "trading",
+    "ai",
+    "automation"
+  ],
+  "license": "MIT",
+  "author": "Luiz Oliveira",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
