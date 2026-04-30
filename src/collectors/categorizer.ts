@@ -45,7 +45,7 @@ export function categorizeMarket(market: GammaMarket): {
   category: MarketCategory;
   sub_category: MarketSubCategory | null;
 } {
-  const text = `${market.title} ${market.description ?? ''}`;
+  const text = `${market.question} ${market.description ?? ''}`;
 
   let category: MarketCategory = 'other';
   if (matchesKeywords(text, AI_LLM_KEYWORDS)) category = 'ai_llm';

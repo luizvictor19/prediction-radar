@@ -19,9 +19,9 @@ async function seed(): Promise<void> {
   for (const event of events) {
     const fakeMarket = {
       id: event.polymarket_id,
-      title: event.title ?? '',
+      question: event.title ?? '',
       description: event.description ?? '',
-    } as GammaMarket;
+    } as unknown as GammaMarket;
 
     const { category, sub_category } = categorizeMarket(fakeMarket);
 

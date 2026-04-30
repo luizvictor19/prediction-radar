@@ -76,16 +76,22 @@ export interface SystemConfig {
 export interface GammaMarket {
   id: string;
   slug: string;
-  title: string;
+  question: string;         // maps to our `title`
   description: string;
-  outcomes: string[];
-  volume: number;
+  outcomes: string;         // JSON string: '["Yes", "No"]'
+  outcomePrices: string;    // JSON string: '["0.57", "0.43"]'
+  volume: string;           // string — use volumeNum instead
+  volumeNum: number;
   volume24hr: number;
-  liquidity: number;
-  endDateIso: string;
+  liquidity: string;        // string — use liquidityNum instead
+  liquidityNum: number;
+  endDate: string;
   active: boolean;
   closed: boolean;
-  questionID: string;
+  bestBid: number;
+  bestAsk: number;
+  spread: number;
+  lastTradePrice: number;
 }
 
 export interface ClobOrderbook {

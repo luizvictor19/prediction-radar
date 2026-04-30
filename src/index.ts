@@ -1,21 +1,16 @@
 import 'dotenv/config';
-import { collectMarkets, collectSnapshots } from './collectors/polymarket.js';
+import { collectAll } from './collectors/polymarket.js';
 
-const COLLECT_MARKETS_INTERVAL_MS = 3 * 60 * 1000;   // 3 min
-const COLLECT_SNAPSHOTS_INTERVAL_MS = 3 * 60 * 1000;  // 3 min
+const COLLECT_INTERVAL_MS = 3 * 60 * 1000; // 3 min
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
 
-  // Initial run
-  await collectMarkets();
-  await collectSnapshots();
+  await collectAll();
 
-  // Recurring collection
-  setInterval(() => { void collectMarkets(); }, COLLECT_MARKETS_INTERVAL_MS);
-  setInterval(() => { void collectSnapshots(); }, COLLECT_SNAPSHOTS_INTERVAL_MS);
+  setInterval(() => { void collectAll(); }, COLLECT_INTERVAL_MS);
 
-  console.log('[main] Crons scheduled. Running.');
+  console.log('[main] Collection cron scheduled. Running.');
 }
 
 main().catch((err) => {
