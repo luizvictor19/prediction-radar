@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "tsx src/index.ts"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
