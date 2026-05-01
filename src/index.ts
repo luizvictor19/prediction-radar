@@ -1,16 +1,34 @@
 import 'dotenv/config';
+import cron from 'node-cron';
 import { collectAll } from './collectors/polymarket.js';
-
-const COLLECT_INTERVAL_MS = 3 * 60 * 1000; // 3 min
+import { runAllDetectors } from './detectors/runner.js';
+import { runRetentionJob } from './jobs/retention.js';
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
 
-  await collectAll();
+  try {
+    await collectAll();
+  } catch (err) {
+    console.error('[main] Initial collection failed (will retry on cron):', err);
+  }
 
-  setInterval(() => { void collectAll(); }, COLLECT_INTERVAL_MS);
+  // Collector: every 3 minutes
+  cron.schedule('*/3 * * * *', () => {
+    void collectAll();
+  });
 
-  console.log('[main] Collection cron scheduled. Running.');
+  // Detector runner: every 5 minutes
+  cron.schedule('*/5 * * * *', () => {
+    void runAllDetectors();
+  });
+
+  // Retention job: daily at 3am UTC
+  cron.schedule('0 3 * * *', () => {
+    void runRetentionJob();
+  });
+
+  console.log('[main] Cron jobs scheduled. Running.');
 }
 
 main().catch((err) => {

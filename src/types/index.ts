@@ -8,7 +8,7 @@ export type MarketSubCategory =
   | 'product_launch'
   | 'other';
 
-export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market';
+export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market' | 'cross_market_intra' | 'cross_market_inter';
 
 export interface Event {
   id: string;
@@ -69,7 +69,32 @@ export interface SystemConfig {
   drawdown_stop_pct: number;
   telegram_chat_id: string | null;
   daily_report_hour: number;
+  cross_market_log_threshold: number;
+  cross_market_high_confidence_threshold: number;
+  cross_market_dedup_window_minutes: number;
+  snapshot_retention_days: number;
+  system_logs_retention_days: number;
   updated_at: string;
+}
+
+export interface CrossMarketSignalMetadata {
+  price_sum: number;
+  deviation: number;
+  direction: 'over' | 'under';
+  outcomes: Array<{ name: string; price: number }>;
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface DetectedSignalInsert {
+  event_id: string;
+  signal_type: SignalType;
+  confidence_score: number;
+  reasoning: string;
+  metadata: Record<string, unknown>;
+  suggested_outcome: string | null;
+  suggested_stake_pct: number | null;
+  expires_at: string;
 }
 
 // Polymarket API response shapes

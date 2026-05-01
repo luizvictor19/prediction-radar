@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "@types/node-cron": "^3.0.11",
     "@types/node-telegram-bot-api": "^0.64.14",
     "eslint": "^10.2.1",
     "prettier": "^3.8.3",
@@ -35,6 +36,7 @@
     "@anthropic-ai/sdk": "^0.91.1",
     "@supabase/supabase-js": "^2.105.1",
     "dotenv": "^17.4.2",
+    "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.67.0"
   }
 }
