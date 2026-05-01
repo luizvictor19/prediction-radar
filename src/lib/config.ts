@@ -16,6 +16,8 @@ const DEFAULTS: SystemConfig = {
   cross_market_log_threshold: 0.03,
   cross_market_high_confidence_threshold: 0.08,
   cross_market_dedup_window_minutes: 30,
+  inter_market_min_members: 3,
+  inter_market_min_total_volume_24h: 10000,
   snapshot_retention_days: 14,
   system_logs_retention_days: 30,
   updated_at: new Date().toISOString(),

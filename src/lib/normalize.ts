@@ -19,5 +19,10 @@ export function gammaToEvent(market: GammaMarket, category: MarketCategory = 'ot
     status: market.closed ? 'resolved' : market.active ? 'active' : 'inactive',
     resolved_outcome: null,
     tracked: true,
+    neg_risk_market_id: market.negRiskMarketID ?? null,
+    series_id: market.series?.[0]?.id ?? null,
+    series_slug: market.series?.[0]?.slug ?? null,
+    series_recurrence: market.series?.[0]?.recurrence ?? null,
+    event_metadata: market.eventMetadata ?? null,
   };
 }

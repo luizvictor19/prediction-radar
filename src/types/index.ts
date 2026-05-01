@@ -26,6 +26,11 @@ export interface Event {
   status: string;
   resolved_outcome: string | null;
   tracked: boolean;
+  neg_risk_market_id: string | null;
+  series_id: string | null;
+  series_slug: string | null;
+  series_recurrence: string | null;
+  event_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +77,8 @@ export interface SystemConfig {
   cross_market_log_threshold: number;
   cross_market_high_confidence_threshold: number;
   cross_market_dedup_window_minutes: number;
+  inter_market_min_members: number;
+  inter_market_min_total_volume_24h: number;
   snapshot_retention_days: number;
   system_logs_retention_days: number;
   updated_at: string;
@@ -86,8 +93,28 @@ export interface CrossMarketSignalMetadata {
   last_seen_at: string;
 }
 
-export interface DetectedSignalInsert {
+export interface CrossMarketInterMember {
   event_id: string;
+  polymarket_id: string;
+  title: string;
+  yes_price: number;
+  volume_24h: number;
+}
+
+export interface CrossMarketInterSignalMetadata {
+  neg_risk_market_id: string;
+  group_size: number;
+  price_sum: number;
+  deviation: number;
+  direction: 'over' | 'under';
+  total_volume_24h: number;
+  members: CrossMarketInterMember[];
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface DetectedSignalInsert {
+  event_id: string | null;
   signal_type: SignalType;
   confidence_score: number;
   reasoning: string;
@@ -118,6 +145,10 @@ export interface GammaMarket {
   bestAsk: number;
   spread: number;
   lastTradePrice: number;
+  negRisk?: boolean;
+  negRiskMarketID?: string | null;
+  series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
+  eventMetadata?: Record<string, unknown> | null;
 }
 
 export interface ClobOrderbook {
