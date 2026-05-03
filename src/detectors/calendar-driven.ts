@@ -49,6 +49,32 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
   const rows = (events ?? []) as EventRow[];
 
+  // Staleness filter: discard events with no snapshot in the last 30 min
+  const stalenessThreshold = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+  const eventIds = rows.map((e) => e.id);
+  let liveRows = rows;
+  let skippedStale = 0;
+  if (eventIds.length > 0) {
+    const { data: recentSnaps, error: staleErr } = await supabase
+      .from('polymarket_snapshots')
+      .select('event_id')
+      .in('event_id', eventIds)
+      .gte('captured_at', stalenessThreshold);
+
+    if (staleErr) {
+      await logEvent({
+        component: 'calendar_driven_detector',
+        status: 'error',
+        message: `Staleness check query failed: ${staleErr.message}`,
+        metadata: { error: staleErr.message },
+      });
+    } else {
+      const liveEventIds = new Set((recentSnaps ?? []).map((s) => s.event_id as string));
+      liveRows = rows.filter((e) => liveEventIds.has(e.id));
+      skippedStale = rows.length - liveRows.length;
+    }
+  }
+
   let marketsEvaluated = 0;
   let flaggedCount = 0;
   let dedupedCount = 0;
@@ -59,7 +85,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   const dedupCutoff = new Date(now.getTime() - dedupWindowMinutes * 60 * 1000).toISOString();
   const snapshotCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-  for (const event of rows) {
+  for (const event of liveRows) {
     marketsEvaluated++;
 
     const yesSideName = event.outcomes?.values?.[0];
@@ -202,7 +228,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   await logEvent({
     component: 'calendar_driven_detector',
     status: 'success',
-    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes`,
+    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale`,
     metadata: {
       markets_evaluated: marketsEvaluated,
       flagged: flaggedCount,
@@ -210,6 +236,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       skipped_low_snapshots: skippedLowSnapshots,
       skipped_high_volatility: skippedHighVolatility,
       skipped_malformed_outcomes: skippedMalformedOutcomes,
+      skipped_stale: skippedStale,
       duration_ms: Date.now() - start,
     },
   });

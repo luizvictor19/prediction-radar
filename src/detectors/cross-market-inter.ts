@@ -79,12 +79,36 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     groups.set(nrid, group);
   }
 
+  // Staleness filter: build set of event IDs with a snapshot in the last 30 min
+  const stalenessThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const allEventIds = rows.map((r) => r.id);
+  let liveEventIds = new Set<string>(allEventIds); // fail-open: all live if query fails
+  if (allEventIds.length > 0) {
+    const { data: recentSnaps, error: staleErr } = await supabase
+      .from('polymarket_snapshots')
+      .select('event_id')
+      .in('event_id', allEventIds)
+      .gte('captured_at', stalenessThreshold);
+
+    if (staleErr) {
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'error',
+        message: `Staleness check query failed: ${staleErr.message}`,
+        metadata: { error: staleErr.message },
+      });
+    } else {
+      liveEventIds = new Set((recentSnaps ?? []).map((s) => s.event_id as string));
+    }
+  }
+
   let groupsEvaluated = 0;
   let groupsSkippedTooSmall = 0;
   let groupsSkippedLowVolume = 0;
   let groupsSkippedLowCoverage = 0;
   let groupsSkippedLowEdge = 0;
   let groupsSkippedLowSum = 0;
+  let groupsSkippedStale = 0;
   let flaggedCount = 0;
   let highConfidenceCount = 0;
   let dedupedCount = 0;
@@ -119,6 +143,12 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   for (const [negRiskMarketId, members] of groups) {
     if (members.length < minMembers) {
       groupsSkippedTooSmall++;
+      continue;
+    }
+
+    // Stale basket guard: all members must have a snapshot in the last 30 min
+    if (!members.every((m) => liveEventIds.has(m.id))) {
+      groupsSkippedStale++;
       continue;
     }
 
@@ -365,7 +395,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   await logEvent({
     component: 'cross_market_inter_detector',
     status: 'success',
-    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum`,
+    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum, ${groupsSkippedStale} skipped stale`,
     metadata: {
       groups_evaluated: groupsEvaluated,
       groups_skipped_too_small: groupsSkippedTooSmall,
@@ -373,6 +403,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       groups_skipped_low_coverage: groupsSkippedLowCoverage,
       groups_skipped_low_edge: groupsSkippedLowEdge,
       groups_skipped_low_sum: groupsSkippedLowSum,
+      groups_skipped_stale: groupsSkippedStale,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,
