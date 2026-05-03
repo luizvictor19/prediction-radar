@@ -18,6 +18,7 @@ interface EventRow {
   volume_24h: number | null;
   polymarket_category: string | null;
   polymarket_fee_rate: number | null;
+  end_date: string | null;
 }
 
 interface ExistingSignal {
@@ -52,7 +53,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h, polymarket_category, polymarket_fee_rate')
+    .select('id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h, polymarket_category, polymarket_fee_rate, end_date')
     .eq('status', 'active')
     .eq('tracked', true)
     .not('neg_risk_market_id', 'is', null)
@@ -309,7 +310,11 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const eventIdForSignal = direction === 'under' ? leader.event.id : null;
 
     const now = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const memberEndDates = members
+      .map((m) => m.end_date)
+      .filter((d): d is string => Boolean(d))
+      .sort();
+    const expiresAt = memberEndDates[0] ?? null;
     const dedupCutoff = new Date(Date.now() - dedupWindowMinutes * 60 * 1000).toISOString();
 
     // Dedup check — find existing active signal for this group

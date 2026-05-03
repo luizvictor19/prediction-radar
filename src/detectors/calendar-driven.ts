@@ -147,7 +147,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     const confidenceScore = Math.min(1.0, (0.005 - vol) / 0.005 + 0.5);
     const volume24h = event.volume_24h ?? 0;
     const nowIso = now.toISOString();
-    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+    const expiresAt = event.end_date;
 
     const reasoning =
       `Market resolve em ${Math.round(daysUntil)} dias. ` +

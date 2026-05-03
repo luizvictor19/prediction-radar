@@ -1,6 +1,7 @@
 import { runCrossMarketIntraDetector } from './cross-market.js';
 import { runCrossMarketInterDetector } from './cross-market-inter.js';
 import { runCalendarDrivenDetector } from './calendar-driven.js';
+import { runStaleSignalsCleanup } from '../jobs/cleanup-stale-signals.js';
 import { logEvent } from '../lib/logger.js';
 
 type DetectorFn = () => Promise<void>;
@@ -9,6 +10,7 @@ const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
   { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },
   { name: 'cross_market_inter', fn: runCrossMarketInterDetector },
   { name: 'calendar_driven', fn: runCalendarDrivenDetector },
+  { name: 'cleanup_stale_signals', fn: runStaleSignalsCleanup },
   // { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
 ];
 

@@ -57,7 +57,6 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .eq('alerted', false)
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
       .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
       .order('created_at', { ascending: false });
 

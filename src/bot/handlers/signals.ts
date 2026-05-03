@@ -69,7 +69,6 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       .select('*, events(title, polymarket_id, outcomes)')
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
       .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`)
       .order('metadata->>expected_edge_pct', { ascending: false })
       .limit(10);
