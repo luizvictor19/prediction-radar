@@ -2,7 +2,7 @@ import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { getSystemConfig } from '../../lib/config.js';
 import { logEvent } from '../../lib/logger.js';
-import { calcStake } from '../format.js';
+import { calcStake, getStakeCap } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 
 function domainConfidence(category: string | null): number {
@@ -15,9 +15,12 @@ function domainConfidence(category: string | null): number {
 export async function trackConversation(
   conversation: BotConversation,
   ctx: BotContext,
-  signalId: string,
+  signalIdWithOutcome: string,
 ): Promise<void> {
   try {
+    // signalIdWithOutcome may be "uuid" or "uuid:yes"/"uuid:no" for calendar_driven
+    const [signalId, forcedOutcome] = signalIdWithOutcome.split(':') as [string, string | undefined];
+
     const config = await getSystemConfig();
 
     const { data: signal, error: sigErr } = await supabase
@@ -33,8 +36,9 @@ export async function trackConversation(
 
     const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
     const edgePct = meta.expected_edge_pct ?? 0;
-    const suggestedStake = calcStake(config.bankroll_usd, config.max_stake_pct, edgePct);
-    const isMinimum = suggestedStake <= 0.5 && config.bankroll_usd * Math.min(config.max_stake_pct, edgePct / 200) < 0.5;
+    const stakeCap = getStakeCap(config, signal.signal_type as string);
+    const suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
+    const isMinimum = suggestedStake <= 0.5 && config.bankroll_usd * Math.min(stakeCap, edgePct / 200) < 0.5;
     const stakeLabel = isMinimum ? '$0.50 (mínimo)' : `$${suggestedStake.toFixed(2)}`;
 
     // Step 1: stake
@@ -73,10 +77,11 @@ export async function trackConversation(
     const thesis = thesisRaw === '/skip' ? null : thesisRaw;
 
     // Step 5: confirmation
+    const resolvedOutcome = forcedOutcome ?? signal.suggested_outcome;
     const shares = stakeUsd / entryPrice;
     const summary =
       `*Confirmar operação:*\n` +
-      `Outcome: \`${signal.suggested_outcome ?? '?'}\`\n` +
+      `Outcome: \`${resolvedOutcome ?? '?'}\`\n` +
       `Stake: \`$${stakeUsd.toFixed(2)}\`\n` +
       `Preço entrada: \`${entryPrice}\`\n` +
       `Shares: \`${shares.toFixed(4)}\`\n` +
@@ -101,7 +106,7 @@ export async function trackConversation(
       .insert({
         signal_id: signalId,
         event_id: signal.event_id ?? null,
-        outcome: signal.suggested_outcome,
+        outcome: resolvedOutcome,
         entry_price: entryPrice,
         stake_usd: stakeUsd,
         shares,
@@ -125,7 +130,7 @@ export async function trackConversation(
     await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
 
     await ctx.reply(
-      `✅ Operação registrada. ID: \`${bet.id}\`. Stake \`$${stakeUsd.toFixed(2)}\` em \`${signal.suggested_outcome}\` a \`${entryPrice}\`.`,
+      `✅ Operação registrada. ID: \`${bet.id}\`. Stake \`$${stakeUsd.toFixed(2)}\` em \`${resolvedOutcome}\` a \`${entryPrice}\`.`,
       { parse_mode: 'Markdown' },
     );
   } catch (err) {

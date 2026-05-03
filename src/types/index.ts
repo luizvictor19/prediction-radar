@@ -75,6 +75,7 @@ export interface SystemConfig {
   id: number;
   bankroll_usd: number;
   max_stake_pct: number;
+  cross_market_max_stake_pct: number;
   kelly_fraction: number;
   min_confidence_alert: number;
   drawdown_stop_pct: number;
@@ -130,6 +131,19 @@ export interface CrossMarketInterSignalMetadata {
   coverage_ratio: number;
   total_volume_24h: number;
   members: CrossMarketInterMember[];
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface CalendarDrivenSignalMetadata {
+  end_date: string;
+  days_until_resolution: number;
+  current_yes_price: number;
+  volatility_24h: number;
+  snapshot_count: number;
+  volume_24h: number;
+  polymarket_category: string | null;
+  is_ai_tech: boolean;
   detection_count: number;
   last_seen_at: string;
 }

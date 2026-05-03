@@ -7,6 +7,15 @@ export function signalKeyboard(signalId: string, polymarketUrl: string): InlineK
     .text('Dismiss', `dismiss:${signalId}`);
 }
 
+export function calendarDrivenKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .url('Ver no Polymarket', polymarketUrl)
+    .row()
+    .text('Track YES', `track_yes:${signalId}`)
+    .text('Track NO', `track_no:${signalId}`)
+    .text('Dismiss', `dismiss:${signalId}`);
+}
+
 export function positionKeyboard(positionId: string): InlineKeyboard {
   return new InlineKeyboard().text('Fechar posição', `close:${positionId}`);
 }

@@ -1,0 +1,1114 @@
+================================================================================
+PREDICTION RADAR — CONTEXTO DE CÓDIGO PARA PLANEJAMENTO
+Stack: Node.js + TypeScript (ESM, sem build step), Supabase, grammY (Telegram bot)
+Claude model usado nos agentes internos: claude-sonnet-4-5
+Nota: project.md e esquemas das tabelas estão sendo colados separadamente.
+================================================================================
+
+ARQUIVOS INCLUÍDOS:
+  src/types/index.ts              — interfaces de dados (SignalType, SystemConfig, metadatas…)
+  src/lib/config.ts               — getSystemConfig(), cache 60s, DEFAULTS
+  src/bot/format.ts               — calcStake, getStakeCap, formatSignal (dispatch por signal_type)
+  src/bot/keyboards.ts            — signalKeyboard, calendarDrivenKeyboard
+  src/bot/index.ts                — entry point bot, commands, callbacks registrados
+  src/bot/handlers/signals.ts     — /signals command handler
+  src/bot/notify.ts               — notify loop (polling a cada 60s, marca alerted=true)
+  src/bot/handlers/track.ts       — fluxo conversacional de track (stake → preço → tese → confirm)
+  src/detectors/runner.ts         — orquestra detectors ativos
+  src/detectors/calendar-driven.ts — detector calendar-driven (implementado)
+
+ARQUIVOS NÃO INCLUÍDOS (existem mas não são críticos pro planejamento):
+  src/detectors/cross-market-inter.ts  — detector basket arb (padrão similar ao calendar-driven)
+  src/detectors/cross-market.ts        — detector intra-market
+  src/detectors/hype-reality-gap.ts    — stub ainda
+  src/bot/handlers/positions.ts        — /positions + close position conversation
+  src/bot/handlers/bankroll.ts         — /bankroll handler
+  src/bot/handlers/status.ts           — /status handler
+  src/bot/handlers/config_cmd.ts       — /config handler
+  src/lib/fees.ts                      — cálculo de fees polymarket
+  src/lib/kelly.ts                     — kelly criterion
+  src/collectors/polymarket.ts         — coleta de mercados
+  src/jobs/retention.ts                — limpeza de dados antigos
+
+================================================================================
+FILE: src/types/index.ts
+================================================================================
+export type MarketCategory = 'ai_llm' | 'big_tech' | 'ai_infra' | 'ai_policy' | 'other';
+
+export type ArbDirection = 'over' | 'under';
+
+export type MarketSubCategory =
+  | 'model_release'
+  | 'benchmark'
+  | 'earnings'
+  | 'regulation'
+  | 'product_launch'
+  | 'other';
+
+export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market' | 'cross_market_intra' | 'cross_market_inter';
+
+export interface Event {
+  id: string;
+  polymarket_id: string;
+  slug: string | null;
+  title: string;
+  category: MarketCategory | null;
+  sub_category: MarketSubCategory | null;
+  polymarket_category: string | null;
+  polymarket_fee_rate: number | null;
+  is_ai_tech: boolean;
+  description: string | null;
+  outcomes: Record<string, unknown> | null;
+  volume_total: number | null;
+  volume_24h: number | null;
+  liquidity: number | null;
+  end_date: string | null;
+  status: string;
+  resolved_outcome: string | null;
+  tracked: boolean;
+  neg_risk_market_id: string | null;
+  series_id: string | null;
+  series_slug: string | null;
+  series_recurrence: string | null;
+  event_group_slug: string | null;
+  event_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolymarketSnapshot {
+  id: number;
+  event_id: string;
+  outcome: string;
+  best_bid: number | null;
+  best_ask: number | null;
+  mid_price: number | null;
+  spread: number | null;
+  bid_depth: number | null;
+  ask_depth: number | null;
+  volume_24h: number | null;
+  captured_at: string;
+}
+
+export interface DetectedSignal {
+  id: string;
+  event_id: string;
+  signal_type: SignalType;
+  confidence_score: number;
+  reasoning: string | null;
+  metadata: Record<string, unknown> | null;
+  suggested_outcome: string | null;
+  suggested_stake_pct: number | null;
+  expires_at: string | null;
+  alerted: boolean;
+  acted_on: boolean;
+  dismissed: boolean;
+  created_at: string;
+}
+
+export interface SystemConfig {
+  id: number;
+  bankroll_usd: number;
+  max_stake_pct: number;
+  cross_market_max_stake_pct: number;
+  kelly_fraction: number;
+  min_confidence_alert: number;
+  drawdown_stop_pct: number;
+  telegram_chat_id: string | null;
+  daily_report_hour: number;
+  cross_market_log_threshold: number;
+  cross_market_high_confidence_threshold: number;
+  cross_market_dedup_window_minutes: number;
+  inter_market_min_members: number;
+  inter_market_min_total_volume_24h: number;
+  snapshot_retention_days: number;
+  system_logs_retention_days: number;
+  min_expected_edge_pct: number;
+  notify_min_edge_pct: number;
+  log_expected_edge_pct: number;
+  excluded_categories: string[];
+  collector_min_volume_24h: number;
+  collector_min_liquidity: number;
+  updated_at: string;
+}
+
+export interface CrossMarketSignalMetadata {
+  price_sum: number;
+  deviation: number;
+  polymarket_category: string | null;
+  fee_rate: number;
+  expected_edge_pct: number;
+  direction: 'over' | 'under';
+  outcomes: Array<{ name: string; price: number }>;
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface CrossMarketInterMember {
+  event_id: string;
+  polymarket_id: string;
+  title: string;
+  yes_price: number;
+  volume_24h: number;
+}
+
+export interface CrossMarketInterSignalMetadata {
+  neg_risk_market_id: string;
+  polymarket_category: string | null;
+  fee_rate: number;
+  group_size: number;
+  price_sum: number;
+  deviation_gross: number;
+  estimated_fee_cost: number;
+  deviation_net: number;
+  expected_edge_pct: number;
+  direction: ArbDirection;
+  coverage_ratio: number;
+  total_volume_24h: number;
+  members: CrossMarketInterMember[];
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface CalendarDrivenSignalMetadata {
+  end_date: string;
+  days_until_resolution: number;
+  current_yes_price: number;
+  volatility_24h: number;
+  snapshot_count: number;
+  volume_24h: number;
+  polymarket_category: string | null;
+  is_ai_tech: boolean;
+  detection_count: number;
+  last_seen_at: string;
+}
+
+export interface DetectedSignalInsert {
+  event_id: string | null;
+  signal_type: SignalType;
+  confidence_score: number;
+  reasoning: string;
+  metadata: Record<string, unknown>;
+  suggested_outcome: string | null;
+  suggested_stake_pct: number | null;
+  expires_at: string;
+}
+
+================================================================================
+FILE: src/lib/config.ts
+================================================================================
+import type { SystemConfig } from '../types/index.js';
+import { supabase } from './supabase.js';
+import { logEvent } from './logger.js';
+
+const CACHE_TTL_MS = 60 * 1000;
+
+const DEFAULTS: SystemConfig = {
+  id: 1,
+  bankroll_usd: 500,
+  max_stake_pct: 0.03,
+  cross_market_max_stake_pct: 0.10,
+  kelly_fraction: 0.25,
+  min_confidence_alert: 0.70,
+  drawdown_stop_pct: 0.20,
+  telegram_chat_id: null,
+  daily_report_hour: 9,
+  cross_market_log_threshold: 0.03,
+  cross_market_high_confidence_threshold: 0.08,
+  cross_market_dedup_window_minutes: 30,
+  inter_market_min_members: 3,
+  inter_market_min_total_volume_24h: 10000,
+  snapshot_retention_days: 7,
+  system_logs_retention_days: 30,
+  min_expected_edge_pct: 1.5,
+  notify_min_edge_pct: 2.0,
+  log_expected_edge_pct: 0.5,
+  excluded_categories: [],
+  collector_min_volume_24h: 10000,
+  collector_min_liquidity: 20000,
+  updated_at: new Date().toISOString(),
+};
+
+let cachedConfig: SystemConfig | null = null;
+let cacheExpiresAt = 0;
+
+export async function getSystemConfig(): Promise<SystemConfig> {
+  const now = Date.now();
+  if (cachedConfig !== null && now < cacheExpiresAt) return cachedConfig;
+
+  const { data, error } = await supabase
+    .from('system_config')
+    .select('*')
+    .eq('id', 1)
+    .single();
+
+  if (error || !data) {
+    await logEvent({
+      component: 'config',
+      status: 'error',
+      message: `Failed to load system_config, using defaults: ${error?.message ?? 'no data'}`,
+    });
+    return DEFAULTS;
+  }
+
+  cachedConfig = data as SystemConfig;
+  cacheExpiresAt = now + CACHE_TTL_MS;
+  return cachedConfig;
+}
+
+export function invalidateConfigCache(): void {
+  cachedConfig = null;
+  cacheExpiresAt = 0;
+}
+
+================================================================================
+FILE: src/bot/format.ts
+================================================================================
+import type { CrossMarketInterSignalMetadata, CalendarDrivenSignalMetadata } from '../types/index.js';
+
+export interface SignalRow {
+  id: string;
+  event_id: string | null;
+  signal_type: string;
+  suggested_outcome: string | null;
+  metadata: Record<string, unknown> | null;
+  events?: { title: string; polymarket_id: string } | null;
+}
+
+export interface PositionRow {
+  id: string;
+  event_id: string | null;
+  outcome: string;
+  entry_price: number;
+  stake_usd: number;
+  shares: number;
+  placed_at: string;
+  events?: { title: string } | null;
+  polymarket_category: string | null;
+}
+
+export function getStakeCap(
+  config: { max_stake_pct: number; cross_market_max_stake_pct: number },
+  signalType: string,
+): number {
+  if (signalType === 'cross_market_inter' || signalType === 'cross_market_intra') {
+    return config.cross_market_max_stake_pct;
+  }
+  return config.max_stake_pct;
+}
+
+export function calcStake(bankroll: number, maxStakePct: number, edgePct: number): number {
+  const raw = bankroll * Math.min(maxStakePct, edgePct / 200);
+  const rounded = Math.round(raw * 100) / 100;
+  return Math.max(0.5, rounded);
+}
+
+export function stakeLabel(stake: number, isMinimum: boolean): string {
+  return isMinimum ? `$0.50 (mínimo)` : `$${stake.toFixed(2)}`;
+}
+
+export function formatVolume(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}k`;
+  return `$${v.toFixed(0)}`;
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  sports_fees_v2: '🏆',
+  politics_fees: '🗳️',
+  tech_fees: '🤖',
+  culture_fees: '🎵',
+  economics_fees: '📈',
+  finance_prices_fees: '💹',
+  crypto_fees_v2: '🪙',
+  general_fees: '📊',
+};
+
+export function categoryEmoji(category: string | null): string {
+  return CATEGORY_EMOJI[category ?? ''] ?? '🎯';
+}
+
+// ─── calendar_driven formatter ────────────────────────────────────────────────
+
+export function formatCalendarDrivenSignal(
+  signal: SignalRow,
+  _bankroll: number,
+  _stakeCap: number,
+): string {
+  const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
+  const daysUntil = meta.days_until_resolution ?? 0;
+  const currentPrice = meta.current_yes_price ?? 0;
+  const volatility = meta.volatility_24h ?? 0;
+  const vol24h = meta.volume_24h ?? 0;
+  const title = signal.events?.title ?? 'Market';
+
+  return (
+    `🗓️ *${title}*\n` +
+    `Resolve em \`${Math.round(daysUntil)}\` dias | Volatilidade 24h: \`${(volatility * 100).toFixed(2)}pp\`\n` +
+    `\n` +
+    `💰 Yes: \`${currentPrice.toFixed(2)}\` (estável há 24h)\n` +
+    `📊 Volume 24h: ${formatVolume(vol24h)}\n` +
+    `\n` +
+    `⚠️ Sistema sinalizou *setup*, não direção.\n` +
+    `   Avalie sua tese fundamental antes de operar:\n` +
+    `   • P(yes) > \`${currentPrice.toFixed(2)}\` → comprar Yes\n` +
+    `   • P(yes) < \`${currentPrice.toFixed(2)}\` → comprar No\n` +
+    `   • Sem opinião forte → ignorar`
+  );
+}
+
+// ─── cross_market_inter formatter (main) ──────────────────────────────────────
+
+function extractComplement(title: string): string | null {
+  const VERB_PATTERN = /^Will (.+?) (win|have|be|reach|get|cross|hit) /i;
+  const match = VERB_PATTERN.exec(title);
+  if (!match) return null;
+  const rest = title.slice(match[0].length).replace(/\?$/, '').trim();
+  return rest || null;
+}
+
+function extractSubject(title: string): string {
+  const VERB_PATTERN = /^Will (.+?) (win|have|be|reach|get|cross|hit) /i;
+  const match = VERB_PATTERN.exec(title);
+  if (match?.[1]) return match[1];
+  return title.split(' ')[0] ?? title;
+}
+
+export function deriveSignalTitle(members: Array<{ title: string }>): string | null {
+  if (members.length === 0) return null;
+  const firstComplement = extractComplement(members[0]!.title);
+  if (!firstComplement) return null;
+  if (members.length === 1) return firstComplement;
+  const others = members.slice(1);
+  const matchCount = others.filter((m) => extractComplement(m.title) === firstComplement).length;
+  if (matchCount >= others.length * 0.8) return firstComplement;
+  return null;
+}
+
+export function formatSignal(
+  signal: SignalRow,
+  bankroll: number,
+  maxStakePct: number,
+): string {
+  if (signal.signal_type === 'calendar_driven') {
+    return formatCalendarDrivenSignal(signal, bankroll, maxStakePct);
+  }
+
+  const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+  const edgePct = meta.expected_edge_pct ?? 0;
+  const direction = meta.direction ?? 'over';
+  const priceSum = meta.price_sum ?? 0;
+  const groupSize = meta.group_size ?? 0;
+  const totalVol = meta.total_volume_24h ?? 0;
+  const members = meta.members ?? [];
+  const category = meta.polymarket_category ?? null;
+
+  const derivedTitle = deriveSignalTitle(members);
+  const categoryDisplay = (category ?? signal.signal_type).replace(/_/g, ' ');
+  const title = derivedTitle ?? `${categoryDisplay} (${groupSize} membros)`;
+  const emoji = categoryEmoji(category);
+
+  const stake = calcStake(bankroll, maxStakePct, edgePct);
+  const stakePerLeg = groupSize > 0 ? stake / groupSize : 0;
+  let viability: string;
+  if (groupSize === 0 || stakePerLeg < 1.0) {
+    viability = `   ⚠️ Stake \`$${stake.toFixed(2)}\` é inviável pra basket de ${groupSize} (mín. $1/ordem na Polymarket). Recomendado: ignorar até bankroll crescer.`;
+  } else if (stakePerLeg < 5.0) {
+    viability = `   ⚠️ Stake pequeno por leg (\`$${stakePerLeg.toFixed(2)}\` cada). Slippage pode comer parte do edge.`;
+  } else {
+    viability = `   ✅ Stake viável: \`$${stakePerLeg.toFixed(2)}\` por leg em ${groupSize} legs.`;
+  }
+
+  const deviation = direction === 'over' ? priceSum - 1 : 1 - priceSum;
+  const deviationStr = (deviation * 100).toFixed(2);
+  let instruction: string;
+  if (direction === 'over') {
+    instruction = `Comprar *No* em todos os ${groupSize} membros, em proporções iguais ao stake total. O mercado está sobreprecificado em ${deviationStr}%.`;
+  } else {
+    instruction = `Comprar *Yes* em todos os ${groupSize} membros, em proporções iguais. O mercado está subprecificado em ${deviationStr}%.`;
+  }
+
+  const top3 = members
+    .slice(0, 3)
+    .map((m) => {
+      const name = extractSubject(m.title);
+      return `${name} ${(m.yes_price * 100).toFixed(1)}%`;
+    })
+    .join(' · ');
+
+  return (
+    `${emoji} *${title}*\n` +
+    `Edge: \`${edgePct.toFixed(2)}%\` líquido | direction: \`${direction}\`\n` +
+    `\n` +
+    `📊 ${groupSize} membros compondo o grupo. Soma dos preços = \`${priceSum.toFixed(3)}\`\n` +
+    `   (deveria ser 1.000).\n` +
+    `\n` +
+    `⚙️ Operação: ${instruction}\n` +
+    `${viability}\n` +
+    (top3 ? `\n🏆 Top 3: ${top3}\n` : '') +
+    `💰 Volume 24h: ${formatVolume(totalVol)}`
+  );
+}
+
+export function relativeTime(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins}m`;
+}
+
+================================================================================
+FILE: src/bot/keyboards.ts
+================================================================================
+import { InlineKeyboard } from 'grammy';
+
+export function signalKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .url('Ver no Polymarket', polymarketUrl)
+    .text('Track', `track:${signalId}`)
+    .text('Dismiss', `dismiss:${signalId}`);
+}
+
+export function calendarDrivenKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .url('Ver no Polymarket', polymarketUrl)
+    .row()
+    .text('Track YES', `track_yes:${signalId}`)
+    .text('Track NO', `track_no:${signalId}`)
+    .text('Dismiss', `dismiss:${signalId}`);
+}
+
+export function positionKeyboard(positionId: string): InlineKeyboard {
+  return new InlineKeyboard().text('Fechar posição', `close:${positionId}`);
+}
+
+export function confirmKeyboard(action: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('Confirmar', `confirm:${action}`)
+    .text('Cancelar', `cancel:${action}`);
+}
+
+================================================================================
+FILE: src/bot/index.ts
+================================================================================
+import 'dotenv/config';
+import { Bot, Context } from 'grammy';
+import { conversations, createConversation, type ConversationFlavor, type Conversation } from '@grammyjs/conversations';
+import { authMiddleware } from './auth.js';
+import { signalsHandler } from './handlers/signals.js';
+import { trackConversation } from './handlers/track.js';
+import { positionsHandler, closePositionConversation } from './handlers/positions.js';
+import { statusHandler } from './handlers/status.js';
+import { bankrollHandler } from './handlers/bankroll.js';
+import { configHandler } from './handlers/config_cmd.js';
+import { startNotifyLoop } from './notify.js';
+import { supabase } from '../lib/supabase.js';
+import { logEvent } from '../lib/logger.js';
+
+export type BotContext = ConversationFlavor<Context>;
+export type BotConversation = Conversation;
+
+const bot = new Bot<BotContext>(process.env['TELEGRAM_BOT_TOKEN']!);
+
+bot.use(conversations());
+
+bot.use(createConversation(
+  async (conversation, ctx, signalId: unknown) => {
+    await trackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
+  },
+  'track',
+));
+
+bot.use(createConversation(
+  async (conversation, ctx, positionId: unknown) => {
+    await closePositionConversation(conversation as BotConversation, ctx as BotContext, positionId as string);
+  },
+  'close_position',
+));
+
+bot.use(authMiddleware());
+
+// Commands
+bot.command('signals', signalsHandler);
+bot.command('positions', positionsHandler);
+bot.command('status', statusHandler);
+bot.command('bankroll', bankrollHandler);
+bot.command('config', configHandler);
+
+// Callbacks
+bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  await supabase.from('detected_signals').update({ dismissed: true }).eq('id', signalId);
+  await ctx.editMessageText('❌ DISMISSED\n\n' + (ctx.callbackQuery.message?.text ?? ''), { parse_mode: 'Markdown' });
+  await ctx.answerCallbackQuery('Sinal dispensado.');
+});
+
+bot.callbackQuery(/^track:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', ctx.match[1]);
+});
+
+bot.callbackQuery(/^track_yes:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', `${ctx.match[1]}:yes`);
+});
+
+bot.callbackQuery(/^track_no:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', `${ctx.match[1]}:no`);
+});
+
+bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('close_position', ctx.match[1]);
+});
+
+startNotifyLoop(bot);
+bot.start({ drop_pending_updates: true });
+
+================================================================================
+FILE: src/bot/handlers/signals.ts
+================================================================================
+import type { BotContext } from '../index.js';
+import { supabase } from '../../lib/supabase.js';
+import { getSystemConfig } from '../../lib/config.js';
+import { logEvent } from '../../lib/logger.js';
+import { formatSignal, getStakeCap } from '../format.js';
+import { signalKeyboard, calendarDrivenKeyboard } from '../keyboards.js';
+import type { SignalRow } from '../format.js';
+import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
+
+// Resolve slugs for cross_market signals (batch lookup by polymarket_id)
+async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>> {
+  const polymarketIds = signals
+    .filter((s) => s.signal_type !== 'calendar_driven')
+    .map((s) => {
+      const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+      return members[0]?.polymarket_id ?? null;
+    })
+    .filter((id): id is string => id !== null);
+
+  if (polymarketIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from('events')
+    .select('polymarket_id, event_group_slug')
+    .in('polymarket_id', polymarketIds);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.event_group_slug) map.set(row.polymarket_id as string, row.event_group_slug as string);
+  }
+  return map;
+}
+
+// Resolve URL for calendar_driven by event_id
+async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
+  const { data } = await supabase
+    .from('events')
+    .select('event_group_slug, polymarket_id')
+    .eq('id', eventId)
+    .limit(1)
+    .maybeSingle();
+
+  if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
+  if (data?.polymarket_id) return `https://polymarket.com/market/${data.polymarket_id as string}`;
+  return 'https://polymarket.com';
+}
+
+function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, string>): string {
+  const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+  const firstId = members[0]?.polymarket_id;
+  if (firstId) {
+    const slug = slugMap.get(firstId);
+    if (slug) return `https://polymarket.com/event/${slug}`;
+  }
+  return 'https://polymarket.com';
+}
+
+export async function signalsHandler(ctx: BotContext): Promise<void> {
+  try {
+    const config = await getSystemConfig();
+
+    const { data, error } = await supabase
+      .from('detected_signals')
+      .select('*, events(title, polymarket_id)')
+      .eq('dismissed', false)
+      .eq('acted_on', false)
+      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+      // calendar_driven não tem expected_edge_pct, incluído via OR
+      .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`)
+      .order('metadata->>expected_edge_pct', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${error.message}` });
+      await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
+      return;
+    }
+
+    const signals = (data ?? []) as SignalRow[];
+    if (signals.length === 0) { await ctx.reply('Nenhum sinal ativo agora.'); return; }
+
+    const slugMap = await resolveSlugMap(signals);
+
+    for (const signal of signals) {
+      const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
+        ? await resolveCalendarDrivenUrl(signal.event_id)
+        : buildPolymarketUrl(signal, slugMap);
+      const stakeCap = getStakeCap(config, signal.signal_type);
+      const text = formatSignal(signal, config.bankroll_usd, stakeCap);
+      const keyboard = signal.signal_type === 'calendar_driven'
+        ? calendarDrivenKeyboard(signal.id, polymarketUrl)
+        : signalKeyboard(signal.id, polymarketUrl);
+      await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: keyboard });
+    }
+  } catch (err) {
+    await logEvent({ component: 'telegram_bot', status: 'error', message: `signalsHandler error: ${String(err)}` });
+    await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
+  }
+}
+
+================================================================================
+FILE: src/bot/notify.ts
+================================================================================
+import type { Bot } from 'grammy';
+import type { BotContext } from './index.js';
+import { supabase } from '../lib/supabase.js';
+import { getSystemConfig } from '../lib/config.js';
+import { logEvent } from '../lib/logger.js';
+import { formatSignal, getStakeCap } from './format.js';
+import { signalKeyboard, calendarDrivenKeyboard } from './keyboards.js';
+import type { SignalRow } from './format.js';
+import type { CrossMarketInterSignalMetadata } from '../types/index.js';
+
+async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
+  if (signal.signal_type === 'calendar_driven' && signal.event_id) {
+    const { data } = await supabase
+      .from('events')
+      .select('event_group_slug, polymarket_id')
+      .eq('id', signal.event_id)
+      .limit(1)
+      .maybeSingle();
+    if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
+    if (data?.polymarket_id) return `https://polymarket.com/market/${data.polymarket_id as string}`;
+    return 'https://polymarket.com';
+  }
+
+  const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+  const firstId = members[0]?.polymarket_id;
+  if (!firstId) return 'https://polymarket.com';
+
+  const { data } = await supabase
+    .from('events')
+    .select('event_group_slug')
+    .eq('polymarket_id', firstId)
+    .limit(1)
+    .maybeSingle();
+  if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
+  return 'https://polymarket.com';
+}
+
+export function startNotifyLoop(bot: Bot<BotContext>): void {
+  setInterval(() => { void runNotifyCheck(bot); }, 60 * 1000);
+}
+
+async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
+  try {
+    const config = await getSystemConfig();
+    const chatId = config.telegram_chat_id;
+    if (!chatId) return;
+
+    const { data, error } = await supabase
+      .from('detected_signals')
+      .select('*, events(title, polymarket_id)')
+      .eq('alerted', false)
+      .eq('dismissed', false)
+      .eq('acted_on', false)
+      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+      // calendar_driven não tem expected_edge_pct, incluído via OR
+      .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      await logEvent({ component: 'telegram_bot', status: 'error', message: `notify query failed: ${error.message}` });
+      return;
+    }
+
+    for (const signal of (data ?? []) as SignalRow[]) {
+      try {
+        const polymarketUrl = await resolvePolymarketUrl(signal);
+        const stakeCap = getStakeCap(config, signal.signal_type);
+        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap);
+        const keyboard = signal.signal_type === 'calendar_driven'
+          ? calendarDrivenKeyboard(signal.id, polymarketUrl)
+          : signalKeyboard(signal.id, polymarketUrl);
+        await bot.api.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: keyboard });
+        await supabase.from('detected_signals').update({ alerted: true }).eq('id', signal.id);
+      } catch (sendErr) {
+        await logEvent({ component: 'telegram_bot', status: 'error', message: `notify send failed for signal ${signal.id}: ${String(sendErr)}` });
+      }
+    }
+  } catch (err) {
+    await logEvent({ component: 'telegram_bot', status: 'error', message: `runNotifyCheck error: ${String(err)}` });
+  }
+}
+
+================================================================================
+FILE: src/bot/handlers/track.ts
+================================================================================
+import type { BotContext, BotConversation } from '../index.js';
+import { supabase } from '../../lib/supabase.js';
+import { getSystemConfig } from '../../lib/config.js';
+import { logEvent } from '../../lib/logger.js';
+import { calcStake, getStakeCap } from '../format.js';
+import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
+
+function domainConfidence(category: string | null): number {
+  if (!category) return 6;
+  if (category.toLowerCase().includes('tech') || category.toLowerCase().includes('ai')) return 9;
+  if (category.toLowerCase().includes('sport')) return 5;
+  return 6;
+}
+
+// signalIdWithOutcome: "uuid" para cross_market, "uuid:yes" ou "uuid:no" para calendar_driven
+export async function trackConversation(
+  conversation: BotConversation,
+  ctx: BotContext,
+  signalIdWithOutcome: string,
+): Promise<void> {
+  try {
+    const [signalId, forcedOutcome] = signalIdWithOutcome.split(':') as [string, string | undefined];
+
+    const config = await getSystemConfig();
+
+    const { data: signal, error: sigErr } = await supabase
+      .from('detected_signals')
+      .select('*')
+      .eq('id', signalId)
+      .single();
+
+    if (sigErr || !signal) { await ctx.reply('Sinal não encontrado.'); return; }
+
+    const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+    const edgePct = meta.expected_edge_pct ?? 0;
+    const stakeCap = getStakeCap(config, signal.signal_type as string);
+    const suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
+    const isMinimum = suggestedStake <= 0.5 && config.bankroll_usd * Math.min(stakeCap, edgePct / 200) < 0.5;
+    const stakeLabel = isMinimum ? '$0.50 (mínimo)' : `$${suggestedStake.toFixed(2)}`;
+
+    // Step 1: stake
+    await ctx.reply(`Stake em USD? (sugerido: ${stakeLabel})\nDigite um valor ou "ok" para usar o sugerido.`);
+    const stakeCtx = await conversation.waitFor('message:text');
+    const stakeRaw = stakeCtx.message.text.trim().toLowerCase();
+    const stakeUsd = stakeRaw === 'ok' ? suggestedStake : parseFloat(stakeRaw);
+    if (isNaN(stakeUsd) || stakeUsd <= 0) { await ctx.reply('Valor inválido. Operação cancelada.'); return; }
+
+    // Step 2: entry price
+    await ctx.reply('Preço de entrada (Yes price, ex.: 0.045)?');
+    const priceCtx = await conversation.waitFor('message:text');
+    const entryPrice = parseFloat(priceCtx.message.text.trim());
+    if (isNaN(entryPrice) || entryPrice <= 0 || entryPrice >= 1) {
+      await ctx.reply('Preço inválido (deve ser entre 0 e 1). Operação cancelada.'); return;
+    }
+
+    // Step 3: self-confidence (optional)
+    await ctx.reply('Confiança própria 1-10? (opcional, /skip para pular)');
+    const confCtx = await conversation.waitFor('message:text');
+    let confidenceSelf: number | null = null;
+    if (confCtx.message.text.trim() !== '/skip') {
+      const parsed = parseInt(confCtx.message.text.trim(), 10);
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
+    }
+
+    // Step 4: thesis (optional)
+    await ctx.reply('Tese curta? (1-3 frases, ou /skip)');
+    const thesisCtx = await conversation.waitFor('message:text');
+    const thesis = thesisCtx.message.text.trim() === '/skip' ? null : thesisCtx.message.text.trim();
+
+    // Step 5: confirmation
+    // forcedOutcome vem do callback (calendar_driven); signal.suggested_outcome para cross_market
+    const resolvedOutcome = forcedOutcome ?? signal.suggested_outcome;
+    const shares = stakeUsd / entryPrice;
+    const summary =
+      `*Confirmar operação:*\n` +
+      `Outcome: \`${resolvedOutcome ?? '?'}\`\n` +
+      `Stake: \`$${stakeUsd.toFixed(2)}\`\n` +
+      `Preço entrada: \`${entryPrice}\`\n` +
+      `Shares: \`${shares.toFixed(4)}\`\n` +
+      (confidenceSelf !== null ? `Confiança: \`${confidenceSelf}/10\`\n` : '') +
+      (thesis ? `Tese: ${thesis}\n` : '');
+
+    await ctx.reply(summary + '\nResponda "sim" para confirmar ou "não" para cancelar.', { parse_mode: 'Markdown' });
+
+    const confirmCtx = await conversation.waitFor('message:text');
+    if (!['sim', 's'].includes(confirmCtx.message.text.trim().toLowerCase())) {
+      await ctx.reply('Operação cancelada.'); return;
+    }
+
+    const category = meta.polymarket_category ?? null;
+
+    const { data: bet, error: betErr } = await supabase
+      .from('my_bets')
+      .insert({
+        signal_id: signalId,
+        event_id: signal.event_id ?? null,
+        outcome: resolvedOutcome,
+        entry_price: entryPrice,
+        stake_usd: stakeUsd,
+        shares,
+        thesis: thesis ?? null,
+        thesis_type: signal.signal_type,
+        confidence_self: confidenceSelf,
+        domain_confidence: domainConfidence(category),
+        polymarket_category: category,
+        placed_at: new Date().toISOString(),
+        external_id: null,
+      })
+      .select('id')
+      .single();
+
+    if (betErr || !bet) {
+      await logEvent({ component: 'telegram_bot', status: 'error', message: `my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+      await ctx.reply('Erro ao registrar operação. Tenta de novo.'); return;
+    }
+
+    await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
+    await ctx.reply(
+      `✅ Operação registrada. ID: \`${bet.id}\`. Stake \`$${stakeUsd.toFixed(2)}\` em \`${resolvedOutcome}\` a \`${entryPrice}\`.`,
+      { parse_mode: 'Markdown' },
+    );
+  } catch (err) {
+    await logEvent({ component: 'telegram_bot', status: 'error', message: `trackConversation error: ${String(err)}` });
+    await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
+  }
+}
+
+================================================================================
+FILE: src/detectors/runner.ts
+================================================================================
+import { runCrossMarketIntraDetector } from './cross-market.js';
+import { runCrossMarketInterDetector } from './cross-market-inter.js';
+import { runCalendarDrivenDetector } from './calendar-driven.js';
+import { logEvent } from '../lib/logger.js';
+
+type DetectorFn = () => Promise<void>;
+
+const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
+  { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },
+  { name: 'cross_market_inter', fn: runCrossMarketInterDetector },
+  { name: 'calendar_driven', fn: runCalendarDrivenDetector },
+  // { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
+];
+
+export async function runAllDetectors(): Promise<void> {
+  const start = Date.now();
+  const results: Array<{ name: string; success: boolean; error?: string }> = [];
+
+  for (const detector of ACTIVE_DETECTORS) {
+    try {
+      await detector.fn();
+      results.push({ name: detector.name, success: true });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      results.push({ name: detector.name, success: false, error: msg });
+      await logEvent({
+        component: 'detector_runner',
+        status: 'error',
+        message: `Detector ${detector.name} failed: ${msg}`,
+        metadata: { detector: detector.name, error: msg },
+      });
+    }
+  }
+
+  await logEvent({
+    component: 'detector_runner',
+    status: results.every((r) => r.success) ? 'success' : 'partial',
+    message: `Ran ${results.length} detectors in ${Date.now() - start}ms`,
+    metadata: { results, duration_ms: Date.now() - start },
+  });
+}
+
+================================================================================
+FILE: src/detectors/calendar-driven.ts
+================================================================================
+import type { CalendarDrivenSignalMetadata } from '../types/index.js';
+import { supabase } from '../lib/supabase.js';
+import { getSystemConfig } from '../lib/config.js';
+import { logEvent } from '../lib/logger.js';
+
+function stddev(values: number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+interface EventRow {
+  id: string;
+  title: string;
+  polymarket_category: string | null;
+  is_ai_tech: boolean;
+  volume_24h: number | null;
+  end_date: string;
+}
+
+export async function runCalendarDrivenDetector(): Promise<void> {
+  const start = Date.now();
+  const config = await getSystemConfig();
+
+  const { cross_market_dedup_window_minutes: dedupWindowMinutes, collector_min_volume_24h: minVolume } = config;
+
+  const now = new Date();
+  const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: events, error: fetchError } = await supabase
+    .from('events')
+    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date')
+    .eq('status', 'active')
+    .eq('tracked', true)
+    .gt('end_date', now.toISOString())
+    .lte('end_date', sevenDaysOut)
+    .gte('volume_24h', minVolume);
+
+  if (fetchError) {
+    await logEvent({ component: 'calendar_driven_detector', status: 'error', message: `Failed to fetch events: ${fetchError.message}` });
+    return;
+  }
+
+  const rows = (events ?? []) as EventRow[];
+  let marketsEvaluated = 0, flaggedCount = 0, dedupedCount = 0, skippedLowSnapshots = 0, skippedHighVolatility = 0;
+
+  const dedupCutoff = new Date(now.getTime() - dedupWindowMinutes * 60 * 1000).toISOString();
+  const snapshotCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  for (const event of rows) {
+    marketsEvaluated++;
+
+    const { data: snapshots, error: snapErr } = await supabase
+      .from('polymarket_snapshots')
+      .select('mid_price, captured_at')
+      .eq('event_id', event.id)
+      .eq('outcome', 'Yes')
+      .gt('captured_at', snapshotCutoff)
+      .order('captured_at', { ascending: true });
+
+    if (snapErr) {
+      await logEvent({ component: 'calendar_driven_detector', status: 'error', message: `Snapshot query failed for ${event.id}: ${snapErr.message}` });
+      continue;
+    }
+
+    const validPrices = (snapshots ?? [])
+      .map((s) => s.mid_price as number | null)
+      .filter((p): p is number => p !== null);
+
+    if (validPrices.length < 5) {
+      await logEvent({ component: 'calendar_driven_detector', status: 'partial', message: `Event ${event.id} skipped: ${validPrices.length} snapshots (need >= 5)`, metadata: { event_id: event.id, snapshot_count: validPrices.length } });
+      skippedLowSnapshots++; continue;
+    }
+
+    const vol = stddev(validPrices);
+    if (vol >= 0.005) { skippedHighVolatility++; continue; }
+
+    flaggedCount++;
+
+    const currentYesPrice = validPrices[validPrices.length - 1]!;
+    const daysUntil = (new Date(event.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    // confidence: 0.5 at vol=0.005, approaches 1.0 as vol→0, capped at 1.0
+    const confidenceScore = Math.min(1.0, (0.005 - vol) / 0.005 + 0.5);
+    const volume24h = event.volume_24h ?? 0;
+    const nowIso = now.toISOString();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+
+    const reasoning =
+      `Market resolve em ${Math.round(daysUntil)} dias. ` +
+      `Preço Yes estável em ${currentYesPrice.toFixed(2)} últimas 24h (volatilidade ${(vol * 100).toFixed(2)}pp). ` +
+      `Volume 24h: $${volume24h.toFixed(0)}. ` +
+      `Avaliar tese fundamental antes de operar.`;
+
+    // Dedup por event_id dentro da janela
+    const { data: existing, error: dedupErr } = await supabase
+      .from('detected_signals')
+      .select('id, metadata')
+      .eq('signal_type', 'calendar_driven')
+      .eq('event_id', event.id)
+      .eq('dismissed', false)
+      .eq('acted_on', false)
+      .gte('created_at', dedupCutoff)
+      .limit(1)
+      .maybeSingle();
+
+    if (dedupErr) {
+      await logEvent({ component: 'calendar_driven_detector', status: 'error', message: `Dedup failed for ${event.id}: ${dedupErr.message}` });
+      continue;
+    }
+
+    if (existing) {
+      dedupedCount++;
+      const prevMeta = (existing.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
+      const updatedMeta: CalendarDrivenSignalMetadata = {
+        end_date: event.end_date, days_until_resolution: daysUntil,
+        current_yes_price: currentYesPrice, volatility_24h: vol,
+        snapshot_count: validPrices.length, volume_24h: volume24h,
+        polymarket_category: event.polymarket_category, is_ai_tech: event.is_ai_tech,
+        detection_count: (prevMeta.detection_count ?? 1) + 1, last_seen_at: nowIso,
+      };
+      await supabase.from('detected_signals').update({ confidence_score: confidenceScore, metadata: updatedMeta }).eq('id', existing.id);
+    } else {
+      const metadata: CalendarDrivenSignalMetadata = {
+        end_date: event.end_date, days_until_resolution: daysUntil,
+        current_yes_price: currentYesPrice, volatility_24h: vol,
+        snapshot_count: validPrices.length, volume_24h: volume24h,
+        polymarket_category: event.polymarket_category, is_ai_tech: event.is_ai_tech,
+        detection_count: 1, last_seen_at: nowIso,
+      };
+      await supabase.from('detected_signals').insert({
+        event_id: event.id, signal_type: 'calendar_driven',
+        confidence_score: confidenceScore, reasoning, metadata,
+        suggested_outcome: null, suggested_stake_pct: null,
+        expires_at: expiresAt, alerted: false,
+      });
+    }
+  }
+
+  await logEvent({
+    component: 'calendar_driven_detector', status: 'success',
+    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility`,
+    metadata: { markets_evaluated: marketsEvaluated, flagged: flaggedCount, deduped: dedupedCount, skipped_low_snapshots: skippedLowSnapshots, skipped_high_volatility: skippedHighVolatility, duration_ms: Date.now() - start },
+  });
+}
+
+================================================================================
+NOTAS DE DESIGN — DECISÕES RECENTES
+================================================================================
+
+1. Cap de stake por signal_type
+   - cross_market_inter / cross_market_intra → config.cross_market_max_stake_pct (default 10%)
+   - outros (calendar_driven, hype_reality_gap, …) → config.max_stake_pct (default 3%)
+   - helper getStakeCap(config, signalType) em format.ts
+
+2. calendar_driven não tem expected_edge_pct na metadata
+   - Queries que filtram por expected_edge_pct usam .or() para incluir calendar_driven:
+     .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${threshold}`)
+   - suggested_outcome = null; outcome vem do callback (track_yes / track_no)
+   - track.ts parseia signalIdWithOutcome como "uuid" ou "uuid:yes"/"uuid:no"
+
+3. Callbacks registrados no bot:
+   - track:{id}      → cross_market (outcome vem de signal.suggested_outcome)
+   - track_yes:{id}  → calendar_driven YES
+   - track_no:{id}   → calendar_driven NO
+   - dismiss:{id}
+   - close:{id}      → fechar posição
+
+4. URLs Polymarket:
+   - cross_market: lookup via members[0].polymarket_id → event_group_slug
+   - calendar_driven: lookup via event_id → event_group_slug
+
+5. Detector runner: cross_market_intra, cross_market_inter, calendar_driven (ativos)
+   hype_reality_gap comentado (stub)
+
+================================================================================
+FIM DO ARQUIVO
+================================================================================

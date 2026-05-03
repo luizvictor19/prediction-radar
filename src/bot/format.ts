@@ -1,4 +1,4 @@
-import type { CrossMarketInterSignalMetadata } from '../types/index.js';
+import type { CrossMarketInterSignalMetadata, CalendarDrivenSignalMetadata } from '../types/index.js';
 
 export interface SignalRow {
   id: string;
@@ -19,6 +19,16 @@ export interface PositionRow {
   placed_at: string;
   events?: { title: string } | null;
   polymarket_category: string | null;
+}
+
+export function getStakeCap(
+  config: { max_stake_pct: number; cross_market_max_stake_pct: number },
+  signalType: string,
+): number {
+  if (signalType === 'cross_market_inter' || signalType === 'cross_market_intra') {
+    return config.cross_market_max_stake_pct;
+  }
+  return config.max_stake_pct;
 }
 
 export function calcStake(bankroll: number, maxStakePct: number, edgePct: number): number {
@@ -81,11 +91,41 @@ export function deriveSignalTitle(members: Array<{ title: string }>): string | n
   return null;
 }
 
+export function formatCalendarDrivenSignal(
+  signal: SignalRow,
+  _bankroll: number,
+  _stakeCap: number,
+): string {
+  const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
+  const daysUntil = meta.days_until_resolution ?? 0;
+  const currentPrice = meta.current_yes_price ?? 0;
+  const volatility = meta.volatility_24h ?? 0;
+  const vol24h = meta.volume_24h ?? 0;
+  const title = signal.events?.title ?? 'Market';
+
+  return (
+    `🗓️ *${title}*\n` +
+    `Resolve em \`${Math.round(daysUntil)}\` dias | Volatilidade 24h: \`${(volatility * 100).toFixed(2)}pp\`\n` +
+    `\n` +
+    `💰 Yes: \`${currentPrice.toFixed(2)}\` (estável há 24h)\n` +
+    `📊 Volume 24h: ${formatVolume(vol24h)}\n` +
+    `\n` +
+    `⚠️ Sistema sinalizou *setup*, não direção.\n` +
+    `   Avalie sua tese fundamental antes de operar:\n` +
+    `   • P(yes) > \`${currentPrice.toFixed(2)}\` → comprar Yes\n` +
+    `   • P(yes) < \`${currentPrice.toFixed(2)}\` → comprar No\n` +
+    `   • Sem opinião forte → ignorar`
+  );
+}
+
 export function formatSignal(
   signal: SignalRow,
   bankroll: number,
   maxStakePct: number,
 ): string {
+  if (signal.signal_type === 'calendar_driven') {
+    return formatCalendarDrivenSignal(signal, bankroll, maxStakePct);
+  }
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
   const edgePct = meta.expected_edge_pct ?? 0;
   const direction = meta.direction ?? 'over';

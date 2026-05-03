@@ -8,6 +8,7 @@ const DEFAULTS: SystemConfig = {
   id: 1,
   bankroll_usd: 500,
   max_stake_pct: 0.03,
+  cross_market_max_stake_pct: 0.10,
   kelly_fraction: 0.25,
   min_confidence_alert: 0.70,
   drawdown_stop_pct: 0.20,

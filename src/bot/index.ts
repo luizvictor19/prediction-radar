@@ -68,6 +68,18 @@ bot.callbackQuery(/^track:(.+)$/, async (ctx) => {
   await ctx.conversation.enter('track', signalId);
 });
 
+bot.callbackQuery(/^track_yes:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', `${signalId}:yes`);
+});
+
+bot.callbackQuery(/^track_no:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', `${signalId}:no`);
+});
+
 bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
   const positionId = ctx.match[1];
   await ctx.answerCallbackQuery();
