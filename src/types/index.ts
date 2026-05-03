@@ -87,6 +87,7 @@ export interface SystemConfig {
   snapshot_retention_days: number;
   system_logs_retention_days: number;
   min_expected_edge_pct: number;
+  notify_min_edge_pct: number;
   log_expected_edge_pct: number;
   excluded_categories: string[];
   collector_min_volume_24h: number;

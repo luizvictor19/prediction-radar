@@ -21,6 +21,7 @@ const DEFAULTS: SystemConfig = {
   snapshot_retention_days: 7,
   system_logs_retention_days: 30,
   min_expected_edge_pct: 1.5,
+  notify_min_edge_pct: 2.0,
   log_expected_edge_pct: 0.5,
   excluded_categories: [],
   collector_min_volume_24h: 10000,

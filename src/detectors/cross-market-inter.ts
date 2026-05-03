@@ -357,6 +357,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         suggested_outcome: suggestedOutcome,
         suggested_stake_pct: null,
         expires_at: expiresAt,
+        alerted: false,
       });
     }
   }

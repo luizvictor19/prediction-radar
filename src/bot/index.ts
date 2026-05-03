@@ -1,0 +1,81 @@
+import 'dotenv/config';
+import { Bot, Context } from 'grammy';
+import { conversations, createConversation, type ConversationFlavor, type Conversation } from '@grammyjs/conversations';
+import { authMiddleware } from './auth.js';
+import { signalsHandler } from './handlers/signals.js';
+import { trackConversation } from './handlers/track.js';
+import { positionsHandler, closePositionConversation } from './handlers/positions.js';
+import { statusHandler } from './handlers/status.js';
+import { bankrollHandler } from './handlers/bankroll.js';
+import { configHandler } from './handlers/config_cmd.js';
+import { startNotifyLoop } from './notify.js';
+import { supabase } from '../lib/supabase.js';
+import { logEvent } from '../lib/logger.js';
+
+// BotContext = full context including conversation flavor, used by bot middleware and handlers.
+// BotConversation = unparameterized Conversation (Context defaults), used inside conversation handlers.
+export type BotContext = ConversationFlavor<Context>;
+export type BotConversation = Conversation;
+
+const token = process.env['TELEGRAM_BOT_TOKEN'];
+if (!token) {
+  console.error('[bot] TELEGRAM_BOT_TOKEN is not set');
+  process.exit(1);
+}
+
+const bot = new Bot<BotContext>(token);
+
+bot.use(conversations());
+
+bot.use(createConversation(
+  async (conversation, ctx, signalId: unknown) => {
+    await trackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
+  },
+  'track',
+));
+
+bot.use(createConversation(
+  async (conversation, ctx, positionId: unknown) => {
+    await closePositionConversation(conversation as BotConversation, ctx as BotContext, positionId as string);
+  },
+  'close_position',
+));
+
+bot.use(authMiddleware());
+
+bot.command('signals', signalsHandler);
+bot.command('positions', positionsHandler);
+bot.command('status', statusHandler);
+bot.command('bankroll', bankrollHandler);
+bot.command('config', configHandler);
+
+bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  try {
+    await supabase.from('detected_signals').update({ dismissed: true }).eq('id', signalId);
+    const original = ctx.callbackQuery.message?.text ?? '';
+    await ctx.editMessageText('❌ DISMISSED\n\n' + original, { parse_mode: 'Markdown' });
+    await ctx.answerCallbackQuery('Sinal dispensado.');
+  } catch (err) {
+    await logEvent({ component: 'telegram_bot', status: 'error', message: `dismiss callback error: ${String(err)}` });
+    await ctx.answerCallbackQuery('Erro ao dispensar sinal.');
+  }
+});
+
+bot.callbackQuery(/^track:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('track', signalId);
+});
+
+bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
+  const positionId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('close_position', positionId);
+});
+
+startNotifyLoop(bot);
+
+bot.start({ drop_pending_updates: true });
+
+console.log('[bot] Prediction Radar Bot running (long-polling)');
