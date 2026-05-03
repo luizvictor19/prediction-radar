@@ -84,6 +84,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let groupsSkippedLowVolume = 0;
   let groupsSkippedLowCoverage = 0;
   let groupsSkippedLowEdge = 0;
+  let groupsSkippedLowSum = 0;
   let flaggedCount = 0;
   let highConfidenceCount = 0;
   let dedupedCount = 0;
@@ -195,6 +196,23 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const estimatedFeeCost = direction === 'over'
       ? estimateBuyNoBasketFeeCost(feeRate, yesPrices)
       : estimateBuyYesBasketFeeCost(feeRate, yesPrices);
+
+    if (direction === 'under' && priceSum < 0.7) {
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'partial',
+        message: `Group ${negRiskMarketId} skipped: 'under' with price_sum ${priceSum.toFixed(3)} < 0.7 (likely incomplete group / closed members)`,
+        metadata: {
+          neg_risk_market_id: negRiskMarketId,
+          price_sum: priceSum,
+          direction,
+          group_size: validMembers.length,
+          category: groupCategory ?? 'unknown',
+        },
+      });
+      groupsSkippedLowSum++;
+      continue;
+    }
 
     // Track category breakdown
     const catKey = groupCategory ?? 'unknown';
@@ -346,13 +364,14 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   await logEvent({
     component: 'cross_market_inter_detector',
     status: 'success',
-    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage`,
+    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum`,
     metadata: {
       groups_evaluated: groupsEvaluated,
       groups_skipped_too_small: groupsSkippedTooSmall,
       groups_skipped_low_volume: groupsSkippedLowVolume,
       groups_skipped_low_coverage: groupsSkippedLowCoverage,
       groups_skipped_low_edge: groupsSkippedLowEdge,
+      groups_skipped_low_sum: groupsSkippedLowSum,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,
