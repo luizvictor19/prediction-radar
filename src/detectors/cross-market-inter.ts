@@ -79,26 +79,42 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     groups.set(nrid, group);
   }
 
-  // Staleness filter: build set of event IDs with a snapshot in the last 30 min
+  // Staleness filter: build set of event IDs with a snapshot in the last 30 min.
+  // Batched in chunks of 100 to avoid URL length limits with large .in() lists.
   const stalenessThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const allEventIds = rows.map((r) => r.id);
   let liveEventIds = new Set<string>(allEventIds); // fail-open: all live if query fails
   if (allEventIds.length > 0) {
-    const { data: recentSnaps, error: staleErr } = await supabase
-      .from('polymarket_snapshots')
-      .select('event_id')
-      .in('event_id', allEventIds)
-      .gte('captured_at', stalenessThreshold);
+    const CHUNK_SIZE = 100;
+    const liveFromSnaps = new Set<string>();
+    let staleBatchFailed = false;
 
-    if (staleErr) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'error',
-        message: `Staleness check query failed: ${staleErr.message}`,
-        metadata: { error: staleErr.message },
-      });
-    } else {
-      liveEventIds = new Set((recentSnaps ?? []).map((s) => s.event_id as string));
+    for (let i = 0; i < allEventIds.length; i += CHUNK_SIZE) {
+      const chunk = allEventIds.slice(i, i + CHUNK_SIZE);
+      const { data: recentSnaps, error: staleErr } = await supabase
+        .from('polymarket_snapshots')
+        .select('event_id')
+        .in('event_id', chunk)
+        .gte('captured_at', stalenessThreshold);
+
+      if (staleErr) {
+        await logEvent({
+          component: 'cross_market_inter_detector',
+          status: 'error',
+          message: `Staleness check query failed (chunk ${i}–${i + chunk.length}): ${staleErr.message}`,
+          metadata: { error: staleErr.message },
+        });
+        staleBatchFailed = true;
+        break;
+      }
+
+      for (const s of recentSnaps ?? []) {
+        liveFromSnaps.add(s.event_id as string);
+      }
+    }
+
+    if (!staleBatchFailed) {
+      liveEventIds = liveFromSnaps;
     }
   }
 

@@ -88,7 +88,19 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
           parseMode: 'Markdown',
           replyMarkup: keyboard,
         });
-        await supabase.from('detected_signals').update({ alerted: true }).eq('id', signal.id);
+        const { error: alertErr } = await supabase
+          .from('detected_signals')
+          .update({ alerted: true })
+          .eq('id', signal.id);
+
+        if (alertErr) {
+          await logEvent({
+            component: 'telegram_bot',
+            status: 'error',
+            message: `Failed to mark signal ${signal.id} as alerted: ${alertErr.message}`,
+          });
+        }
+
         await logEvent({ component: 'bot_notify', status: 'success', message: `Sent signal ${signal.id}` });
       } catch (sendErr) {
         await logEvent({ component: 'telegram_bot', status: 'error', message: `notify send failed for signal ${signal.id}: ${String(sendErr)}` });
