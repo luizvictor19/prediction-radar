@@ -21,7 +21,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "backfill:neg-risk": "tsx scripts/backfill-neg-risk-ids.ts"
+    "backfill:neg-risk": "tsx scripts/backfill-neg-risk-ids.ts",
+    "backfill:polymarket-category": "tsx scripts/backfill-polymarket-category.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

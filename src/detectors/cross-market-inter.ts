@@ -2,6 +2,7 @@ import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { getFeeRate, calculateExpectedEdgePct, estimateBasketFeeCost } from '../lib/fees.js';
 
 interface EventRow {
   id: string;
@@ -10,6 +11,8 @@ interface EventRow {
   outcomes: { values: string[]; prices: string[] } | null;
   neg_risk_market_id: string;
   volume_24h: number | null;
+  polymarket_category: string | null;
+  polymarket_fee_rate: number | null;
 }
 
 interface ExistingSignal {
@@ -35,16 +38,16 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   const config = await getSystemConfig();
 
   const {
-    cross_market_log_threshold: logThreshold,
-    cross_market_high_confidence_threshold: highConfidenceThreshold,
     cross_market_dedup_window_minutes: dedupWindowMinutes,
     inter_market_min_members: minMembers,
     inter_market_min_total_volume_24h: minTotalVolume,
+    min_expected_edge_pct: minEdgePct,
+    log_expected_edge_pct: logEdgePct,
   } = config;
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h')
+    .select('id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h, polymarket_category, polymarket_fee_rate')
     .eq('status', 'active')
     .eq('tracked', true)
     .not('neg_risk_market_id', 'is', null)
@@ -74,9 +77,11 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let groupsEvaluated = 0;
   let groupsSkippedTooSmall = 0;
   let groupsSkippedLowVolume = 0;
+  let groupsSkippedLowEdge = 0;
   let flaggedCount = 0;
   let highConfidenceCount = 0;
   let dedupedCount = 0;
+  const byCategoryCount: Record<string, number> = {};
 
   for (const [negRiskMarketId, members] of groups) {
     if (members.length < minMembers) {
@@ -113,16 +118,38 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
     groupsEvaluated++;
 
-    const priceSum = validMembers.reduce((sum, m) => sum + m.yesPrice, 0);
-    const deviation = Math.abs(priceSum - 1.0);
+    // Category + fee rate = taken from member with highest volume_24h
+    // (all members in a negRisk group share the same feeType and feeSchedule)
+    const leadByVolume = validMembers
+      .sort((a, b) => (b.event.volume_24h ?? 0) - (a.event.volume_24h ?? 0))[0]!;
+    const groupCategory = leadByVolume.event.polymarket_category ?? null;
+    const directFeeRate = leadByVolume.event.polymarket_fee_rate ?? null;
 
-    if (deviation < logThreshold) continue;
+    const feeRate = getFeeRate(groupCategory, directFeeRate);
+    const yesPrices = validMembers.map((m) => m.yesPrice);
+    const priceSum = yesPrices.reduce((sum, p) => sum + p, 0);
+    const grossDeviation = Math.abs(priceSum - 1.0);
+    const expectedEdgePct = calculateExpectedEdgePct(priceSum, feeRate, yesPrices);
+    const estimatedFeeCost = estimateBasketFeeCost(feeRate, yesPrices);
+
+    // Track category breakdown
+    const catKey = groupCategory ?? 'unknown';
+    byCategoryCount[catKey] = (byCategoryCount[catKey] ?? 0) + 1;
+
+    // Skip entirely if edge too low to even log
+    if (expectedEdgePct < logEdgePct) {
+      groupsSkippedLowEdge++;
+      continue;
+    }
 
     flaggedCount++;
-    const confidenceScore = Math.min(1.0, deviation / 0.15);
-    if (deviation >= highConfidenceThreshold) highConfidenceCount++;
-
     const direction: 'over' | 'under' = priceSum > 1.0 ? 'over' : 'under';
+
+    // Confidence: 0 if below min threshold, otherwise scale to 10% = 1.0
+    const confidenceScore =
+      expectedEdgePct < minEdgePct ? 0 : Math.min(1.0, expectedEdgePct / 10.0);
+
+    if (confidenceScore > 0) highConfidenceCount++;
 
     // Sort members by yes_price desc
     const sortedMembers = [...validMembers].sort((a, b) => b.yesPrice - a.yesPrice);
@@ -136,15 +163,21 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     }));
 
     const leader = sortedMembers[0]!;
-    const top3 = sortedMembers.slice(0, 3)
-      .map((m) => `${m.event.title.replace(/^Will /, '').replace(/ have the best.*$/, '')} ${(m.yesPrice * 100).toFixed(2)}%`)
+    const top3 = sortedMembers
+      .slice(0, 3)
+      .map((m) => `${m.event.title.split(' ')[1] ?? m.event.title} ${(m.yesPrice * 100).toFixed(1)}%`)
       .join(', ');
 
-    const directionLabel = direction === 'over' ? 'Sobreprecificação' : 'Subprecificação';
-    const reasoning = `Grupo de ${validMembers.length} markets relacionados (negRiskMarketID ${negRiskMarketId.slice(0, 10)}...) soma ${(priceSum * 100).toFixed(2)}% (desvio ${(deviation * 100).toFixed(2)}%). ${directionLabel} coletiva. Top 3: ${top3}. Volume 24h total: $${Math.round(totalVolume).toLocaleString()}.`;
+    const categoryLabel = groupCategory ?? 'categoria desconhecida';
+    const reasoning =
+      `Grupo de ${validMembers.length} markets em ${categoryLabel} ` +
+      `(fee ${(feeRate * 100).toFixed(1)}%). ` +
+      `Soma ${(priceSum * 100).toFixed(2)}% (desvio bruto ${(grossDeviation * 100).toFixed(2)}%). ` +
+      `Edge líquido estimado após fees: ${expectedEdgePct.toFixed(2)}%. ` +
+      `Top 3: ${top3}. ` +
+      `Volume 24h total: $${totalVolume.toFixed(0)}.`;
 
     const suggestedOutcome = direction === 'under' ? 'long_leader' : 'short_basket';
-
     const eventIdForSignal = direction === 'under' ? leader.event.id : null;
 
     const now = new Date().toISOString();
@@ -178,9 +211,14 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       const prevMeta = (existing.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
       const updatedMeta: CrossMarketInterSignalMetadata = {
         neg_risk_market_id: negRiskMarketId,
+        polymarket_category: groupCategory,
+        fee_rate: feeRate,
         group_size: validMembers.length,
         price_sum: priceSum,
-        deviation,
+        deviation_gross: grossDeviation,
+        estimated_fee_cost: estimatedFeeCost,
+        deviation_net: grossDeviation - estimatedFeeCost,
+        expected_edge_pct: expectedEdgePct,
         direction,
         total_volume_24h: totalVolume,
         members: prevMeta.members ?? memberList,
@@ -195,9 +233,14 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     } else {
       const metadata: CrossMarketInterSignalMetadata = {
         neg_risk_market_id: negRiskMarketId,
+        polymarket_category: groupCategory,
+        fee_rate: feeRate,
         group_size: validMembers.length,
         price_sum: priceSum,
-        deviation,
+        deviation_gross: grossDeviation,
+        estimated_fee_cost: estimatedFeeCost,
+        deviation_net: grossDeviation - estimatedFeeCost,
+        expected_edge_pct: expectedEdgePct,
         direction,
         total_volume_24h: totalVolume,
         members: memberList,
@@ -221,15 +264,17 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   await logEvent({
     component: 'cross_market_inter_detector',
     status: 'success',
-    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence, ${dedupedCount} deduped`,
+    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge`,
     metadata: {
       groups_evaluated: groupsEvaluated,
       groups_skipped_too_small: groupsSkippedTooSmall,
       groups_skipped_low_volume: groupsSkippedLowVolume,
+      groups_skipped_low_edge: groupsSkippedLowEdge,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,
       duration_ms: Date.now() - start,
+      by_category: byCategoryCount,
     },
   });
 }

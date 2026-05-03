@@ -1,11 +1,11 @@
 import { supabase } from '../lib/supabase.js';
 import { fetchActiveMarkets } from '../lib/polymarket-api.js';
-import { categorizeMarket, isRelevantMarket, logCategorizerStats } from './categorizer.js';
+import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
+import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 import type { GammaMarket } from '../types/index.js';
 
-const MIN_VOLUME_24H = 5000;
 const MAX_DAYS_TO_RESOLUTION = 90;
 const MIN_DAYS_TO_RESOLUTION = 7;
 
@@ -16,37 +16,58 @@ function isWithinResolutionWindow(endDate: string): boolean {
   return days >= MIN_DAYS_TO_RESOLUTION && days <= MAX_DAYS_TO_RESOLUTION;
 }
 
-function passesLocalFilters(market: GammaMarket): boolean {
-  if (!market.question?.trim()) {
-    console.warn(`[collector] Skipping market ${market.id}: missing question`);
-    return false;
-  }
+function passesBaseFilters(market: GammaMarket): boolean {
+  if (!market.question?.trim()) return false;
   if (!market.active || market.closed) return false;
-  const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
-  if (volume24h < MIN_VOLUME_24H) return false;
   if (!isWithinResolutionWindow(market.endDate)) return false;
-  if (!isRelevantMarket(market)) return false;
   return true;
 }
 
-// Single pass: fetch all active markets from Gamma, filter locally,
+// Single pass: fetch all active markets from Gamma, filter by volume/liquidity/window,
 // upsert events, and write snapshots — no CLOB API calls needed.
 export async function collectAll(): Promise<void> {
   console.log('[collector] Starting collection pass...');
   const startMs = Date.now();
+
+  const config = await getSystemConfig();
+  const minVolume24h = config.collector_min_volume_24h ?? 10000;
+  const minLiquidity = config.collector_min_liquidity ?? 20000;
+  const excludedCategories = config.excluded_categories ?? [];
 
   let offset = 0;
   let scanned = 0;
   let upserted = 0;
   let snapshots = 0;
   let errorsCount = 0;
+  let skippedVolume = 0;
+  let skippedLiquidity = 0;
+  let skippedExcluded = 0;
 
   while (true) {
     const markets = await fetchActiveMarkets({ limit: 500, offset });
     if (markets.length === 0) break;
 
     for (const market of markets) {
-      if (!passesLocalFilters(market)) continue;
+      if (!passesBaseFilters(market)) continue;
+
+      const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
+      if (volume24h < minVolume24h) {
+        skippedVolume++;
+        continue;
+      }
+
+      const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
+      if (liquidity < minLiquidity) {
+        skippedLiquidity++;
+        continue;
+      }
+
+      // Apply excluded_categories filter (uses polymarket feeType)
+      const feeType = market.feeType ?? null;
+      if (feeType && excludedCategories.length > 0 && excludedCategories.includes(feeType)) {
+        skippedExcluded++;
+        continue;
+      }
 
       const { category, sub_category } = categorizeMarket(market);
       const event = { ...gammaToEvent(market, category), sub_category };
@@ -81,7 +102,7 @@ export async function collectAll(): Promise<void> {
         spread: market.spread || null,
         bid_depth: null,
         ask_depth: null,
-        volume_24h: Number(market.volume24hr ?? market.volume24hrClob ?? 0),
+        volume_24h: volume24h,
       });
 
       if (snapErr) {
@@ -105,7 +126,16 @@ export async function collectAll(): Promise<void> {
     component: 'collector',
     status,
     message: `Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots`,
-    metadata: { scanned, upserted_events: upserted, upserted_snapshots: snapshots, duration_ms: durationMs, errors_count: errorsCount },
+    metadata: {
+      scanned,
+      upserted_events: upserted,
+      upserted_snapshots: snapshots,
+      duration_ms: durationMs,
+      errors_count: errorsCount,
+      skipped_low_volume: skippedVolume,
+      skipped_low_liquidity: skippedLiquidity,
+      skipped_excluded_category: skippedExcluded,
+    },
   });
 
   await logCategorizerStats();

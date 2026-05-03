@@ -2,6 +2,7 @@ import type { CrossMarketSignalMetadata } from '../types/index.js';
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { getFeeRate, calculateExpectedEdgePct } from '../lib/fees.js';
 
 interface EventRow {
   id: string;
@@ -9,6 +10,8 @@ interface EventRow {
   title: string;
   outcomes: { values: string[]; prices: string[] } | null;
   end_date: string | null;
+  polymarket_category: string | null;
+  polymarket_fee_rate: number | null;
 }
 
 interface ExistingSignal {
@@ -23,12 +26,13 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
   const {
     cross_market_log_threshold: logThreshold,
     cross_market_dedup_window_minutes: dedupWindowMinutes,
+    min_expected_edge_pct: minEdgePct,
+    log_expected_edge_pct: logEdgePct,
   } = config;
 
-  // Fetch active events with >= 2 outcomes and a future end_date
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, outcomes, end_date')
+    .select('id, polymarket_id, title, outcomes, end_date, polymarket_category, polymarket_fee_rate')
     .eq('status', 'active')
     .eq('tracked', true)
     .gt('end_date', new Date().toISOString());
@@ -56,7 +60,6 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
   for (const event of eligibleEvents) {
     const outcomes = event.outcomes!;
 
-    // Parse prices, skip if malformed
     let prices: number[];
     try {
       prices = outcomes.prices.map((p) => {
@@ -92,9 +95,17 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
 
     if (deviation < logThreshold) continue;
 
+    // Fee-adjusted edge — prefer rate captured from API at collection time
+    const feeRate = getFeeRate(event.polymarket_category, event.polymarket_fee_rate);
+    // For intra-market: treat all outcome prices as "yes prices" for fee estimation
+    const expectedEdgePct = calculateExpectedEdgePct(priceSum, feeRate, prices);
+
+    if (expectedEdgePct < logEdgePct) continue;
+
     flagged++;
-    const confidenceScore = Math.min(1.0, deviation / 0.15);
-    if (deviation >= config.cross_market_high_confidence_threshold) highConfidence++;
+    const confidenceScore =
+      expectedEdgePct < minEdgePct ? 0 : Math.min(1.0, deviation / 0.15);
+    if (confidenceScore > 0 && deviation >= config.cross_market_high_confidence_threshold) highConfidence++;
 
     const direction: 'over' | 'under' = priceSum > 1.0 ? 'over' : 'under';
     const outcomeDetails = outcomes.values.map((name, i) => ({ name, price: prices[i]! }));
@@ -102,7 +113,7 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
 
     const outcomeList = outcomeDetails.map((o) => `${o.name} ${(o.price * 100).toFixed(1)}%`).join(', ');
     const directionLabel = direction === 'over' ? 'Sobrepreço' : 'Subpreço';
-    const reasoning = `Market '${event.title}' soma ${(priceSum * 100).toFixed(2)}% (desvio ${(deviation * 100).toFixed(2)}%). Outcomes: ${outcomeList}. ${directionLabel}.`;
+    const reasoning = `Market '${event.title}' soma ${(priceSum * 100).toFixed(2)}% (desvio ${(deviation * 100).toFixed(2)}%, edge líquido ${expectedEdgePct.toFixed(2)}%). Outcomes: ${outcomeList}. ${directionLabel}.`;
 
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const dedupCutoff = new Date(Date.now() - dedupWindowMinutes * 60 * 1000).toISOString();
@@ -135,6 +146,9 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
       const updatedMeta: CrossMarketSignalMetadata = {
         price_sum: priceSum,
         deviation,
+        polymarket_category: event.polymarket_category,
+        fee_rate: feeRate,
+        expected_edge_pct: expectedEdgePct,
         direction,
         outcomes: outcomeDetails,
         detection_count: (prevMeta.detection_count ?? 1) + 1,
@@ -149,6 +163,9 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
       const metadata: CrossMarketSignalMetadata = {
         price_sum: priceSum,
         deviation,
+        polymarket_category: event.polymarket_category,
+        fee_rate: feeRate,
+        expected_edge_pct: expectedEdgePct,
         direction,
         outcomes: outcomeDetails,
         detection_count: 1,

@@ -17,6 +17,9 @@ export interface Event {
   title: string;
   category: MarketCategory | null;
   sub_category: MarketSubCategory | null;
+  polymarket_category: string | null;
+  polymarket_fee_rate: number | null;
+  is_ai_tech: boolean;
   description: string | null;
   outcomes: Record<string, unknown> | null;
   volume_total: number | null;
@@ -81,12 +84,20 @@ export interface SystemConfig {
   inter_market_min_total_volume_24h: number;
   snapshot_retention_days: number;
   system_logs_retention_days: number;
+  min_expected_edge_pct: number;
+  log_expected_edge_pct: number;
+  excluded_categories: string[];
+  collector_min_volume_24h: number;
+  collector_min_liquidity: number;
   updated_at: string;
 }
 
 export interface CrossMarketSignalMetadata {
   price_sum: number;
   deviation: number;
+  polymarket_category: string | null;
+  fee_rate: number;
+  expected_edge_pct: number;
   direction: 'over' | 'under';
   outcomes: Array<{ name: string; price: number }>;
   detection_count: number;
@@ -103,9 +114,14 @@ export interface CrossMarketInterMember {
 
 export interface CrossMarketInterSignalMetadata {
   neg_risk_market_id: string;
+  polymarket_category: string | null;
+  fee_rate: number;
   group_size: number;
   price_sum: number;
-  deviation: number;
+  deviation_gross: number;
+  estimated_fee_cost: number;
+  deviation_net: number;
+  expected_edge_pct: number;
   direction: 'over' | 'under';
   total_volume_24h: number;
   members: CrossMarketInterMember[];
@@ -147,7 +163,10 @@ export interface GammaMarket {
   lastTradePrice: number;
   negRisk?: boolean;
   negRiskMarketID?: string | null;
+  feeType?: string | null;
+  feeSchedule?: { rate: number; exponent: number; takerOnly: boolean; rebateRate: number } | null;
   series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
+  events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null }> | null;
   eventMetadata?: Record<string, unknown> | null;
 }
 
