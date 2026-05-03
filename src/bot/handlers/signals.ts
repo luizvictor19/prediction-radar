@@ -114,13 +114,13 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       const aIsCalendar = a.signal_type === 'calendar_driven';
       const bIsCalendar = b.signal_type === 'calendar_driven';
 
-      if (aIsCalendar !== bIsCalendar) return aIsCalendar ? 1 : -1;
+      if (aIsCalendar !== bIsCalendar) return aIsCalendar ? -1 : 1;
 
-      if (!aIsCalendar) return getEdge(b) - getEdge(a);
+      if (!aIsCalendar) return getEdge(a) - getEdge(b);
 
-      const dateDiff = getEndDate(a) - getEndDate(b);
+      const dateDiff = getEndDate(b) - getEndDate(a);
       if (dateDiff !== 0) return dateDiff;
-      return getEdge(b) - getEdge(a);
+      return getEdge(a) - getEdge(b);
     });
 
     const slugMap = await resolveSlugMap(sorted);
