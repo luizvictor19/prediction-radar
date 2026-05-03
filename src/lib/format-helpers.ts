@@ -13,3 +13,22 @@ export function describeVolatility(vol: number): string {
   if (vol < 0.0035) return 'estável';
   return 'movendo lentamente';
 }
+
+export function calcCalendarDrivenStake(
+  bankroll: number,
+  cap: number,
+  confidence: number,
+): number {
+  const raw = bankroll * cap * confidence;
+  return Math.round(raw * 100) / 100;
+}
+
+export function calcMinBankroll(
+  legs: number,
+  cap: number,
+  modifier: number,
+): number {
+  const fraction = cap * modifier;
+  if (fraction <= 0) return Infinity;
+  return Math.ceil((legs * 1.0) / fraction);
+}

@@ -1,5 +1,5 @@
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility } from '../lib/format-helpers.js';
+import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -132,10 +132,15 @@ function computeScenarios(
   });
 }
 
+interface OutcomesShape {
+  values?: string[];
+  prices?: string[];
+}
+
 export function formatCalendarDrivenSignal(
   signal: SignalRow,
-  _bankroll: number,
-  _stakeCap: number,
+  bankroll: number,
+  stakeCap: number,
 ): string {
   const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
   const daysUntil = meta.days_until_resolution ?? 0;
@@ -147,12 +152,73 @@ export function formatCalendarDrivenSignal(
   const emoji = categoryEmoji(category);
   const confidence = signal.confidence_score ?? 0;
 
-  const outcomes = signal.events?.outcomes ?? null;
+  const outcomes = (signal.events?.outcomes ?? null) as OutcomesShape | null;
   const label0 = outcomes?.values?.[0] ?? 'Yes';
   const label1 = outcomes?.values?.[1] ?? 'No';
-  const p0 = Math.round(yesPrice * 100);
+  const price0 = outcomes?.prices?.[0] != null ? parseFloat(outcomes.prices[0]) : yesPrice;
+  const price1 = outcomes?.prices?.[1] != null ? parseFloat(outcomes.prices[1]) : 1 - yesPrice;
+  const p0 = Math.round(price0 * 100);
   const p1 = 100 - p0;
   const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
+
+  const cap = stakeCap;
+  const stake = calcCalendarDrivenStake(bankroll, cap, confidence);
+  const shares0 = price0 > 0 ? stake / price0 : 0;
+  const shares1 = price1 > 0 ? stake / price1 : 0;
+  const payoff0 = shares0;
+  const payoff1 = shares1;
+  const profit0 = payoff0 - stake;
+  const profit1 = payoff1 - stake;
+
+  const isEvenMatch = Math.abs(price0 - 0.5) < 0.01;
+  let prefixSide0 = '';
+  let prefixSide1 = '';
+  if (!isEvenMatch) {
+    prefixSide0 = price0 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
+    prefixSide1 = price1 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
+  }
+
+  const l0 = truncate(label0, 16);
+  const l1 = truncate(label1, 16);
+  let sideRepr0: string;
+  let sideRepr1: string;
+  if (isLiteralYesNo) {
+    sideRepr0 = `(a ${price0.toFixed(3)})`;
+    sideRepr1 = `(a ${price1.toFixed(3)})`;
+  } else {
+    sideRepr0 = `(Yes ${l0} a ${price0.toFixed(3)}, ou equivalente No ${l1} a ${price0.toFixed(3)})`;
+    sideRepr1 = `(Yes ${l1} a ${price1.toFixed(3)}, ou equivalente No ${l0} a ${price1.toFixed(3)})`;
+  }
+
+  let scenario0Win: string, scenario0Lose: string;
+  let scenario1Win: string, scenario1Lose: string;
+  if (isLiteralYesNo) {
+    scenario0Win = 'Acontece';
+    scenario0Lose = 'Não acontece';
+    scenario1Win = 'Não acontece';
+    scenario1Lose = 'Acontece';
+  } else {
+    scenario0Win = `${l0} ganha`;
+    scenario0Lose = `${l0} perde`;
+    scenario1Win = `${l1} ganha`;
+    scenario1Lose = `${l1} perde`;
+  }
+
+  let viabilityLine: string;
+  if (stake < 1.0) {
+    const minBankroll = calcMinBankroll(1, cap, confidence);
+    viabilityLine =
+      `❌ Abaixo do mínimo Polymarket ($1).\n` +
+      `      Pra operar precisa de bankroll de ~$${minBankroll} ` +
+      `(com cap ${(cap * 100).toFixed(0)}% e confiança ${confidence.toFixed(2)}).\n` +
+      `   \n` +
+      `   Recomendado: ignorar.`;
+  } else {
+    viabilityLine = `✅ Viável (acima de $1 mínimo Polymarket)`;
+  }
+
+  const pfx0 = prefixSide0 ? `${prefixSide0} ` : '';
+  const pfx1 = prefixSide1 ? `${prefixSide1} ` : '';
 
   return (
     `${emoji} ${title}\n` +
@@ -164,10 +230,34 @@ export function formatCalendarDrivenSignal(
     `💰 ${label0}: ${p0}% | ${label1}: ${p1}%\n` +
     `📊 Volume 24h: ${formatVolume(vol24h)}\n` +
     `\n` +
-    `⚠️ Sistema sinalizou setup, não direção.\n` +
-    `   • Acha que ${label0} ${isLiteralYesNo ? 'acontece' : 'ganha'}? → comprar ${label0} a ${yesPrice.toFixed(2)}\n` +
-    `   • Acha que ${label1} ${isLiteralYesNo ? 'acontece' : 'ganha'}? → comprar ${label1} a ${(1 - yesPrice).toFixed(2)}\n` +
-    `   • Sem opinião forte → ignorar`
+    `🔍 O que o sinal detectou\n` +
+    `   Mercado convergiu nos últimos dias. Preço ${label0} estável\n` +
+    `   em ~${p0}% há 24h, com volume de ${formatVolume(vol24h)}.\n` +
+    `   Resolução em ${Math.round(daysUntil)} dias.\n` +
+    `   \n` +
+    `   Possíveis leituras:\n` +
+    `   1. Consenso firme: mercado tá certo, sem edge\n` +
+    `   2. Consenso preguiçoso: ninguém tá olhando, info nova move\n` +
+    `   3. Espera por evento: todos aguardando o resultado real\n` +
+    `   \n` +
+    `   Operar só faz sentido se você acredita que probabilidade\n` +
+    `   real diverge dos ${p0}% / ${p1}% precificados.\n` +
+    `\n` +
+    `🎲 Trade-off completo (com stake $${stake.toFixed(2)})\n` +
+    `   \n` +
+    `   ${pfx0}Lado ${label0} ${sideRepr0}\n` +
+    `   • ${scenario0Win} → recebe $${payoff0.toFixed(2)} (lucro $${profit0.toFixed(2)})\n` +
+    `   • ${scenario0Lose} → recebe $0 (prejuízo $${stake.toFixed(2)})\n` +
+    `   Mercado precifica ${p0}%. Operar só se você acha que > ${p0}%.\n` +
+    `   \n` +
+    `   ${pfx1}Lado ${label1} ${sideRepr1}\n` +
+    `   • ${scenario1Win} → recebe $${payoff1.toFixed(2)} (lucro $${profit1.toFixed(2)})\n` +
+    `   • ${scenario1Lose} → recebe $0 (prejuízo $${stake.toFixed(2)})\n` +
+    `   Mercado precifica ${p1}%. Operar só se você acha que > ${p1}%.\n` +
+    `\n` +
+    `⚙️ Como operar\n` +
+    `   Stake sugerido: $${stake.toFixed(2)} (${(cap * 100).toFixed(0)}% × confiança ${confidence.toFixed(2)} × bankroll $${bankroll})\n` +
+    `   ${viabilityLine}`
   );
 }
 

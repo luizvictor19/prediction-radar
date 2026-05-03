@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase.js';
 import { getSystemConfig } from '../../lib/config.js';
 import { logEvent } from '../../lib/logger.js';
 import { calcStake, getStakeCap } from '../format.js';
+import { calcCalendarDrivenStake } from '../../lib/format-helpers.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 
 function domainConfidence(category: string | null): number {
@@ -34,12 +35,22 @@ export async function trackConversation(
       return;
     }
 
-    const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
-    const edgePct = meta.expected_edge_pct ?? 0;
     const stakeCap = getStakeCap(config, signal.signal_type as string);
-    const suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
-    const isMinimum = suggestedStake <= 0.5 && config.bankroll_usd * Math.min(stakeCap, edgePct / 200) < 0.5;
-    const stakeLabel = isMinimum ? '$0.50 (mínimo)' : `$${suggestedStake.toFixed(2)}`;
+
+    let suggestedStake: number;
+    if (signal.signal_type === 'calendar_driven') {
+      const confidence = signal.confidence_score ?? 0.5;
+      suggestedStake = calcCalendarDrivenStake(config.bankroll_usd, stakeCap, confidence);
+    } else {
+      const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+      const edgePct = meta.expected_edge_pct ?? 0;
+      suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
+    }
+
+    const stakeLabel =
+      suggestedStake < 1.0
+        ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
+        : `$${suggestedStake.toFixed(2)}`;
 
     // Step 1: stake
     await ctx.reply(`Stake em USD? (sugerido: ${stakeLabel})\nDigite um valor ou "ok" para usar o sugerido.`);
@@ -99,7 +110,7 @@ export async function trackConversation(
       return;
     }
 
-    const category = meta.polymarket_category ?? null;
+    const category = ((signal.metadata ?? {}) as Record<string, unknown>).polymarket_category as string | null ?? null;
 
     const { data: bet, error: betErr } = await supabase
       .from('my_bets')
