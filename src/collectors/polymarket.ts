@@ -39,7 +39,8 @@ export async function collectAll(): Promise<void> {
   let upserted = 0;
   let snapshots = 0;
   let errorsCount = 0;
-  let skippedVolume = 0;
+  let skippedLowVolumeIsolated = 0;
+  let includedNegRiskLowVolume = 0;
   let skippedLiquidity = 0;
   let skippedExcluded = 0;
 
@@ -52,8 +53,11 @@ export async function collectAll(): Promise<void> {
 
       const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
       if (volume24h < minVolume24h) {
-        skippedVolume++;
-        continue;
+        if (!market.negRiskMarketID) {
+          skippedLowVolumeIsolated++;
+          continue;
+        }
+        includedNegRiskLowVolume++;
       }
 
       const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
@@ -132,7 +136,8 @@ export async function collectAll(): Promise<void> {
       upserted_snapshots: snapshots,
       duration_ms: durationMs,
       errors_count: errorsCount,
-      skipped_low_volume: skippedVolume,
+      skipped_low_volume_isolated: skippedLowVolumeIsolated,
+      included_neg_risk_low_volume: includedNegRiskLowVolume,
       skipped_low_liquidity: skippedLiquidity,
       skipped_excluded_category: skippedExcluded,
     },

@@ -8,7 +8,6 @@ import {
   estimateBuyNoBasketFeeCost,
   estimateBuyYesBasketFeeCost,
 } from '../lib/fees.js';
-import { fetchMarketsByNegRiskId } from '../lib/polymarket-api.js';
 
 interface EventRow {
   id: string;
@@ -90,8 +89,31 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let dedupedCount = 0;
   const byCategoryCount: Record<string, number> = {};
 
-  // In-memory cache for Gamma group sizes within this run
-  const groupSizeCache = new Map<string, number>();
+  // Build DB-based group size map (no end_date or volume filter — all active members)
+  const groupTotalMap = new Map<string, number>();
+  const candidateNRIDs = [...groups.keys()];
+  if (candidateNRIDs.length > 0) {
+    const { data: allNegRiskRows, error: sizeErr } = await supabase
+      .from('events')
+      .select('neg_risk_market_id')
+      .eq('status', 'active')
+      .in('neg_risk_market_id', candidateNRIDs);
+
+    if (sizeErr) {
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'error',
+        message: `Failed to build group size map from DB: ${sizeErr.message}`,
+        metadata: { error: sizeErr.message },
+      });
+      return;
+    }
+
+    for (const row of allNegRiskRows ?? []) {
+      const nrid = row.neg_risk_market_id as string;
+      groupTotalMap.set(nrid, (groupTotalMap.get(nrid) ?? 0) + 1);
+    }
+  }
 
   for (const [negRiskMarketId, members] of groups) {
     if (members.length < minMembers) {
@@ -135,28 +157,9 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const groupCategory = leadByVolume.event.polymarket_category ?? null;
     const directFeeRate = leadByVolume.event.polymarket_fee_rate ?? null;
 
-    // Coverage guard: discard group if we don't hold all Gamma members.
+    // Coverage guard: discard group if we don't hold all DB-tracked members.
     // Incomplete coverage makes priceSum artificially low, producing phantom edge.
-    let totalGroupSize: number;
-    if (groupSizeCache.has(negRiskMarketId)) {
-      totalGroupSize = groupSizeCache.get(negRiskMarketId)!;
-    } else {
-      try {
-        const gammaMembers = await fetchMarketsByNegRiskId(negRiskMarketId);
-        totalGroupSize = gammaMembers.length;
-        groupSizeCache.set(negRiskMarketId, totalGroupSize);
-      } catch (err) {
-        await logEvent({
-          component: 'cross_market_inter_detector',
-          status: 'error',
-          message: `Failed to fetch group size from Gamma for ${negRiskMarketId}: ${String(err)}`,
-          metadata: { neg_risk_market_id: negRiskMarketId, error: String(err) },
-        });
-        groupsSkippedLowCoverage++;
-        continue;
-      }
-    }
-
+    const totalGroupSize = groupTotalMap.get(negRiskMarketId) ?? 0;
     const coverageRatio = totalGroupSize > 0 ? validMembers.length / totalGroupSize : 0;
     if (coverageRatio < 0.95) {
       await logEvent({

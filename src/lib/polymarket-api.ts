@@ -18,6 +18,10 @@ export async function fetchActiveMarkets(params: {
   return get<GammaMarket[]>(url);
 }
 
+/**
+ * @deprecated Gamma API ignores negRiskMarketID as a server-side filter — returns the full
+ * paginated universe instead. Use DB aggregation (events table) for group size checks.
+ */
 export async function fetchMarketsByNegRiskId(negRiskMarketId: string): Promise<GammaMarket[]> {
   const all: GammaMarket[] = [];
   const limit = 500;
