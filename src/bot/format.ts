@@ -60,6 +60,21 @@ const CATEGORY_EMOJI: Record<string, string> = {
   general_fees: '📊',
 };
 
+const CATEGORY_LABEL: Record<string, string> = {
+  sports_fees_v2: 'Esportes',
+  politics_fees: 'Política',
+  tech_fees: 'Tech',
+  culture_fees: 'Cultura',
+  economics_fees: 'Economia',
+  finance_prices_fees: 'Finanças',
+  crypto_fees_v2: 'Cripto',
+  general_fees: 'Geral',
+};
+
+function categoryLabel(category: string | null): string {
+  return CATEGORY_LABEL[category ?? ''] ?? 'Mercados relacionados';
+}
+
 export function categoryEmoji(category: string | null): string {
   return CATEGORY_EMOJI[category ?? ''] ?? '🎯';
 }
@@ -307,8 +322,8 @@ export function formatSignal(
   const confidence = signal.confidence_score ?? 0;
 
   const derivedTitle = deriveSignalTitle(members);
-  const categoryDisplay = (category ?? signal.signal_type).replace(/_/g, ' ');
-  const title = derivedTitle ?? `${categoryDisplay} (${groupSize} membros)`;
+  const friendlyLabel = categoryLabel(category);
+  const title = derivedTitle ?? `${friendlyLabel} · ${groupSize} mercados relacionados`;
   const emoji = categoryEmoji(category);
   const side = direction === 'over' ? 'No' : 'Yes';
 
