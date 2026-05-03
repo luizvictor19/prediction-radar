@@ -6,6 +6,23 @@ import { logEvent } from '../lib/logger.js';
 import { formatSignal } from './format.js';
 import { signalKeyboard } from './keyboards.js';
 import type { SignalRow } from './format.js';
+import type { CrossMarketInterSignalMetadata } from '../types/index.js';
+
+async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
+  const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+  const firstId = members[0]?.polymarket_id;
+  if (!firstId) return 'https://polymarket.com';
+
+  const { data } = await supabase
+    .from('events')
+    .select('slug')
+    .eq('polymarket_id', firstId)
+    .limit(1)
+    .maybeSingle();
+
+  if (data?.slug) return `https://polymarket.com/event/${data.slug as string}`;
+  return 'https://polymarket.com';
+}
 
 export function startNotifyLoop(bot: Bot<BotContext>): void {
   setInterval(() => {
@@ -38,10 +55,11 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
     for (const signal of signals) {
       try {
-        const text = '🔔 *Novo sinal:* \n' + formatSignal(1, signal, config.bankroll_usd, config.max_stake_pct);
+        const polymarketUrl = await resolvePolymarketUrl(signal);
+        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, config.max_stake_pct);
         await bot.api.sendMessage(chatId, text, {
           parse_mode: 'Markdown',
-          reply_markup: signalKeyboard(signal),
+          reply_markup: signalKeyboard(signal.id, polymarketUrl),
         });
         await supabase.from('detected_signals').update({ alerted: true }).eq('id', signal.id);
       } catch (sendErr) {

@@ -1,0 +1,73 @@
+Prediction Radar — Telegram Bot Commands
+=========================================
+
+/signals
+  Lista até 10 sinais ativos ordenados por edge decrescente.
+  Filtro: dismissed=false, acted_on=false, edge >= min_expected_edge_pct.
+  Cada sinal exibe: categoria, edge%, direção, soma de preços, membros,
+  volume 24h, top 3 mercados, stake sugerido.
+  Botões: [Ver no Polymarket] [Track] [Dismiss]
+
+/positions
+  Lista todas as posições abertas (closed_at IS NULL), ordenadas pela
+  mais recente. Exibe: outcome, preço de entrada, stake, shares, tempo
+  aberta. Botão: [Fechar posição]
+
+/status
+  Resumo do sistema em uma tela:
+  - Bankroll atual
+  - Bets abertas (count + stake total comprometido)
+  - Bets fechadas nos últimos 7 dias (count, win rate, PnL total)
+  - Último ciclo bem-sucedido do detector
+  - Sinais ativos agora
+  - Sinais alertados nas últimas 24h
+
+/bankroll
+  Sem argumento: mostra o bankroll atual.
+  Exemplo: /bankroll
+
+/bankroll <valor>
+  Atualiza o bankroll. Valor deve ser entre $1 e $100000.
+  Exemplo: /bankroll 150.50
+  Resposta: "✅ Bankroll atualizado: $100.00 → $150.50"
+
+/config
+  Mostra os parâmetros de configuração atuais (somente leitura):
+  - Bankroll
+  - Stake máximo (%)
+  - Edge mínimo para listagem (%)
+  - Edge mínimo para notificação automática (%)
+
+=========================================
+Callbacks (disparados por botões inline)
+=========================================
+
+[Track] — track:<signal_id>
+  Inicia fluxo conversacional para registrar uma operação:
+  1. Stake em USD (ou "ok" para usar o sugerido)
+  2. Preço de entrada (Yes price, ex.: 0.045)
+  3. Confiança própria 1-10 (ou /skip)
+  4. Tese curta (ou /skip)
+  5. Confirmação ("sim" / "não")
+  Resultado: INSERT em my_bets + signal marcado como acted_on=true.
+
+[Dismiss] — dismiss:<signal_id>
+  Marca o sinal como dismissed=true e edita a mensagem original
+  adicionando "❌ DISMISSED" e removendo os botões.
+
+[Fechar posição] — close:<position_id>
+  Inicia fluxo conversacional para fechar uma posição:
+  1. Preço de saída (closing_price)
+  2. Resultado: win / loss / void
+  Calcula PnL = (closing_price - entry_price) × shares.
+  Resultado: UPDATE em my_bets com closing_price, result, pnl_usd, closed_at.
+
+=========================================
+Notificações automáticas
+=========================================
+  Loop a cada 60 segundos. Envia mensagem proativa para o chat_id
+  configurado quando há sinais novos com:
+  - alerted=false, dismissed=false, acted_on=false
+  - edge >= notify_min_edge_pct (padrão: 2.0%)
+  Prefixo: "🔔 Novo sinal:"
+  Mesmo formato do /signals, com botões Track e Dismiss.

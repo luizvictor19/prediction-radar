@@ -21,11 +21,7 @@ export interface PositionRow {
   polymarket_category: string | null;
 }
 
-export function calcStake(
-  bankroll: number,
-  maxStakePct: number,
-  edgePct: number,
-): number {
+export function calcStake(bankroll: number, maxStakePct: number, edgePct: number): number {
   const raw = bankroll * Math.min(maxStakePct, edgePct / 200);
   const rounded = Math.round(raw * 100) / 100;
   return Math.max(0.5, rounded);
@@ -35,43 +31,118 @@ export function stakeLabel(stake: number, isMinimum: boolean): string {
   return isMinimum ? `$0.50 (mínimo)` : `$${stake.toFixed(2)}`;
 }
 
+export function formatVolume(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}k`;
+  return `$${v.toFixed(0)}`;
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  sports_fees_v2: '🏆',
+  politics_fees: '🗳️',
+  tech_fees: '🤖',
+  culture_fees: '🎵',
+  economics_fees: '📈',
+  finance_prices_fees: '💹',
+  crypto_fees_v2: '🪙',
+  general_fees: '📊',
+};
+
+export function categoryEmoji(category: string | null): string {
+  return CATEGORY_EMOJI[category ?? ''] ?? '🎯';
+}
+
+const VERB_PATTERN = /^Will (.+?) (win|have|be|reach|get|cross|hit) /i;
+
+function extractComplement(title: string): string | null {
+  const match = VERB_PATTERN.exec(title);
+  if (!match) return null;
+  const rest = title.slice(match[0].length).replace(/\?$/, '').trim();
+  return rest || null;
+}
+
+function extractSubject(title: string): string {
+  const match = VERB_PATTERN.exec(title);
+  if (match?.[1]) return match[1];
+  return title.split(' ')[0] ?? title;
+}
+
+export function deriveSignalTitle(members: Array<{ title: string }>): string | null {
+  if (members.length === 0) return null;
+
+  const firstComplement = extractComplement(members[0]!.title);
+  if (!firstComplement) return null;
+  if (members.length === 1) return firstComplement;
+
+  const others = members.slice(1);
+  const matchCount = others.filter((m) => extractComplement(m.title) === firstComplement).length;
+
+  if (matchCount >= others.length * 0.8) return firstComplement;
+  return null;
+}
+
 export function formatSignal(
-  index: number,
   signal: SignalRow,
   bankroll: number,
   maxStakePct: number,
 ): string {
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
   const edgePct = meta.expected_edge_pct ?? 0;
-  const direction = meta.direction ?? '?';
+  const direction = meta.direction ?? 'over';
   const priceSum = meta.price_sum ?? 0;
   const groupSize = meta.group_size ?? 0;
   const totalVol = meta.total_volume_24h ?? 0;
   const members = meta.members ?? [];
+  const category = meta.polymarket_category ?? null;
 
+  // Title
+  const derivedTitle = deriveSignalTitle(members);
+  const categoryDisplay = (category ?? signal.signal_type).replace(/_/g, ' ');
+  const title = derivedTitle ?? `${categoryDisplay} (${groupSize} membros)`;
+  const emoji = categoryEmoji(category);
+
+  // Stake & viability
+  const stake = calcStake(bankroll, maxStakePct, edgePct);
+  const stakePerLeg = groupSize > 0 ? stake / groupSize : 0;
+  let viability: string;
+  if (groupSize === 0 || stakePerLeg < 1.0) {
+    viability = `   ⚠️ Stake \`$${stake.toFixed(2)}\` é inviável pra basket de ${groupSize} (mín. $1/ordem na Polymarket). Recomendado: ignorar até bankroll crescer.`;
+  } else if (stakePerLeg < 5.0) {
+    viability = `   ⚠️ Stake pequeno por leg (\`$${stakePerLeg.toFixed(2)}\` cada). Slippage pode comer parte do edge.`;
+  } else {
+    viability = `   ✅ Stake viável: \`$${stakePerLeg.toFixed(2)}\` por leg em ${groupSize} legs.`;
+  }
+
+  // Instruction
+  const deviation = direction === 'over' ? priceSum - 1 : 1 - priceSum;
+  const deviationStr = (deviation * 100).toFixed(2);
+  let instruction: string;
+  if (direction === 'over') {
+    instruction = `Comprar *No* em todos os ${groupSize} membros, em proporções iguais ao stake total. O mercado está sobreprecificado em ${deviationStr}%.`;
+  } else {
+    instruction = `Comprar *Yes* em todos os ${groupSize} membros, em proporções iguais. O mercado está subprecificado em ${deviationStr}%.`;
+  }
+
+  // Top 3 (members already sorted by yes_price desc from detector)
   const top3 = members
     .slice(0, 3)
     .map((m) => {
-      const label = m.title.split(' ')[1] ?? m.title;
-      return `${label} ${(m.yes_price * 100).toFixed(1)}%`;
+      const name = extractSubject(m.title);
+      return `${name} ${(m.yes_price * 100).toFixed(1)}%`;
     })
-    .join(' | ');
-
-  const category = meta.polymarket_category ?? signal.signal_type;
-
-  const rawStake = bankroll * Math.min(maxStakePct, edgePct / 200);
-  const isMinimum = rawStake < 0.5;
-  const stake = isMinimum ? 0.5 : Math.round(rawStake * 100) / 100;
-  const stakeStr = isMinimum ? '$0.50 (mínimo)' : `$${stake.toFixed(2)}`;
-
-  const volStr =
-    totalVol >= 1000 ? `$${(totalVol / 1000).toFixed(1)}k` : `$${totalVol.toFixed(0)}`;
+    .join(' · ');
 
   return (
-    `*[${index}]* \`${category}\` — edge \`${edgePct.toFixed(2)}%\` (\`${direction}\`)\n` +
-    `Soma: \`${priceSum.toFixed(3)}\` | Membros: \`${groupSize}\` | Volume 24h: ${volStr}\n` +
-    (top3 ? `Top 3: ${top3}\n` : '') +
-    `Stake sugerido: \`${stakeStr}\``
+    `${emoji} *${title}*\n` +
+    `Edge: \`${edgePct.toFixed(2)}%\` líquido | direction: \`${direction}\`\n` +
+    `\n` +
+    `📊 ${groupSize} membros compondo o grupo. Soma dos preços = \`${priceSum.toFixed(3)}\`\n` +
+    `   (deveria ser 1.000).\n` +
+    `\n` +
+    `⚙️ Operação: ${instruction}\n` +
+    `${viability}\n` +
+    (top3 ? `\n🏆 Top 3: ${top3}\n` : '') +
+    `💰 Volume 24h: ${formatVolume(totalVol)}`
   );
 }
 
@@ -83,16 +154,4 @@ export function relativeTime(isoDate: string): string {
   if (days > 0) return `${days}d`;
   if (hours > 0) return `${hours}h`;
   return `${mins}m`;
-}
-
-export function polymarketSlug(signal: SignalRow): string {
-  const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
-  const members = meta.members ?? [];
-  if (members.length > 0) {
-    return `https://polymarket.com/event/${members[0]!.polymarket_id}`;
-  }
-  if (signal.events?.polymarket_id) {
-    return `https://polymarket.com/event/${signal.events.polymarket_id}`;
-  }
-  return 'https://polymarket.com';
 }

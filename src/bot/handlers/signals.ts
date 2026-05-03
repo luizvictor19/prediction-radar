@@ -5,6 +5,39 @@ import { logEvent } from '../../lib/logger.js';
 import { formatSignal } from '../format.js';
 import { signalKeyboard } from '../keyboards.js';
 import type { SignalRow } from '../format.js';
+import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
+
+async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>> {
+  const polymarketIds = signals
+    .map((s) => {
+      const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+      return members[0]?.polymarket_id ?? null;
+    })
+    .filter((id): id is string => id !== null);
+
+  if (polymarketIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from('events')
+    .select('polymarket_id, slug')
+    .in('polymarket_id', polymarketIds);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.slug) map.set(row.polymarket_id as string, row.slug as string);
+  }
+  return map;
+}
+
+function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, string>): string {
+  const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+  const firstId = members[0]?.polymarket_id;
+  if (firstId) {
+    const slug = slugMap.get(firstId);
+    if (slug) return `https://polymarket.com/event/${slug}`;
+  }
+  return 'https://polymarket.com';
+}
 
 export async function signalsHandler(ctx: BotContext): Promise<void> {
   try {
@@ -33,12 +66,14 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    for (let i = 0; i < signals.length; i++) {
-      const signal = signals[i]!;
-      const text = formatSignal(i + 1, signal, config.bankroll_usd, config.max_stake_pct);
+    const slugMap = await resolveSlugMap(signals);
+
+    for (const signal of signals) {
+      const polymarketUrl = buildPolymarketUrl(signal, slugMap);
+      const text = formatSignal(signal, config.bankroll_usd, config.max_stake_pct);
       await ctx.reply(text, {
         parse_mode: 'Markdown',
-        reply_markup: signalKeyboard(signal),
+        reply_markup: signalKeyboard(signal.id, polymarketUrl),
       });
     }
   } catch (err) {
