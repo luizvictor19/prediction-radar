@@ -131,28 +131,33 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   const byCategoryCount: Record<string, number> = {};
 
   // Build DB-based group size map (no end_date or volume filter — all active members)
+  // Batched in chunks of 100 to avoid URL length limits with large .in() lists.
   const groupTotalMap = new Map<string, number>();
   const candidateNRIDs = [...groups.keys()];
   if (candidateNRIDs.length > 0) {
-    const { data: allNegRiskRows, error: sizeErr } = await supabase
-      .from('events')
-      .select('neg_risk_market_id')
-      .eq('status', 'active')
-      .in('neg_risk_market_id', candidateNRIDs);
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < candidateNRIDs.length; i += CHUNK_SIZE) {
+      const chunk = candidateNRIDs.slice(i, i + CHUNK_SIZE);
+      const { data: allNegRiskRows, error: sizeErr } = await supabase
+        .from('events')
+        .select('neg_risk_market_id')
+        .eq('status', 'active')
+        .in('neg_risk_market_id', chunk);
 
-    if (sizeErr) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'error',
-        message: `Failed to build group size map from DB: ${sizeErr.message}`,
-        metadata: { error: sizeErr.message },
-      });
-      return;
-    }
+      if (sizeErr) {
+        await logEvent({
+          component: 'cross_market_inter_detector',
+          status: 'error',
+          message: `Failed to build group size map from DB: ${sizeErr.message}`,
+          metadata: { error: sizeErr.message },
+        });
+        return;
+      }
 
-    for (const row of allNegRiskRows ?? []) {
-      const nrid = row.neg_risk_market_id as string;
-      groupTotalMap.set(nrid, (groupTotalMap.get(nrid) ?? 0) + 1);
+      for (const row of allNegRiskRows ?? []) {
+        const nrid = row.neg_risk_market_id as string;
+        groupTotalMap.set(nrid, (groupTotalMap.get(nrid) ?? 0) + 1);
+      }
     }
   }
 
