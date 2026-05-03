@@ -35,7 +35,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     .eq('tracked', true)
     .gt('end_date', now.toISOString())
     .lte('end_date', sevenDaysOut)
-    .gte('volume_24h', minVolume);
+    .gte('volume_24h', minVolume)
+    .is('neg_risk_market_id', null);
 
   if (fetchError) {
     await logEvent({
