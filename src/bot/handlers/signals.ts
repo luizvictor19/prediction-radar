@@ -102,11 +102,18 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
           parseMode: 'Markdown',
           replyMarkup: keyboard,
         });
+        await logEvent({
+          component: 'bot_notify',
+          status: 'success',
+          message: `Sent signal ${signal.signal_type} ${signal.id}`,
+          metadata: { signal_id: signal.id, signal_type: signal.signal_type },
+        });
       } catch (err) {
         await logEvent({
-          component: 'telegram_bot',
+          component: 'bot_error',
           status: 'error',
           message: `Failed to send signal ${signal.id}: ${String(err)}`,
+          metadata: { signal_id: signal.id, error: String(err) },
         });
       }
     }
