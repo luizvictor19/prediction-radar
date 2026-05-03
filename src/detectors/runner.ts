@@ -99,6 +99,11 @@ export async function runAllDetectors(): Promise<void> {
     await dismissStaleSignals();
   } catch (err) {
     console.error('[detector_runner] dismissStaleSignals failed:', err);
+    await logEvent({
+      component: 'detector_runner',
+      status: 'error',
+      message: `dismissStaleSignals threw: ${(err as Error).message}`,
+    });
   }
 
   const duration = Date.now() - start;
