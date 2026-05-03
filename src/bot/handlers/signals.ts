@@ -79,7 +79,17 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const signals = (data ?? []) as SignalRow[];
+    const rawSignals = (data ?? []) as SignalRow[];
+
+    // = detector freshness window
+    const FRESH_WINDOW_MS = 15 * 60 * 1000;
+    const now = Date.now();
+    const signals = rawSignals.filter(s => {
+      if (s.signal_type === 'calendar_driven') return true;
+      const lastSeen = (s.metadata as any)?.last_seen_at;
+      if (!lastSeen) return false;
+      return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
+    });
 
     if (signals.length === 0) {
       await ctx.reply('Nenhum sinal ativo agora.');

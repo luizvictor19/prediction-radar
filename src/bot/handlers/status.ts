@@ -7,7 +7,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
   try {
     const config = await getSystemConfig();
 
-    const [openBets, closedBets, lastDetector, activeSignals, recentAlerts] = await Promise.all([
+    const [openBets, closedBets, lastDetector, activeRaw, recentAlerts] = await Promise.all([
       supabase.from('my_bets').select('stake_usd').is('closed_at', null),
       supabase
         .from('my_bets')
@@ -24,7 +24,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .maybeSingle(),
       supabase
         .from('detected_signals')
-        .select('id', { count: 'exact', head: true })
+        .select('signal_type, metadata')
         .eq('dismissed', false)
         .eq('acted_on', false)
         .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
@@ -35,6 +35,16 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .eq('dismissed', false)
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     ]);
+
+    // = detector freshness window
+    const FRESH_WINDOW_MS = 15 * 60 * 1000;
+    const now = Date.now();
+    const activeSignals = (activeRaw.data ?? []).filter(s => {
+      if (s.signal_type === 'calendar_driven') return true;
+      const lastSeen = (s.metadata as any)?.last_seen_at;
+      if (!lastSeen) return false;
+      return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
+    }).length;
 
     const openRows = openBets.data ?? [];
     const openCount = openRows.length;
@@ -56,7 +66,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       `Bets abertas: \`${openCount}\` (stake total \`$${openStake.toFixed(2)}\`)\n` +
       `Bets fechadas (7d): \`${closedRows.length}\` | Win rate \`${winRate}%\` | PnL \`${pnlSign}$${pnlTotal.toFixed(2)}\`\n` +
       `Último detector: \`${lastRun}\`\n` +
-      `Sinais ativos: \`${activeSignals.count ?? 0}\`\n` +
+      `Sinais ativos: \`${activeSignals}\`\n` +
       `Alertas 24h: \`${recentAlerts.count ?? 0}\``;
 
     await ctx.reply(text, { parse_mode: 'Markdown' });
