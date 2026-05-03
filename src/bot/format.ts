@@ -1,5 +1,5 @@
-import type { CrossMarketInterSignalMetadata, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate } from '../lib/format-helpers.js';
+import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
+import { confidenceStars, describeVolatility } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -93,6 +93,45 @@ export function deriveSignalTitle(members: Array<{ title: string }>): string | n
   return null;
 }
 
+interface ScenarioResult {
+  winnerName: string;
+  payoff: number;
+  profit: number;
+  probability: number;
+}
+
+function computeScenarios(
+  members: CrossMarketInterMember[],
+  direction: 'over' | 'under',
+  stakePerLeg: number,
+  priceSum: number,
+  groupSize: number,
+): ScenarioResult[] {
+  const stakeTotal = stakePerLeg * groupSize;
+  return members.map((member) => {
+    const winnerName = extractSubject(member.title);
+    let payoff: number;
+    if (direction === 'under') {
+      // Buy Yes in all: only X's Yes pays when X wins
+      payoff = member.yes_price > 0 ? stakePerLeg / member.yes_price : 0;
+    } else {
+      // Buy No in all: all No's except X pay when X wins
+      payoff = members
+        .filter((m) => m.event_id !== member.event_id)
+        .reduce((sum, m) => {
+          const noPrice = 1 - m.yes_price;
+          return sum + (noPrice > 0 ? stakePerLeg / noPrice : 0);
+        }, 0);
+    }
+    return {
+      winnerName,
+      payoff,
+      profit: payoff - stakeTotal,
+      probability: priceSum > 0 ? member.yes_price / priceSum : 0,
+    };
+  });
+}
+
 export function formatCalendarDrivenSignal(
   signal: SignalRow,
   _bankroll: number,
@@ -140,6 +179,7 @@ export function formatSignal(
   if (signal.signal_type === 'calendar_driven') {
     return formatCalendarDrivenSignal(signal, bankroll, maxStakePct);
   }
+
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
   const edgePct = meta.expected_edge_pct ?? 0;
   const direction = meta.direction ?? 'over';
@@ -150,58 +190,91 @@ export function formatSignal(
   const category = meta.polymarket_category ?? null;
   const confidence = signal.confidence_score ?? 0;
 
-  // Title
   const derivedTitle = deriveSignalTitle(members);
   const categoryDisplay = (category ?? signal.signal_type).replace(/_/g, ' ');
   const title = derivedTitle ?? `${categoryDisplay} (${groupSize} membros)`;
   const emoji = categoryEmoji(category);
-  const groupSizeLabel = `${groupSize} membros`;
+  const side = direction === 'over' ? 'No' : 'Yes';
 
-  // Stake & viability
-  const stake = calcStake(bankroll, maxStakePct, edgePct);
-  const stakePerLeg = groupSize > 0 ? stake / groupSize : 0;
-  let viability: string;
+  const stakeTotal = calcStake(bankroll, maxStakePct, edgePct);
+  const stakePerLeg = groupSize > 0 ? stakeTotal / groupSize : 0;
+
+  // Viability cases A / B / C
+  let viabilityLine: string;
+  let viable: 'A' | 'B' | 'C';
   if (groupSize === 0 || stakePerLeg < 1.0) {
-    viability = `   ⚠️ Stake \`$${stake.toFixed(2)}\` é inviável pra basket de ${groupSize} (mín. $1/ordem na Polymarket). Recomendado: ignorar até bankroll crescer.`;
+    viable = 'A';
+    const fracaoEfetiva = Math.min(maxStakePct, edgePct / 200);
+    const bankrollMin = fracaoEfetiva > 0 ? Math.ceil(groupSize / fracaoEfetiva) : 999999;
+    viabilityLine =
+      `❌ Inviável: Polymarket exige mín. $1/leg.\n` +
+      `      Pra essa basket precisaria de bankroll de ~$${bankrollMin}.\n` +
+      `   \n` +
+      `   Recomendado: ignorar.`;
   } else if (stakePerLeg < 5.0) {
-    viability = `   ⚠️ Stake pequeno por leg (\`$${stakePerLeg.toFixed(2)}\` cada). Slippage pode comer parte do edge.`;
+    viable = 'B';
+    viabilityLine = `⚠️ Stake pequeno por leg. Slippage pode comer parte do edge.`;
   } else {
-    viability = `   ✅ Stake viável: \`$${stakePerLeg.toFixed(2)}\` por leg em ${groupSize} legs.`;
+    viable = 'C';
+    viabilityLine = `✅ Operacional. Edge líquido esperado: ${edgePct.toFixed(2)}%.`;
   }
 
-  // Instruction
-  const deviation = direction === 'over' ? priceSum - 1 : 1 - priceSum;
-  const deviationStr = (deviation * 100).toFixed(2);
-  let instruction: string;
-  if (direction === 'over') {
-    instruction = `Comprar *No* em todos os ${groupSize} membros, em proporções iguais ao stake total. O mercado está sobreprecificado em ${deviationStr}%.`;
-  } else {
-    instruction = `Comprar *Yes* em todos os ${groupSize} membros, em proporções iguais. O mercado está subprecificado em ${deviationStr}%.`;
-  }
+  // Scenarios
+  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
+  const probLucroTotal = scenarios.reduce((acc, s) => acc + (s.profit > 0 ? s.probability : 0), 0);
+  const scenariosSorted = [...scenarios].sort((a, b) => b.probability - a.probability);
 
-  // Top 3 (members already sorted by yes_price desc from detector)
-  const top3 = members
-    .slice(0, 3)
-    .map((m) => {
-      const name = truncate(extractSubject(m.title), 12);
-      return `${name} ${(m.yes_price * 100).toFixed(1)}%`;
-    })
-    .join(' · ');
+  // Nature section
+  let natureSec =
+    `🎲 Natureza da bet\n` +
+    `   Bet com EV positivo, não arbitragem garantida.\n` +
+    `   \n` +
+    `   Cenários (com stake $${stakePerLeg.toFixed(2)}/leg, total $${stakeTotal.toFixed(2)}):\n`;
+  for (const s of scenariosSorted) {
+    const profitEmoji = s.profit > 0 ? '✅' : '❌';
+    const profitLabel = s.profit > 0 ? 'lucro' : 'prejuízo';
+    const probPct = (s.probability * 100).toFixed(1);
+    natureSec +=
+      `   ${profitEmoji} ${s.winnerName} ganha (${probPct}%) → recebe $${s.payoff.toFixed(2)} → ${profitLabel} $${Math.abs(s.profit).toFixed(2)}\n`;
+  }
+  natureSec +=
+    `   \n` +
+    `   Probabilidade de lucro nesta operação: ${(probLucroTotal * 100).toFixed(1)}%\n` +
+    `   Edge se materializa em ~50+ trades similares.`;
+
+  // How to operate section
+  const howToSec =
+    `⚙️ Como operar\n` +
+    `   Stake total $${stakeTotal.toFixed(2)} ÷ ${groupSize} legs = $${stakePerLeg.toFixed(2)}/leg\n` +
+    `   ${viabilityLine}`;
+
+  // Execution / Composition section
+  const execTitle = viable === 'A' ? `📋 Composição (referência)` : `📋 Pra executar`;
+  let execSec = `${execTitle}:\n`;
+  for (const m of members) {
+    const name = extractSubject(m.title);
+    const priceForBuy = direction === 'over' ? 1 - m.yes_price : m.yes_price;
+    const shares = stakePerLeg > 0 && priceForBuy > 0 ? stakePerLeg / priceForBuy : 0;
+    execSec += `   • ${name} → ${side} → $${stakePerLeg.toFixed(2)} a ${priceForBuy.toFixed(3)} (${shares.toFixed(1)} shares)\n`;
+  }
 
   return (
     `${emoji} ${title}\n` +
-    `Cross-Market Inter · ${groupSizeLabel}\n` +
+    `Cross-Market Inter · ${groupSize} membros\n` +
     `\n` +
     `⚡ Confiança: ${confidenceStars(confidence)}\n` +
     `Edge: ${edgePct.toFixed(2)}% líquido | direction: ${direction}\n` +
     `\n` +
-    `📊 ${groupSize} membros compondo o grupo. Soma dos preços = \`${priceSum.toFixed(3)}\`\n` +
-    `   (deveria ser 1.000).\n` +
+    `📌 Operação: comprar **${side}** em todos os ${groupSize} membros\n` +
     `\n` +
-    `⚙️ Operação: ${instruction}\n` +
-    `${viability}\n` +
-    (top3 ? `\n🏆 Top 3: ${top3}\n` : '') +
-    `💰 Volume 24h: ${formatVolume(totalVol)}`
+    `📊 Soma dos preços: ${priceSum.toFixed(3)} (deveria ser 1.000)\n` +
+    `\n` +
+    `${natureSec}\n` +
+    `\n` +
+    `${howToSec}\n` +
+    `\n` +
+    `${execSec}\n` +
+    `📊 Volume 24h: ${formatVolume(totalVol)}`
   );
 }
 
