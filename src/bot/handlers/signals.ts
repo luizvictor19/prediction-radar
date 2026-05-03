@@ -68,10 +68,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       .from('detected_signals')
       .select('*, events(title, polymarket_id, outcomes)')
       .eq('dismissed', false)
-      .eq('acted_on', false)
-      .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`)
-      .order('metadata->>expected_edge_pct', { ascending: false })
-      .limit(10);
+      .eq('acted_on', false);
 
     if (error) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${error.message}` });
@@ -79,12 +76,17 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const rawSignals = (data ?? []) as SignalRow[];
+    const edgeFiltered = (data ?? []).filter((s: SignalRow) => {
+      if (s.signal_type === 'calendar_driven') return true;
+      const raw = (s.metadata as any)?.expected_edge_pct;
+      const edge = typeof raw === 'number' ? raw : parseFloat(raw ?? '');
+      return !isNaN(edge) && edge >= config.min_expected_edge_pct;
+    });
 
     // = detector freshness window
     const FRESH_WINDOW_MS = 15 * 60 * 1000;
     const now = Date.now();
-    const signals = rawSignals.filter(s => {
+    const signals = edgeFiltered.filter((s: SignalRow) => {
       const lastSeen = (s.metadata as any)?.last_seen_at;
       if (!lastSeen) return false;
       return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
@@ -95,10 +97,36 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const slugMap = await resolveSlugMap(signals);
+    function getEdge(s: SignalRow): number {
+      const raw = (s.metadata as any)?.expected_edge_pct;
+      const edge = typeof raw === 'number' ? raw : parseFloat(raw ?? '');
+      return isNaN(edge) ? 0 : edge;
+    }
+
+    function getEndDate(s: SignalRow): number {
+      const raw = (s.metadata as any)?.end_date ?? (s as any).expires_at;
+      if (!raw) return Number.POSITIVE_INFINITY;
+      const t = new Date(raw).getTime();
+      return isNaN(t) ? Number.POSITIVE_INFINITY : t;
+    }
+
+    const sorted = [...signals].sort((a, b) => {
+      const aIsCalendar = a.signal_type === 'calendar_driven';
+      const bIsCalendar = b.signal_type === 'calendar_driven';
+
+      if (aIsCalendar !== bIsCalendar) return aIsCalendar ? 1 : -1;
+
+      if (!aIsCalendar) return getEdge(b) - getEdge(a);
+
+      const dateDiff = getEndDate(a) - getEndDate(b);
+      if (dateDiff !== 0) return dateDiff;
+      return getEdge(b) - getEdge(a);
+    });
+
+    const slugMap = await resolveSlugMap(sorted);
 
     const displayedSignals: SignalRow[] = [];
-    for (const signal of signals) {
+    for (const signal of sorted) {
       try {
         const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
           ? await resolveCalendarDrivenUrl(signal.event_id)

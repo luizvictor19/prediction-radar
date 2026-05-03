@@ -3,15 +3,21 @@ Prediction Radar — Telegram Bot Commands
 
 /signals
   Lista até 10 sinais ativos ordenados por edge decrescente.
-  Filtro: dismissed=false, acted_on=false, edge >= min_expected_edge_pct.
+  Filtro: dismissed=false, acted_on=false, edge >= min_expected_edge_pct,
+  freshness <= 15min (last_seen_at recente).
   Cada sinal exibe: categoria, edge%, direção, soma de preços, membros,
-  volume 24h, top 3 mercados, stake sugerido.
+  volume 24h, top 3 mercados, stake sugerido, idade do sinal
+  ("🕐 Atualizado há Xmin").
+  Calendar_driven exibe tempo até resolução granular ("Resolve em N dias",
+  "Resolve em Xh Ymin", etc).
   Botões: [Ver no Polymarket] [Track] [Dismiss]
+  Rodapé: resumo agrupado por signal_type (count) dos sinais exibidos.
 
 /positions
   Lista todas as posições abertas (closed_at IS NULL), ordenadas pela
   mais recente. Exibe: outcome, preço de entrada, stake, shares, tempo
   aberta. Botão: [Fechar posição]
+  Rodapé: resumo agrupado por outcome (count) das posições exibidas.
 
 /status
   Resumo do sistema em uma tela:
@@ -19,13 +25,13 @@ Prediction Radar — Telegram Bot Commands
   - Bets abertas (count + stake total comprometido)
   - Bets fechadas nos últimos 7 dias (count, win rate, PnL total)
   - Último ciclo bem-sucedido do detector
-  - Sinais ativos agora
+  - Sinais ativos agora (com mesmo filtro do /signals: edge mínimo
+    + freshness 15min)
   - Sinais alertados nas últimas 24h
 
 /bankroll
   Sem argumento: mostra o bankroll atual.
   Exemplo: /bankroll
-
 /bankroll <valor>
   Atualiza o bankroll. Valor deve ser entre $1 e $100000.
   Exemplo: /bankroll 150.50
@@ -38,18 +44,39 @@ Prediction Radar — Telegram Bot Commands
   - Edge mínimo para listagem (%)
   - Edge mínimo para notificação automática (%)
 
+/help
+  Lista todos os comandos disponíveis, agrupados por contexto:
+  - 📡 Sinais (/signals)
+  - 📈 Posições (/positions)
+  - ⚙️ Sistema (/status, /bankroll, /config, /help)
+
+=========================================
+Autocomplete (setMyCommands)
+=========================================
+  Os 6 comandos acima são registrados no Telegram via
+  bot.api.setMyCommands() no startup do bot. Aparecem como sugestões
+  ao digitar "/" no chat.
+
 =========================================
 Callbacks (disparados por botões inline)
 =========================================
 
 [Track] — track:<signal_id>
-  Inicia fluxo conversacional para registrar uma operação:
+  Inicia fluxo conversacional para registrar uma operação cross_market:
   1. Stake em USD (ou "ok" para usar o sugerido)
   2. Preço de entrada (Yes price, ex.: 0.045)
   3. Confiança própria 1-10 (ou /skip)
   4. Tese curta (ou /skip)
   5. Confirmação ("sim" / "não")
   Resultado: INSERT em my_bets + signal marcado como acted_on=true.
+
+[Track YES] — track_yes:<signal_id>
+  Para sinais calendar_driven onde o usuário quer apostar Yes.
+  Mesmo fluxo do Track, com outcome='Yes' fixado.
+
+[Track NO] — track_no:<signal_id>
+  Para sinais calendar_driven onde o usuário quer apostar No.
+  Mesmo fluxo do Track, com outcome='No' fixado.
 
 [Dismiss] — dismiss:<signal_id>
   Marca o sinal como dismissed=true e edita a mensagem original
@@ -68,6 +95,21 @@ Notificações automáticas
   Loop a cada 60 segundos. Envia mensagem proativa para o chat_id
   configurado quando há sinais novos com:
   - alerted=false, dismissed=false, acted_on=false
-  - edge >= notify_min_edge_pct (padrão: 2.0%)
+  - edge >= notify_min_edge_pct (padrão: 2.5%)
+  - freshness <= 15min (last_seen_at recente)
+  - calendar_driven: dismissa pre-alert se preço atual extremo (≤0.05 ou ≥0.95)
   Prefixo: "🔔 Novo sinal:"
   Mesmo formato do /signals, com botões Track e Dismiss.
+
+=========================================
+Auto-dismiss de sinais
+=========================================
+  Dois mecanismos rodam a cada ciclo do detector_runner (5min):
+
+  dismissStaleSignals (em runner.ts):
+    Dismissa sinais cujo metadata.last_seen_at > 15min.
+    Cobre: cross_market_inter, cross_market_intra, calendar_driven.
+
+  cleanup_stale_signals (job separado):
+    Dismissa sinais cujos eventos pararam de receber snapshots
+    (mercado removido do feed Polymarket).
