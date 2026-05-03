@@ -98,7 +98,7 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
     // Fee-adjusted edge — prefer rate captured from API at collection time
     const feeRate = getFeeRate(event.polymarket_category, event.polymarket_fee_rate);
     // For intra-market: treat all outcome prices as "yes prices" for fee estimation
-    const expectedEdgePct = calculateExpectedEdgePct(priceSum, feeRate, prices);
+    const { edgePct: expectedEdgePct } = calculateExpectedEdgePct(priceSum, feeRate, prices);
 
     if (expectedEdgePct < logEdgePct) continue;
 

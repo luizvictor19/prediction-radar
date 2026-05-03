@@ -30,6 +30,8 @@ export const POLYMARKET_FEE_RATES: Record<string, number> = {
   'geopolitics': 0.0,
 };
 
+import type { ArbDirection } from '../types/index.js';
+
 const DEFAULT_FEE_RATE = 0.04;
 
 /**
@@ -55,11 +57,8 @@ export function getFeeRate(
  *
  * For each member: $1 invested at price p_no, shares = 1/p_no, fee = feeRate × p_yes
  * Returns fee as a fraction of $1 invested per member (averaged across basket).
- *
- * @param feeRate  - taker fee rate (e.g. 0.04)
- * @param yesPrices - array of P(Yes) for each member
  */
-export function estimateBasketFeeCost(feeRate: number, yesPrices: number[]): number {
+export function estimateBuyNoBasketFeeCost(feeRate: number, yesPrices: number[]): number {
   if (yesPrices.length === 0 || feeRate === 0) return 0;
 
   let totalFee = 0;
@@ -78,19 +77,48 @@ export function estimateBasketFeeCost(feeRate: number, yesPrices: number[]): num
 }
 
 /**
- * Calculates expected net edge (in percentage points) for a cross-market arb signal.
+ * Estimates total fee cost of buying Yes on all members of a negRiskGroup (basket arb).
  *
- * Edge bruto = |price_sum - 1.0|
- * Edge líquido = edge bruto - basket fee cost
+ * For each member: $1 invested at price p_yes, shares = 1/p_yes, fee = feeRate × (1 - p_yes)
+ * Returns fee as a fraction of $1 invested per member (averaged across basket).
+ */
+export function estimateBuyYesBasketFeeCost(feeRate: number, yesPrices: number[]): number {
+  if (yesPrices.length === 0 || feeRate === 0) return 0;
+
+  let totalFee = 0;
+  let totalCost = 0;
+
+  for (const pYes of yesPrices) {
+    if (pYes <= 0 || pYes >= 1) continue;
+    const shares = 1 / pYes;
+    const fee = shares * feeRate * pYes * (1 - pYes); // = feeRate * (1 - pYes)
+    totalFee += fee;
+    totalCost += 1;
+  }
+
+  return totalCost > 0 ? totalFee / totalCost : 0;
+}
+
+/**
+ * Calculates expected net edge for a cross-market arb signal.
  *
- * Returns in pct points (e.g. 1.8 = 1.8%). Can be negative.
+ * priceSum > 1 (overpriced): buy No on all members, fee = feeRate × pYes (cheap)
+ * priceSum < 1 (underpriced): buy Yes on all members, fee = feeRate × (1 - pYes) (expensive)
+ *
+ * Returns edgePct in percentage points (e.g. 1.8 = 1.8%, can be negative) and direction.
  */
 export function calculateExpectedEdgePct(
   priceSum: number,
   feeRate: number,
   yesPrices: number[],
-): number {
-  const grossDeviation = Math.abs(priceSum - 1.0);
-  const feeCost = estimateBasketFeeCost(feeRate, yesPrices);
-  return (grossDeviation - feeCost) * 100;
+): { edgePct: number; direction: ArbDirection } {
+  if (priceSum > 1) {
+    const grossEdge = priceSum - 1;
+    const feeCost = estimateBuyNoBasketFeeCost(feeRate, yesPrices);
+    return { edgePct: (grossEdge - feeCost) * 100, direction: 'over' as const };
+  } else {
+    const grossEdge = 1 - priceSum;
+    const feeCost = estimateBuyYesBasketFeeCost(feeRate, yesPrices);
+    return { edgePct: (grossEdge - feeCost) * 100, direction: 'under' as const };
+  }
 }

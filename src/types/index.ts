@@ -1,5 +1,7 @@
 export type MarketCategory = 'ai_llm' | 'big_tech' | 'ai_infra' | 'ai_policy' | 'other';
 
+export type ArbDirection = 'over' | 'under';
+
 export type MarketSubCategory =
   | 'model_release'
   | 'benchmark'
@@ -122,7 +124,8 @@ export interface CrossMarketInterSignalMetadata {
   estimated_fee_cost: number;
   deviation_net: number;
   expected_edge_pct: number;
-  direction: 'over' | 'under';
+  direction: ArbDirection;
+  coverage_ratio: number;
   total_volume_24h: number;
   members: CrossMarketInterMember[];
   detection_count: number;

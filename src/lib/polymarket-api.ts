@@ -18,6 +18,22 @@ export async function fetchActiveMarkets(params: {
   return get<GammaMarket[]>(url);
 }
 
+export async function fetchMarketsByNegRiskId(negRiskMarketId: string): Promise<GammaMarket[]> {
+  const all: GammaMarket[] = [];
+  const limit = 500;
+  let offset = 0;
+
+  while (true) {
+    const url = `${GAMMA_URL}/markets?negRiskMarketID=${encodeURIComponent(negRiskMarketId)}&limit=${limit}&offset=${offset}`;
+    const page = await get<GammaMarket[]>(url);
+    all.push(...page);
+    if (page.length < limit) break;
+    offset += limit;
+  }
+
+  return all;
+}
+
 // Reserved for detectors that need deep orderbook data (not used in normal collection)
 export async function fetchOrderbook(tokenId: string): Promise<ClobOrderbook> {
   return get<ClobOrderbook>(`${CLOB_URL}/book?token_id=${tokenId}`);

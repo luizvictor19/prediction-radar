@@ -1,8 +1,14 @@
-import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../types/index.js';
+import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, ArbDirection } from '../types/index.js';
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
-import { getFeeRate, calculateExpectedEdgePct, estimateBasketFeeCost } from '../lib/fees.js';
+import {
+  getFeeRate,
+  calculateExpectedEdgePct,
+  estimateBuyNoBasketFeeCost,
+  estimateBuyYesBasketFeeCost,
+} from '../lib/fees.js';
+import { fetchMarketsByNegRiskId } from '../lib/polymarket-api.js';
 
 interface EventRow {
   id: string;
@@ -77,11 +83,15 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let groupsEvaluated = 0;
   let groupsSkippedTooSmall = 0;
   let groupsSkippedLowVolume = 0;
+  let groupsSkippedLowCoverage = 0;
   let groupsSkippedLowEdge = 0;
   let flaggedCount = 0;
   let highConfidenceCount = 0;
   let dedupedCount = 0;
   const byCategoryCount: Record<string, number> = {};
+
+  // In-memory cache for Gamma group sizes within this run
+  const groupSizeCache = new Map<string, number>();
 
   for (const [negRiskMarketId, members] of groups) {
     if (members.length < minMembers) {
@@ -125,16 +135,84 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const groupCategory = leadByVolume.event.polymarket_category ?? null;
     const directFeeRate = leadByVolume.event.polymarket_fee_rate ?? null;
 
+    // Coverage guard: discard group if we don't hold all Gamma members.
+    // Incomplete coverage makes priceSum artificially low, producing phantom edge.
+    let totalGroupSize: number;
+    if (groupSizeCache.has(negRiskMarketId)) {
+      totalGroupSize = groupSizeCache.get(negRiskMarketId)!;
+    } else {
+      try {
+        const gammaMembers = await fetchMarketsByNegRiskId(negRiskMarketId);
+        totalGroupSize = gammaMembers.length;
+        groupSizeCache.set(negRiskMarketId, totalGroupSize);
+      } catch (err) {
+        await logEvent({
+          component: 'cross_market_inter_detector',
+          status: 'error',
+          message: `Failed to fetch group size from Gamma for ${negRiskMarketId}: ${String(err)}`,
+          metadata: { neg_risk_market_id: negRiskMarketId, error: String(err) },
+        });
+        groupsSkippedLowCoverage++;
+        continue;
+      }
+    }
+
+    const coverageRatio = totalGroupSize > 0 ? validMembers.length / totalGroupSize : 0;
+    if (coverageRatio < 0.95) {
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'partial',
+        message: `Group ${negRiskMarketId} skipped: incomplete coverage ${validMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
+        metadata: {
+          neg_risk_market_id: negRiskMarketId,
+          coverage_ratio: coverageRatio,
+          category: groupCategory ?? 'unknown',
+        },
+      });
+      groupsSkippedLowCoverage++;
+      continue;
+    }
+
+    await logEvent({
+      component: 'cross_market_inter_detector',
+      status: 'partial',
+      message: `Group ${negRiskMarketId} passed coverage: ${validMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
+      metadata: {
+        neg_risk_market_id: negRiskMarketId,
+        coverage_ratio: coverageRatio,
+        category: groupCategory ?? 'unknown',
+      },
+    });
+
     const feeRate = getFeeRate(groupCategory, directFeeRate);
     const yesPrices = validMembers.map((m) => m.yesPrice);
     const priceSum = yesPrices.reduce((sum, p) => sum + p, 0);
     const grossDeviation = Math.abs(priceSum - 1.0);
-    const expectedEdgePct = calculateExpectedEdgePct(priceSum, feeRate, yesPrices);
-    const estimatedFeeCost = estimateBasketFeeCost(feeRate, yesPrices);
+    const { edgePct: expectedEdgePct, direction } = calculateExpectedEdgePct(priceSum, feeRate, yesPrices);
+    const estimatedFeeCost = direction === 'over'
+      ? estimateBuyNoBasketFeeCost(feeRate, yesPrices)
+      : estimateBuyYesBasketFeeCost(feeRate, yesPrices);
 
     // Track category breakdown
     const catKey = groupCategory ?? 'unknown';
     byCategoryCount[catKey] = (byCategoryCount[catKey] ?? 0) + 1;
+
+    // Temporary: warn on suspiciously high edge so early runs can be inspected manually
+    if (expectedEdgePct > 5) {
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'partial',
+        message: `High-edge signal ${negRiskMarketId}: ${expectedEdgePct.toFixed(2)}% — manual inspection recommended`,
+        metadata: {
+          neg_risk_market_id: negRiskMarketId,
+          edge_pct: expectedEdgePct,
+          direction,
+          price_sum: priceSum,
+          coverage_ratio: coverageRatio,
+          category: groupCategory ?? 'unknown',
+        },
+      });
+    }
 
     // Skip entirely if edge too low to even log
     if (expectedEdgePct < logEdgePct) {
@@ -143,7 +221,6 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     }
 
     flaggedCount++;
-    const direction: 'over' | 'under' = priceSum > 1.0 ? 'over' : 'under';
 
     // Confidence: 0 if below min threshold, otherwise scale to 10% = 1.0
     const confidenceScore =
@@ -177,7 +254,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       `Top 3: ${top3}. ` +
       `Volume 24h total: $${totalVolume.toFixed(0)}.`;
 
-    const suggestedOutcome = direction === 'under' ? 'long_leader' : 'short_basket';
+    const suggestedOutcome = direction === 'under' ? 'yes' : 'no';
     const eventIdForSignal = direction === 'under' ? leader.event.id : null;
 
     const now = new Date().toISOString();
@@ -220,6 +297,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         deviation_net: grossDeviation - estimatedFeeCost,
         expected_edge_pct: expectedEdgePct,
         direction,
+        coverage_ratio: 1.0,
         total_volume_24h: totalVolume,
         members: prevMeta.members ?? memberList,
         detection_count: (prevMeta.detection_count ?? 1) + 1,
@@ -242,6 +320,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         deviation_net: grossDeviation - estimatedFeeCost,
         expected_edge_pct: expectedEdgePct,
         direction,
+        coverage_ratio: 1.0,
         total_volume_24h: totalVolume,
         members: memberList,
         detection_count: 1,
@@ -264,11 +343,12 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   await logEvent({
     component: 'cross_market_inter_detector',
     status: 'success',
-    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge`,
+    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage`,
     metadata: {
       groups_evaluated: groupsEvaluated,
       groups_skipped_too_small: groupsSkippedTooSmall,
       groups_skipped_low_volume: groupsSkippedLowVolume,
+      groups_skipped_low_coverage: groupsSkippedLowCoverage,
       groups_skipped_low_edge: groupsSkippedLowEdge,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
