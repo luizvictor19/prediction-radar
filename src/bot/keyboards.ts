@@ -17,8 +17,8 @@ export function calendarDrivenKeyboard(
   const label1 = outcomes?.values?.[1] ?? 'No';
   const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
 
-  const yesButton = isLiteralYesNo ? 'Track Yes' : `Track Yes ${truncate(label0, 12)}`;
-  const noButton = isLiteralYesNo ? 'Track No' : `Track Yes ${truncate(label1, 12)}`;
+  const yesButton = isLiteralYesNo ? 'Track Yes' : `Track ${truncate(label0, 14)}`;
+  const noButton = isLiteralYesNo ? 'Track No'  : `Track ${truncate(label1, 14)}`;
 
   return new InlineKeyboard()
     .url('🔗 Ver no Polymarket', polymarketUrl)

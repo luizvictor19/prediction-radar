@@ -7,7 +7,9 @@ import { signalKeyboard, calendarDrivenKeyboard } from '../keyboards.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 
-async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>> {
+interface SlugEntry { event_group_slug?: string; slug?: string }
+
+async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, SlugEntry>> {
   const polymarketIds = signals
     .filter((s) => s.signal_type !== 'calendar_driven')
     .map((s) => {
@@ -20,12 +22,15 @@ async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>
 
   const { data } = await supabase
     .from('events')
-    .select('polymarket_id, event_group_slug')
+    .select('polymarket_id, event_group_slug, slug')
     .in('polymarket_id', polymarketIds);
 
-  const map = new Map<string, string>();
+  const map = new Map<string, SlugEntry>();
   for (const row of data ?? []) {
-    if (row.event_group_slug) map.set(row.polymarket_id as string, row.event_group_slug as string);
+    map.set(row.polymarket_id as string, {
+      event_group_slug: row.event_group_slug as string | undefined,
+      slug: row.slug as string | undefined,
+    });
   }
   return map;
 }
@@ -33,22 +38,23 @@ async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>
 async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
   const { data } = await supabase
     .from('events')
-    .select('event_group_slug, polymarket_id')
+    .select('event_group_slug, slug')
     .eq('id', eventId)
     .limit(1)
     .maybeSingle();
 
   if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
-  if (data?.polymarket_id) return `https://polymarket.com/market/${data.polymarket_id as string}`;
+  if (data?.slug) return `https://polymarket.com/market/${data.slug as string}`;
   return 'https://polymarket.com';
 }
 
-function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, string>): string {
+function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, SlugEntry>): string {
   const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
   const firstId = members[0]?.polymarket_id;
   if (firstId) {
-    const eventGroupSlug = slugMap.get(firstId);
-    if (eventGroupSlug) return `https://polymarket.com/event/${eventGroupSlug}`;
+    const entry = slugMap.get(firstId);
+    if (entry?.event_group_slug) return `https://polymarket.com/event/${entry.event_group_slug}`;
+    if (entry?.slug) return `https://polymarket.com/market/${entry.slug}`;
   }
   return 'https://polymarket.com';
 }
