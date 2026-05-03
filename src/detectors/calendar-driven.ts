@@ -16,6 +16,7 @@ interface EventRow {
   is_ai_tech: boolean;
   volume_24h: number | null;
   end_date: string;
+  outcomes: { values?: string[]; prices?: string[] } | null;
 }
 
 export async function runCalendarDrivenDetector(): Promise<void> {
@@ -29,7 +30,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date')
+    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date, outcomes')
     .eq('status', 'active')
     .eq('tracked', true)
     .gt('end_date', now.toISOString())
@@ -53,6 +54,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let dedupedCount = 0;
   let skippedLowSnapshots = 0;
   let skippedHighVolatility = 0;
+  let skippedMalformedOutcomes = 0;
 
   const dedupCutoff = new Date(now.getTime() - dedupWindowMinutes * 60 * 1000).toISOString();
   const snapshotCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -60,11 +62,23 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   for (const event of rows) {
     marketsEvaluated++;
 
+    const yesSideName = event.outcomes?.values?.[0];
+    if (!yesSideName) {
+      await logEvent({
+        component: 'calendar_driven_detector',
+        status: 'partial',
+        message: `Event ${event.id} skipped: malformed outcomes (no values[0])`,
+        metadata: { event_id: event.id, outcomes: event.outcomes },
+      });
+      skippedMalformedOutcomes++;
+      continue;
+    }
+
     const { data: snapshots, error: snapErr } = await supabase
       .from('polymarket_snapshots')
       .select('mid_price, captured_at')
       .eq('event_id', event.id)
-      .eq('outcome', 'Yes')
+      .eq('outcome', yesSideName)
       .gt('captured_at', snapshotCutoff)
       .order('captured_at', { ascending: true });
 
@@ -188,13 +202,14 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   await logEvent({
     component: 'calendar_driven_detector',
     status: 'success',
-    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility`,
+    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes`,
     metadata: {
       markets_evaluated: marketsEvaluated,
       flagged: flaggedCount,
       deduped: dedupedCount,
       skipped_low_snapshots: skippedLowSnapshots,
       skipped_high_volatility: skippedHighVolatility,
+      skipped_malformed_outcomes: skippedMalformedOutcomes,
       duration_ms: Date.now() - start,
     },
   });
