@@ -1,6 +1,6 @@
 # Prediction Radar — Sistema Pessoal
 
-> v4 — atualizado pós-correção crítica da fórmula de edge, calendar-driven detector implementado, bot Telegram completo, bankroll ajustado pra $100, migrations aplicadas.
+> v5 — atualizado pós-sessão de hardening: filtro de staleness em ambos detectors, dedup sem janela temporal, expires_at baseado em end_date, auto-cleanup de sinais mortos, sendLongMessage pra mensagens grandes, fix do crash-loop 409 do bot, logEvent do bot completo. Próxima fase: my_bet_legs + track expandido.
 
 ## Contexto e propósito
 
@@ -36,7 +36,7 @@ CMN baniu prediction markets via Resolução 5.298 (vigente em 4 de maio de 2026
 ## Salvaguardas inegociáveis
 
 1. **Tracking obrigatório de TODA operação** — antes de executar, registro com tese articulada (1-3 frases) + categoria + domain_confidence (1-10). Se tese não cabe em 3 frases coerentes, não opera.
-2. **Bankroll fixo de US$ 100 nas primeiras 8 semanas.** (Reduzido de $500 na v3 — ajuste pra realidade atual de capital disponível.) Não escalar até CLV positivo após 50+ operações.
+2. **Bankroll fixo de US$ 100 nas primeiras 8 semanas.** Não escalar até CLV positivo após 50+ operações.
 3. **Cap de 3% do bankroll por operação** pra single-leg (US$ 3 max em US$ 100). Cap de 10% pra cross-market arb (matematicamente garantido). Sem exceção.
 4. **Drawdown stop:** 20% do bankroll em 30 dias = pausa de 7 dias.
 5. **Detector NÃO é alterado retrospectivamente** pra explicar operação ruim.
@@ -65,11 +65,13 @@ Edge estatístico explorável depende fortemente do **fee da categoria**:
 
 Restringir a Tech artificialmente exclui categorias com fees baixos onde sinais de baixo desvio são exploráveis.
 
-### Realidade aprendida (v4)
+### Realidade aprendida (v4-v5)
 
 **Cross-market inter no Polymarket maduro raramente tem edge operável.** Após correção da fórmula de edge (que estava reportando ROI ~5x inflado por interpretar desvio absoluto como percentual sobre capital investido), sinais reais ficam quase sempre entre 0% e 0.5%. Sinais com edge >2% reportados anteriormente eram artefato de bug.
 
 Pra cross-market arb fazer sentido em valor absoluto precisa bankroll $2000+ (capital por trade que absorva spread bid/ask + Polymarket exige $1 mínimo por ordem, então basket de N legs precisa $N+ só pra atender mínimo, e stake/leg ≥ $5 é o realmente viável).
+
+**`direction='under'` em torneios é falso positivo sistemático (descoberto v5).** Mercado precifica cláusula "Other/cancelado" implicitamente — soma legítima de Yes em torneios fica abaixo de 1.0 sem que isso seja edge real. Detector mantém flagging mas requer filtro manual baseado em domínio.
 
 **Foco principal pra bankroll $100:** detectores single-leg (calendar_driven, hype_reality_gap futuro) executáveis com $1-3 stake, value betting onde tenho domínio fundamental.
 
@@ -88,7 +90,7 @@ Pra cross-market arb fazer sentido em valor absoluto precisa bankroll $2000+ (ca
 
 A Gamma API retorna em uma única chamada paginada todos os dados que os detectores básicos precisam: `bestBid`, `bestAsk`, `spread`, `lastTradePrice`, `volume24hr`, `volumeNum`, `liquidityNum`, `outcomes`, `outcomePrices`, `negRiskMarketID`, `series`, `eventMetadata`, `feeType` (categoria do Polymarket), `events[0].slug` (slug do grupo).
 
-**Filtros aplicados pelo collector (atualizados v4):**
+**Filtros aplicados pelo collector:**
 - `active === true` e `closed === false`
 - `liquidity > $20k` (sempre)
 - `volume24hr > $10k` **só pra markets isolados** (não-negRisk). Markets negRisk são persistidos mesmo com volume baixo pra preservar cobertura de grupo no detector inter
@@ -96,16 +98,12 @@ A Gamma API retorna em uma única chamada paginada todos os dados que os detecto
 - `feeType` populado (descarta markets sem categoria identificável)
 - Categoria não está em `system_config.excluded_categories` (default vazio)
 
-**O que MUDOU na v4:**
-- Coletor não filtra negRisk por volume (preserva grupo completo)
-- `event_group_slug` capturado de `market.events[0].slug` pra URLs corretas no Polymarket
-
 ## Descobertas críticas da Gamma API
 
 ### `negRiskMarketID`
 Polymarket organiza conjuntos de markets binários relacionados em "Negative Risk" groups, onde no máximo 1 dos members pode resolver Yes. Soma de P(Yes) deveria ser ~1.0. Agrupador primário do detector inter-market.
 
-**Importante (descoberto na v4):** Gamma API **não suporta filtro server-side** por `negRiskMarketID` em nenhum endpoint (`/markets`, `/events`). Coverage check do detector inter virou DB-vs-DB local, sem dependência de filtro da API.
+**Importante:** Gamma API **não suporta filtro server-side** por `negRiskMarketID` em nenhum endpoint (`/markets`, `/events`). Coverage check do detector inter virou DB-vs-DB local, sem dependência de filtro da API.
 
 ### `series`
 Markets recorrentes (mensais, trimestrais) compartilham um `series` array. Fundamental pro Resolution Anchor Detector (Fase 2.5).
@@ -118,6 +116,9 @@ Define fee rate aplicável direto da API. Substituiu tabela hardcoded.
 
 ### `events[0].slug`
 Slug do event-group da Polymarket (ex: `harvey-weinstein-prison-time`). Diferente do slug do market individual (ex: `will-harvey-weinstein-be-sentenced-to-no-prison-time`). É esse slug que monta URL correta no Polymarket: `polymarket.com/event/{event_group_slug}`.
+
+### Markets que "somem" do feed quando resolvem (descoberto v5)
+Quando market resolve, Polymarket muda `closed=true` na API e o market sai do feed `closed=false`. Coletor para de salvar snapshots. **Mas `events.status` no banco continua 'active' indefinidamente** — não há mecanismo automático pra marcar resolved. Isso justifica o detector `cleanup_stale_signals` (auto-dismiss sinais sem snapshot >1h) e o fix futuro do coletor pra detectar resolved markets explicitamente.
 
 ## Fee structure do Polymarket (referência)
 
@@ -166,16 +167,20 @@ Service 1: start
   Collector (cron 3min, todas categorias)
     ↓
   Detector Runner (cron 5min)
-    cross_market_intra + cross_market_inter + calendar_driven
+    cross_market_intra + cross_market_inter + calendar_driven + cleanup_stale_signals
     ↓
   Supabase (Postgres)
     events com event_group_slug + neg_risk_market_id
     + polymarket_category + is_ai_tech
+    + trigger BEFORE UPDATE em events.updated_at
 
 Service 2: bot
   Telegram long-polling (grammy)
+  + delay 60s no startup pra evitar 409 conflict
   + notify loop (60s, alerta sinais novos)
   + comandos /signals, /track, /positions, /status, /bankroll, /config
+  + sendLongMessage / replyLongMessage pra mensagens >3800 chars
+  + logEvent funcionando (bot_command, bot_notify, bot_error, telegram_bot)
 
 Retention Job (no service 1, snapshots 7d, logs 30d)
 ```
@@ -185,7 +190,7 @@ Retention Job (no service 1, snapshots 7d, logs 30d)
 ### Fase 1 + 1.5 + 1.6 — concluídas
 - Collector roda a cada 3min, filtra markets, persiste em `events` + `polymarket_snapshots`
 - Categorizer regex (AI/Tech) — flag secundária `is_ai_tech`
-- Logger persiste em `system_logs`
+- Logger persiste em `system_logs` (com try/catch interno pra não derrubar serviços)
 - Schema Supabase com 6 tabelas
 - Cross-Market Detector intra-market roda (gera sinal raro)
 - Cross-Market Detector inter-market roda com fórmula corrigida (gera sinais reais 0-0.5% — raramente operáveis)
@@ -201,6 +206,7 @@ Retention Job (no service 1, snapshots 7d, logs 30d)
 - `confidence_score` escalado pela volatilidade
 - `suggested_outcome = null` — sistema não decide direção
 - Bot mostra setup; usuário decide com base em tese fundamental (Track YES / Track NO)
+- **v5:** filtro de outcomes dinâmico (lê `event.outcomes.values[0]` em vez de 'Yes' fixo, captura 95% dos markets antes ignorados)
 
 ### Fase 4 — concluída (Telegram bot)
 - 2º service no Railway, long-polling com grammy
@@ -209,6 +215,25 @@ Retention Job (no service 1, snapshots 7d, logs 30d)
 - Fluxo conversacional `/track` (stake → entry_price → confidence → thesis → confirm)
 - Cap de stake por signal_type (10% cross-market, 3% demais)
 - URLs corretas Polymarket via `event_group_slug`
+
+### Hardening v5 — concluído
+- **Trigger `events.updated_at`** no Supabase (BEFORE UPDATE)
+- **Filtro de staleness** em ambos detectors: ignora events sem snapshot < 30min (markets resolvidos somem do feed e param de receber snapshots)
+- **Dedup sem janela temporal**: detector atualiza sinal existente em vez de criar novo a cada 30min. Removeu `created_at >= dedupCutoff` da query
+- **expires_at baseado em end_date**: calendar_driven usa `event.end_date`, cross_market_inter usa end_date mais cedo dos members. INSERT e UPDATE atualizados.
+- **Auto-cleanup de sinais mortos**: novo job `cleanup_stale_signals` roda a cada 5min como parte do detector_runner, dismissa sinais com snapshot >1h. Cross-market basket é dismissado se QUALQUER member estiver stale.
+- **Filtro de expires_at removido** no `/signals` e `notify`. Sinais aparecem se não-dismissed e não-acted_on, ignorando expires_at.
+- **sendLongMessage / replyLongMessage** pra mensagens >3800 chars:
+  - Divisão em boundary semântica (parágrafos)
+  - 2ª+ mensagens como `reply_to_message_id` da 1ª (forma thread no Telegram)
+  - Botões só na ÚLTIMA parte
+  - Validado com sinal Sinner French Open (40 jogadores, 6000+ chars)
+- **Bot delay 60s no startup**: `bot.start()` espera 60s pra evitar crash-loop 409 (Telegram não esquece instância antiga em <30s)
+- **logEvent do bot completo**: bot_command (cada /signals), bot_notify (cada sinal enviado), bot_error (cada falha), telegram_bot (startup). try/catch interno em logEvent pra não derrubar bot se Supabase travar.
+- **Mensagens redesenhadas** pros 2 detectors:
+  - calendar_driven: confiança em ★, variação descritiva, preços com nomes reais, 🐺 azarão / 👑 favorito, trade-off pros 2 lados, 3 leituras (consenso firme/preguiçoso/espera), stake confidence-based, viabilidade
+  - cross_market_inter: cenários completos com prob/payoff/lucro/prejuízo, prob de lucro total, viabilidade A/B/C, bankroll mínimo necessário, composição com lista pronta pra colar
+- **Botões Track com nomes reais**: market binário com nomes (UFC Strickland vs Chimaev) → `Track Yes Strickland` / `Track Yes Chimaev`. Tese (values=["Yes","No"]) → `Track Yes` / `Track No` literal.
 
 ### Stubs criados
 - `src/detectors/hype-reality-gap.ts`
@@ -224,7 +249,7 @@ Retention Job (no service 1, snapshots 7d, logs 30d)
 
 **1c. Coverage check (v4):** baseado em DB-vs-DB local, não usa Gamma API filter (que confirmamos não funcionar).
 
-### 2. Calendar-Driven Detector (Fase 2 — implementado v4)
+### 2. Calendar-Driven Detector (Fase 2 — implementado v4, hardened v5)
 Markets com `end_date` < 7 dias e volatilidade 24h < 0.5pp. Sinaliza setup, não direção. Usuário escolhe Track YES ou Track NO baseado em opinião fundamental.
 
 ### 2.5. Resolution Anchor Detector (Fase 2.5 — pendente)
@@ -234,6 +259,9 @@ Pré-requisito: 2-3 ciclos de resolução de séries recorrentes com snapshots c
 Movimento pós-anúncio cruzado com padrão histórico de "hype decay". Usa CLOB API.
 
 ### 4. Benchmark divergence detector (futuro)
+
+### 5. Cleanup Stale Signals (job, não detector — adicionado v5)
+Roda a cada 5min como parte do detector_runner. Para cada sinal não-dismissed/não-acted_on, verifica `MAX(snapshot.captured_at)` do event. Se >1h atrás, marca `dismissed=true`. Cross-market multi-event: dismissa basket se QUALQUER member stale.
 
 ## Schema Supabase
 
@@ -263,18 +291,28 @@ create table events (
   series_id text,
   series_slug text,
   series_recurrence text,
-  event_group_slug text,                        -- NOVO v4
+  event_group_slug text,
   event_metadata jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Trigger BEFORE UPDATE (NOVO v5)
+CREATE OR REPLACE FUNCTION update_updated_at() RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER events_updated_at BEFORE UPDATE ON events
+FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 ```
 
 ### `polymarket_snapshots`
-Política de retenção: 7 dias. Inclui `idx_snapshots_event_captured(event_id, captured_at DESC)` pra performance do calendar-driven detector.
+Política de retenção: 7 dias. Inclui `idx_snapshots_event_captured(event_id, captured_at DESC)` pra performance do calendar-driven detector e cleanup.
 
 ### `detected_signals`
 Tipos: `cross_market_intra` | `cross_market_inter` | `calendar_driven` | `hype_reality_gap` | `resolution_anchor`.
+
+**Mudança v5:** `expires_at` agora reflete end_date do market, não tempo decorrido após criação.
 
 Metadata pra inter-market:
 ```json
@@ -341,15 +379,36 @@ create table my_bets (
 );
 ```
 
+### `my_bet_legs` (PENDENTE — próximo prompt)
+
+```sql
+create table my_bet_legs (
+  id uuid primary key default gen_random_uuid(),
+  bet_id uuid not null references my_bets(id) on delete cascade,
+  event_id uuid not null references events(id),
+  outcome text not null,
+  entry_price numeric not null,
+  stake_usd numeric not null,
+  shares numeric not null,
+  closing_price numeric,
+  pnl_usd numeric,
+  clv numeric,
+  created_at timestamptz default now(),
+  closed_at timestamptz
+);
+```
+
+Pra cross-market basket: 1 row em `my_bets` (mãe) + N rows em `my_bet_legs` (filhas). Pra calendar_driven single-leg: só `my_bets`, sem legs filhas.
+
 ### `system_config`
 1 row única (id=1). Lida com cache 60s.
 
 ```sql
 create table system_config (
   id integer primary key,
-  bankroll_usd numeric not null default 100,                   -- ATUALIZADO v4 (era 500)
+  bankroll_usd numeric not null default 100,
   max_stake_pct numeric not null default 0.03,
-  cross_market_max_stake_pct numeric not null default 0.10,    -- NOVO v4
+  cross_market_max_stake_pct numeric not null default 0.10,
   kelly_fraction numeric not null default 0.25,
   min_confidence_alert numeric not null default 0.70,
   drawdown_stop_pct numeric not null default 0.20,
@@ -357,11 +416,11 @@ create table system_config (
   daily_report_hour integer default 9,
   cross_market_log_threshold numeric default 0.03,
   cross_market_high_confidence_threshold numeric default 0.08,
-  cross_market_dedup_window_minutes integer default 30,
+  cross_market_dedup_window_minutes integer default 30,  -- NÃO MAIS USADO após v5 (dedup sem janela)
   inter_market_min_members integer default 3,
   inter_market_min_total_volume_24h numeric default 10000,
   min_expected_edge_pct numeric default 1.5,
-  notify_min_edge_pct numeric default 2.5,                     -- ATUALIZADO v4 (era 2.0)
+  notify_min_edge_pct numeric default 2.5,
   log_expected_edge_pct numeric default 0.5,
   excluded_categories text[] default '{}',
   collector_min_volume_24h numeric default 10000,
@@ -375,30 +434,42 @@ create table system_config (
 ### `system_logs`
 Política de retenção: 30 dias.
 
+**Components ativos (v5):**
+- `collector` — coletor a cada 3min
+- `detector_runner` — orquestrador
+- `cross_market_intra`, `cross_market_inter`, `calendar_driven_detector` — detectores
+- `cleanup_stale_signals` — job de auto-cleanup
+- `telegram_bot` — startup do bot
+- `bot_command` — comando recebido
+- `bot_notify` — sinal enviado pelo bot
+- `bot_error` — falha em handler do bot
+
 ## Estrutura de arquivos
 
 ```
 prediction-radar/
 ├── src/
 │   ├── collectors/
-│   │   ├── polymarket.ts              ✅ (v4: filtra negRisk diferente)
+│   │   ├── polymarket.ts              ✅
 │   │   └── categorizer.ts             ✅ (flag is_ai_tech)
 │   ├── detectors/
-│   │   ├── runner.ts                  ✅ (3 detectors ativos)
+│   │   ├── runner.ts                  ✅ (4 detectors ativos: 3 + cleanup)
 │   │   ├── cross-market.ts            ✅
-│   │   ├── cross-market-inter.ts      ✅ (v4: coverage DB-vs-DB)
-│   │   ├── calendar-driven.ts         ✅ NOVO v4
+│   │   ├── cross-market-inter.ts      ✅ (v5: staleness + dedup sem janela + expires_at)
+│   │   ├── calendar-driven.ts         ✅ (v5: outcomes dinâmico + staleness + expires_at)
 │   │   └── hype-reality-gap.ts        🟡 stub
 │   ├── jobs/
-│   │   └── retention.ts               ✅
-│   ├── bot/                           ✅ NOVO v4
-│   │   ├── index.ts
+│   │   ├── retention.ts               ✅
+│   │   └── cleanup-stale-signals.ts   ✅ NOVO v5
+│   ├── bot/                           ✅
+│   │   ├── index.ts                   ✅ (v5: delay 60s startup + logEvent startup)
 │   │   ├── auth.ts
-│   │   ├── format.ts
-│   │   ├── keyboards.ts
-│   │   ├── notify.ts
+│   │   ├── format.ts                  ✅ (v5: mensagens redesenhadas)
+│   │   ├── keyboards.ts               ✅ (v5: botões com nomes reais)
+│   │   ├── message-utils.ts           ✅ NOVO v5 (sendLongMessage, replyLongMessage, splitTextIntoChunks)
+│   │   ├── notify.ts                  ✅ (v5: sendLongMessage + bot_notify log)
 │   │   └── handlers/
-│   │       ├── signals.ts
+│   │       ├── signals.ts             ✅ (v5: try/catch por iteração + replyLongMessage + bot_notify)
 │   │       ├── track.ts
 │   │       ├── positions.ts
 │   │       ├── status.ts
@@ -407,12 +478,13 @@ prediction-radar/
 │   ├── claude/                        🟡 stub (Fase 5)
 │   ├── lib/
 │   │   ├── supabase.ts                ✅
-│   │   ├── polymarket-api.ts          ✅ (fetchMarketsByNegRiskId @deprecated)
-│   │   ├── normalize.ts               ✅ (v4: extrai event_group_slug)
-│   │   ├── logger.ts                  ✅
+│   │   ├── polymarket-api.ts          ✅
+│   │   ├── normalize.ts               ✅
+│   │   ├── logger.ts                  ✅ (v5: try/catch interno)
 │   │   ├── kelly.ts                   ✅
 │   │   ├── config.ts                  ✅
-│   │   └── fees.ts                    ✅ (v4: fórmula corrigida)
+│   │   ├── format-helpers.ts          ✅ NOVO v5 (truncate, confidenceStars, describeVolatility, calcCalendarDrivenStake, calcMinBankroll)
+│   │   └── fees.ts                    ✅
 │   ├── types/index.ts                 ✅
 │   └── index.ts                       ✅
 ├── package.json                       (script "bot": "tsx src/bot/index.ts")
@@ -423,7 +495,34 @@ prediction-radar/
 ## Roadmap
 
 ### Fase 1, 1.5, 1.6, 2 (parcial), 4 — concluídas
-Cross-Market intra + inter, instrumentação ampla, calendar-driven detector, Telegram bot completo.
+Cross-Market intra + inter, instrumentação ampla, calendar-driven detector, Telegram bot completo, hardening v5.
+
+### Próximos passos imediatos (em ordem)
+
+#### 1. Migration `my_bet_legs` + track expandido (opção 3)
+- Criar tabela `my_bet_legs` (FK pra `my_bets`)
+- Atualizar `src/bot/handlers/track.ts`:
+  - calendar_driven: salva outcome com nome real (values[0] ou values[1] do callback), 1 linha em my_bets, sem legs filhas
+  - cross_market_inter: pergunta stake total, divide proporcional, insere mãe em my_bets + N filhas em my_bet_legs com signal_id igual
+- Mostra composição detalhada na confirmação ("Pra executar:" lista cada leg pronta pra colar)
+
+#### 2. Positions e close adaptados pra basket
+- `/positions`: mostra basket como linha-mãe expandível com legs
+- Close conversation: detectar se é basket, oferecer "fechar tudo" ou "fechar leg X"
+- Atualizar closing_price, pnl_usd, clv por leg
+
+#### 3. Fix do coletor pra detectar resolved markets
+- Detectar quando event sai do feed `closed=false` da Gamma API (comparar event_ids do ciclo atual vs banco)
+- Confirmar resolução via fetch individual `?id={id}` (verificar `closed=true` + `resolved=true`)
+- Re-coletar 2-3 ciclos antes de marcar como resolved (evita falso positivo)
+- Marcar `status='resolved'` no banco, popular `resolved_outcome` e `resolved_at` (a adicionar)
+- NÃO dismissar sinais relacionados (deixar pra track record futuro)
+- Atualizar `my_bets.closing_price` / `pnl_usd` / `clv` automaticamente quando resolved
+
+#### 4. Operar 1ª trade real
+- Quando aparecer sinal calendar_driven em AI/Tech ou outro com domínio
+- Stake $1-3, single-leg
+- Validar fluxo /track + /positions + /close
 
 ### Fase 2.5 — Resolution Anchor (pendente)
 Após 2-3 ciclos de resolução observados.
@@ -444,6 +543,12 @@ Avaliar:
 4. Estou sustentando 2-3h de estudo diário?
 5. Estou registrando 100% das operações?
 
+## Backlog (não-urgente)
+
+- **Shares com 1 casa decimal** em vez de 2 (cosmético): "1.5 shares" deveria ser "1.50 shares"
+- **Truncate dinâmico de mensagens muito longas**: hoje sendLongMessage divide em N chunks. Se 1 sinal precisar de 4+ chunks, considerar truncar lista (top 15 cenários + "X cenários omitidos")
+- **`cross_market_dedup_window_minutes`** em system_config não é mais usado — pode ser removido em migration futura
+
 ## Princípios de execução
 
 1. Ferramenta amplifica edge, não cria edge
@@ -456,6 +561,7 @@ Avaliar:
 8. Edge líquido > desvio bruto
 9. Fee da categoria importa tanto quanto o desvio
 10. **Calendar-driven é setup, não recomendação** — sem tese fundamental, ignorar (v4)
+11. **Sinais "morrem" quando market para de receber snapshots, não por tempo decorrido** (v5)
 
 ## Variáveis de ambiente
 
@@ -480,24 +586,28 @@ LOG_LEVEL=info
 - Operação manual no Polymarket via VPN
 - Capital em USDC/Polygon, declarado fiscalmente
 
-## Bugs corrigidos na sessão atual (referência histórica v4)
+## Bugs corrigidos na sessão atual (referência histórica v5)
 
-1. **fees.ts original calculava edge errado.** `Math.abs(priceSum - 1)` ignorava direção. Refatorado pra retornar `{ edgePct, direction }` separando buy-no/buy-yes.
+1. **Filtro de outcomes hardcoded como 'Yes'.** Detector calendar_driven usava `.eq('outcome', 'Yes')` mas coletor salva com nome real do competidor. Resultado: 95% dos markets ignorados. Fix: lê dinamicamente `event.outcomes.values[0]`.
 
-2. **Coverage guard quebrado.** Tentamos usar `fetchMarketsByNegRiskId` da Gamma — confirmado via curl que API não suporta filtro server-side por `negRiskMarketID`. Função marcada `@deprecated`. Coverage check virou DB-vs-DB local.
+2. **Detector estava criando duplicatas a cada 30min.** Query de dedup tinha `.gte('created_at', dedupCutoff)`. Sinal criado às 11:25, próximo ciclo às 12:00 considerado fora da janela → criava novo. Fix: removido filtro de created_at. Enquanto sinal está `dismissed=false AND acted_on=false`, detector apenas atualiza o existente.
 
-3. **Coletor filtrava negRisk de baixo volume.** Criava grupos com cobertura incompleta. Fix: persiste todos negRisk; só filtra markets isolados.
+3. **expires_at hardcoded em now+30min.** Sinais expiravam por tempo, não por estado real do market. Fix: calendar_driven usa `event.end_date`, cross_market_inter usa end_date mais cedo dos members. Aplicado em INSERT e UPDATE.
 
-4. **Filtro adicional `direction='under' && priceSum < 0.7`** pra descartar fantasmas residuais.
+4. **Markets resolvidos não eram detectados.** Quando market resolve, sai do feed `closed=false` mas `events.status` continua 'active'. Detectores reavaliavam infinitamente. Fix parcial v5: filtro de staleness ignora events sem snapshot <30min. Fix completo: pendente (item #3 do roadmap).
 
-5. **Bug crítico de magnitude na fórmula de edge.** `calculateExpectedEdgePct` reportava ROI ~5x inflado (interpretava desvio absoluto como percentual sobre capital investido). Corrigida pra dividir pelo capital efetivamente investido (`no_side_pool` ou `yes_side_pool`). Edges caíram dramaticamente — Eurovision 3.85% → ~0.1%, NBA Eastern 2.5% → ~0.045%.
+5. **Mensagens >4096 chars eram silenciosamente recusadas pelo Telegram.** Sinal Sinner French Open (40 jogadores, ~6000 chars) nunca chegava. Fix: `sendLongMessage` divide em chunks de até 3800 chars em boundaries semânticas, 2ª+ como reply da 1ª.
 
-6. **URLs do Polymarket quebradas.** Bot usava `polymarket_id` numérico ou slug do market individual. Fix: capturar `event_group_slug` de `market.events[0].slug` no coletor; bot busca via lookup no DB.
+6. **Bot em crash-loop por erro 409.** Quando Railway restartava, nova instância subia em segundos mas Telegram demora 30-60s pra esquecer instância antiga. Resultado: nova conflita com ghost da antiga, crasha, restart, loop infinito. Fix: delay de 60s em `bot.start()`.
+
+7. **logEvent do bot quase nunca gravava em system_logs.** 1 log na vida toda. Sem visibilidade pra debug. Fix: try/catch interno em logEvent + chamadas em pontos críticos (startup, comando, sinal enviado, erro).
+
+8. **URLs do Polymarket quebradas.** Bot usava `polymarket_id` numérico ou slug do market individual. Fix: capturar `event_group_slug` de `market.events[0].slug` no coletor; bot busca via lookup no DB.
 
 ## Configuração atual relevante (system_config id=1)
 
 ```
-bankroll_usd: 100
+bankroll_usd: 101.59
 max_stake_pct: 0.03
 cross_market_max_stake_pct: 0.10
 min_expected_edge_pct: 1.5
@@ -507,13 +617,14 @@ collector_min_volume_24h: 10000
 collector_min_liquidity: 20000
 inter_market_min_members: 3
 inter_market_min_total_volume_24h: 10000
-cross_market_dedup_window_minutes: 30
+cross_market_dedup_window_minutes: 30  -- não mais usado
 telegram_chat_id: 8299632096
 ```
 
-## Migrations já aplicadas (v4)
+## Migrations já aplicadas (v4 + v5)
 
 ```sql
+-- v4
 ALTER TABLE events ADD COLUMN IF NOT EXISTS event_group_slug text;
 
 ALTER TABLE system_config ADD COLUMN IF NOT EXISTS notify_min_edge_pct numeric NOT NULL DEFAULT 2.5;
@@ -524,4 +635,39 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_event_captured
   ON polymarket_snapshots(event_id, captured_at DESC);
 
 UPDATE system_config SET bankroll_usd = 100.00 WHERE id = 1;
+
+-- v5
+CREATE OR REPLACE FUNCTION update_updated_at() RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS events_updated_at ON events;
+CREATE TRIGGER events_updated_at BEFORE UPDATE ON events
+FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+```
+
+## Migrations pendentes (próximo prompt)
+
+```sql
+-- my_bet_legs (item #1 do roadmap)
+CREATE TABLE my_bet_legs (
+  id uuid primary key default gen_random_uuid(),
+  bet_id uuid not null references my_bets(id) on delete cascade,
+  event_id uuid not null references events(id),
+  outcome text not null,
+  entry_price numeric not null,
+  stake_usd numeric not null,
+  shares numeric not null,
+  closing_price numeric,
+  pnl_usd numeric,
+  clv numeric,
+  created_at timestamptz default now(),
+  closed_at timestamptz
+);
+
+CREATE INDEX idx_my_bet_legs_bet_id ON my_bet_legs(bet_id);
+CREATE INDEX idx_my_bet_legs_event_id ON my_bet_legs(event_id);
+
+-- resolved_at em events (item #3 do roadmap)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
 ```

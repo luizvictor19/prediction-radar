@@ -26,6 +26,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
+    const displayedPositions: PositionRow[] = [];
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i]!;
       const label = (pos.events as { title: string } | null)?.title ?? pos.polymarket_category ?? 'Sem título';
@@ -38,6 +39,18 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         parse_mode: 'Markdown',
         reply_markup: positionKeyboard(pos.id),
       });
+      displayedPositions.push(pos);
+    }
+
+    if (displayedPositions.length > 0) {
+      const counts = new Map<string, number>();
+      for (const pos of displayedPositions) {
+        counts.set(pos.outcome, (counts.get(pos.outcome) ?? 0) + 1);
+      }
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+      const total = displayedPositions.length;
+      const lines = sorted.map(([outcome, n]) => `• ${outcome}: ${n}`).join('\n');
+      await ctx.reply(`📊 Total: ${total} posições\n${lines}`);
     }
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `positionsHandler error: ${String(err)}` });

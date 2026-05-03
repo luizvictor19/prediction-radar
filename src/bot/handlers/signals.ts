@@ -88,6 +88,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const slugMap = await resolveSlugMap(signals);
 
+    const displayedSignals: SignalRow[] = [];
     for (const signal of signals) {
       try {
         const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
@@ -102,6 +103,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
           parseMode: 'Markdown',
           replyMarkup: keyboard,
         });
+        displayedSignals.push(signal);
         await logEvent({
           component: 'bot_notify',
           status: 'success',
@@ -116,6 +118,17 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
           metadata: { signal_id: signal.id, error: String(err) },
         });
       }
+    }
+
+    if (displayedSignals.length > 0) {
+      const counts = new Map<string, number>();
+      for (const signal of displayedSignals) {
+        counts.set(signal.signal_type, (counts.get(signal.signal_type) ?? 0) + 1);
+      }
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+      const total = displayedSignals.length;
+      const lines = sorted.map(([type, n]) => `• ${type}: ${n}`).join('\n');
+      await ctx.reply(`📊 Total: ${total} sinais\n${lines}`);
     }
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `signalsHandler error: ${String(err)}` });

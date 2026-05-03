@@ -8,6 +8,7 @@ import { positionsHandler, closePositionConversation } from './handlers/position
 import { statusHandler } from './handlers/status.js';
 import { bankrollHandler } from './handlers/bankroll.js';
 import { configHandler } from './handlers/config_cmd.js';
+import { helpHandler } from './handlers/help.js';
 import { startNotifyLoop } from './notify.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
@@ -56,6 +57,7 @@ bot.command('positions', positionsHandler);
 bot.command('status', statusHandler);
 bot.command('bankroll', bankrollHandler);
 bot.command('config', configHandler);
+bot.command('help', helpHandler);
 
 bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
@@ -95,6 +97,20 @@ bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
 });
 
 startNotifyLoop(bot);
+
+try {
+  await bot.api.setMyCommands([
+    { command: 'signals',   description: 'Listar sinais ativos' },
+    { command: 'positions', description: 'Posições abertas' },
+    { command: 'status',    description: 'Resumo do sistema' },
+    { command: 'bankroll',  description: 'Ver ou ajustar bankroll' },
+    { command: 'config',    description: 'Configuração atual' },
+    { command: 'help',      description: 'Listar comandos disponíveis' },
+  ]);
+  console.log('[bot] Commands registered');
+} catch (err) {
+  console.error('[bot] Failed to register commands:', err);
+}
 
 console.log('[bot] Waiting 60s before starting long-polling to avoid 409 conflicts...');
 await new Promise((resolve) => setTimeout(resolve, 60_000));
