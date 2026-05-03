@@ -23,7 +23,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   const start = Date.now();
   const config = await getSystemConfig();
 
-  const { cross_market_dedup_window_minutes: dedupWindowMinutes, collector_min_volume_24h: minVolume } = config;
+  const { collector_min_volume_24h: minVolume } = config;
 
   const now = new Date();
   const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -82,7 +82,6 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let skippedHighVolatility = 0;
   let skippedMalformedOutcomes = 0;
 
-  const dedupCutoff = new Date(now.getTime() - dedupWindowMinutes * 60 * 1000).toISOString();
   const snapshotCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
   for (const event of liveRows) {
@@ -163,7 +162,6 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .eq('event_id', event.id)
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .gte('created_at', dedupCutoff)
       .limit(1)
       .maybeSingle();
 

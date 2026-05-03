@@ -44,7 +44,6 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   const config = await getSystemConfig();
 
   const {
-    cross_market_dedup_window_minutes: dedupWindowMinutes,
     inter_market_min_members: minMembers,
     inter_market_min_total_volume_24h: minTotalVolume,
     min_expected_edge_pct: minEdgePct,
@@ -315,7 +314,6 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       .filter((d): d is string => Boolean(d))
       .sort();
     const expiresAt = memberEndDates[0] ?? null;
-    const dedupCutoff = new Date(Date.now() - dedupWindowMinutes * 60 * 1000).toISOString();
 
     // Dedup check — find existing active signal for this group
     const { data: existing, error: dedupError } = await supabase
@@ -324,7 +322,6 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       .eq('signal_type', 'cross_market_inter')
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .gte('created_at', dedupCutoff)
       .filter('metadata->>neg_risk_market_id', 'eq', negRiskMarketId)
       .limit(1)
       .maybeSingle();
