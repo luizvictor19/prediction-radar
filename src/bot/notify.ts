@@ -15,12 +15,12 @@ async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
 
   const { data } = await supabase
     .from('events')
-    .select('slug')
+    .select('event_group_slug')
     .eq('polymarket_id', firstId)
     .limit(1)
     .maybeSingle();
 
-  if (data?.slug) return `https://polymarket.com/event/${data.slug as string}`;
+  if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
   return 'https://polymarket.com';
 }
 

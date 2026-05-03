@@ -19,12 +19,12 @@ async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, string>
 
   const { data } = await supabase
     .from('events')
-    .select('polymarket_id, slug')
+    .select('polymarket_id, event_group_slug')
     .in('polymarket_id', polymarketIds);
 
   const map = new Map<string, string>();
   for (const row of data ?? []) {
-    if (row.slug) map.set(row.polymarket_id as string, row.slug as string);
+    if (row.event_group_slug) map.set(row.polymarket_id as string, row.event_group_slug as string);
   }
   return map;
 }
@@ -33,8 +33,8 @@ function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, string>): st
   const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
   const firstId = members[0]?.polymarket_id;
   if (firstId) {
-    const slug = slugMap.get(firstId);
-    if (slug) return `https://polymarket.com/event/${slug}`;
+    const eventGroupSlug = slugMap.get(firstId);
+    if (eventGroupSlug) return `https://polymarket.com/event/${eventGroupSlug}`;
   }
   return 'https://polymarket.com';
 }

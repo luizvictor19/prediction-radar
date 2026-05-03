@@ -35,6 +35,7 @@ export interface Event {
   series_id: string | null;
   series_slug: string | null;
   series_recurrence: string | null;
+  event_group_slug: string | null;
   event_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

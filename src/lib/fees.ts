@@ -102,8 +102,11 @@ export function estimateBuyYesBasketFeeCost(feeRate: number, yesPrices: number[]
 /**
  * Calculates expected net edge for a cross-market arb signal.
  *
- * priceSum > 1 (overpriced): buy No on all members, fee = feeRate × pYes (cheap)
- * priceSum < 1 (underpriced): buy Yes on all members, fee = feeRate × (1 - pYes) (expensive)
+ * priceSum > 1 (overpriced): buy No on all members.
+ *   Capital = N - priceSum (sum of No prices). Gross ROI = (priceSum - 1) / (N - priceSum).
+ *
+ * priceSum < 1 (underpriced): buy Yes on all members.
+ *   Capital = priceSum. Gross ROI = (1 - priceSum) / priceSum.
  *
  * Returns edgePct in percentage points (e.g. 1.8 = 1.8%, can be negative) and direction.
  */
@@ -113,12 +116,16 @@ export function calculateExpectedEdgePct(
   yesPrices: number[],
 ): { edgePct: number; direction: ArbDirection } {
   if (priceSum > 1) {
-    const grossEdge = priceSum - 1;
+    const grossDeviation = priceSum - 1;
+    const noSidePool = yesPrices.length - priceSum;
+    const grossROI = noSidePool > 0 ? grossDeviation / noSidePool : 0;
     const feeCost = estimateBuyNoBasketFeeCost(feeRate, yesPrices);
-    return { edgePct: (grossEdge - feeCost) * 100, direction: 'over' as const };
+    return { edgePct: (grossROI - feeCost) * 100, direction: 'over' as const };
   } else {
-    const grossEdge = 1 - priceSum;
+    const grossDeviation = 1 - priceSum;
+    const yesSidePool = priceSum;
+    const grossROI = yesSidePool > 0 ? grossDeviation / yesSidePool : 0;
     const feeCost = estimateBuyYesBasketFeeCost(feeRate, yesPrices);
-    return { edgePct: (grossEdge - feeCost) * 100, direction: 'under' as const };
+    return { edgePct: (grossROI - feeCost) * 100, direction: 'under' as const };
   }
 }
