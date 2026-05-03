@@ -106,10 +106,11 @@ function computeScenarios(
   stakePerLeg: number,
   priceSum: number,
   groupSize: number,
+  labelMap: Map<string, string>,
 ): ScenarioResult[] {
   const stakeTotal = stakePerLeg * groupSize;
   return members.map((member) => {
-    const winnerName = extractSubject(member.title);
+    const winnerName = labelMap.get(member.event_id) ?? extractSubject(member.title);
     let payoff: number;
     if (direction === 'under') {
       // Buy Yes in all: only X's Yes pays when X wins
@@ -135,6 +136,22 @@ function computeScenarios(
 interface OutcomesShape {
   values?: string[];
   prices?: string[];
+}
+
+function buildMemberLabels(members: CrossMarketInterMember[]): Map<string, string> {
+  const subjectCounts = new Map<string, number>();
+  for (const m of members) {
+    const subject = extractSubject(m.title);
+    subjectCounts.set(subject, (subjectCounts.get(subject) ?? 0) + 1);
+  }
+  const labels = new Map<string, string>();
+  for (const m of members) {
+    const subject = extractSubject(m.title);
+    const count = subjectCounts.get(subject) ?? 1;
+    const label = count >= 2 ? (m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title) : subject;
+    labels.set(m.event_id, label);
+  }
+  return labels;
 }
 
 export function formatCalendarDrivenSignal(
@@ -314,8 +331,10 @@ export function formatSignal(
     viabilityLine = `✅ Operacional. Edge líquido esperado: ${edgePct.toFixed(2)}%.`;
   }
 
+  const memberLabels = buildMemberLabels(members);
+
   // Scenarios
-  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
+  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize, memberLabels);
   const probLucroTotal = scenarios.reduce((acc, s) => acc + (s.profit > 0 ? s.probability : 0), 0);
   const scenariosSorted = [...scenarios].sort((a, b) => b.probability - a.probability);
 
@@ -347,7 +366,7 @@ export function formatSignal(
   const execTitle = viable === 'A' ? `📋 Composição (referência)` : `📋 Pra executar`;
   let execSec = `${execTitle}:\n`;
   for (const m of members) {
-    const name = extractSubject(m.title);
+    const name = memberLabels.get(m.event_id) ?? m.title;
     const priceForBuy = direction === 'over' ? 1 - m.yes_price : m.yes_price;
     const shares = stakePerLeg > 0 && priceForBuy > 0 ? stakePerLeg / priceForBuy : 0;
     execSec += `   • ${name} → ${side} → $${stakePerLeg.toFixed(2)} a ${priceForBuy.toFixed(3)} (${shares.toFixed(1)} shares)\n`;
