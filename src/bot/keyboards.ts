@@ -1,4 +1,5 @@
 import { InlineKeyboard } from 'grammy';
+import { truncate } from '../lib/format-helpers.js';
 
 export function signalKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
   return new InlineKeyboard()
@@ -7,12 +8,24 @@ export function signalKeyboard(signalId: string, polymarketUrl: string): InlineK
     .text('Dismiss', `dismiss:${signalId}`);
 }
 
-export function calendarDrivenKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
+export function calendarDrivenKeyboard(
+  signalId: string,
+  polymarketUrl: string,
+  outcomes: { values?: string[] } | null,
+): InlineKeyboard {
+  const label0 = outcomes?.values?.[0] ?? 'Yes';
+  const label1 = outcomes?.values?.[1] ?? 'No';
+  const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
+
+  const yesButton = isLiteralYesNo ? 'Track Yes' : `Track Yes ${truncate(label0, 12)}`;
+  const noButton = isLiteralYesNo ? 'Track No' : `Track No ${truncate(label1, 12)}`;
+
   return new InlineKeyboard()
-    .url('Ver no Polymarket', polymarketUrl)
+    .url('🔗 Ver no Polymarket', polymarketUrl)
     .row()
-    .text('Track YES', `track_yes:${signalId}`)
-    .text('Track NO', `track_no:${signalId}`)
+    .text(yesButton, `track_yes:${signalId}`)
+    .text(noButton, `track_no:${signalId}`)
+    .row()
     .text('Dismiss', `dismiss:${signalId}`);
 }
 

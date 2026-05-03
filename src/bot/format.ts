@@ -1,12 +1,14 @@
 import type { CrossMarketInterSignalMetadata, CalendarDrivenSignalMetadata } from '../types/index.js';
+import { confidenceStars, describeVolatility, truncate } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
   event_id: string | null;
   signal_type: string;
   suggested_outcome: string | null;
+  confidence_score?: number | null;
   metadata: Record<string, unknown> | null;
-  events?: { title: string; polymarket_id: string } | null;
+  events?: { title: string; polymarket_id: string; outcomes?: any } | null;
 }
 
 export interface PositionRow {
@@ -98,22 +100,34 @@ export function formatCalendarDrivenSignal(
 ): string {
   const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
   const daysUntil = meta.days_until_resolution ?? 0;
-  const currentPrice = meta.current_yes_price ?? 0;
+  const yesPrice = meta.current_yes_price ?? 0;
   const volatility = meta.volatility_24h ?? 0;
   const vol24h = meta.volume_24h ?? 0;
   const title = signal.events?.title ?? 'Market';
+  const category = meta.polymarket_category ?? null;
+  const emoji = categoryEmoji(category);
+  const confidence = signal.confidence_score ?? 0;
+
+  const outcomes = signal.events?.outcomes ?? null;
+  const label0 = outcomes?.values?.[0] ?? 'Yes';
+  const label1 = outcomes?.values?.[1] ?? 'No';
+  const p0 = Math.round(yesPrice * 100);
+  const p1 = 100 - p0;
+  const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
 
   return (
-    `🗓️ *${title}*\n` +
-    `Resolve em \`${Math.round(daysUntil)}\` dias | Volatilidade 24h: \`${(volatility * 100).toFixed(2)}pp\`\n` +
+    `${emoji} ${title}\n` +
+    `Calendar-Driven · Resolve em ${Math.round(daysUntil)} dias\n` +
     `\n` +
-    `💰 Yes: \`${currentPrice.toFixed(2)}\` (estável há 24h)\n` +
+    `⚡ Confiança: ${confidenceStars(confidence)}\n` +
+    `📊 Variação 24h: ${(volatility * 100).toFixed(2)}pp (${describeVolatility(volatility)})\n` +
+    `\n` +
+    `💰 ${label0}: ${p0}% | ${label1}: ${p1}%\n` +
     `📊 Volume 24h: ${formatVolume(vol24h)}\n` +
     `\n` +
-    `⚠️ Sistema sinalizou *setup*, não direção.\n` +
-    `   Avalie sua tese fundamental antes de operar:\n` +
-    `   • P(yes) > \`${currentPrice.toFixed(2)}\` → comprar Yes\n` +
-    `   • P(yes) < \`${currentPrice.toFixed(2)}\` → comprar No\n` +
+    `⚠️ Sistema sinalizou setup, não direção.\n` +
+    `   • Acha que ${label0} ${isLiteralYesNo ? 'acontece' : 'ganha'}? → comprar ${label0} a ${yesPrice.toFixed(2)}\n` +
+    `   • Acha que ${label1} ${isLiteralYesNo ? 'acontece' : 'ganha'}? → comprar ${label1} a ${(1 - yesPrice).toFixed(2)}\n` +
     `   • Sem opinião forte → ignorar`
   );
 }
@@ -134,12 +148,14 @@ export function formatSignal(
   const totalVol = meta.total_volume_24h ?? 0;
   const members = meta.members ?? [];
   const category = meta.polymarket_category ?? null;
+  const confidence = signal.confidence_score ?? 0;
 
   // Title
   const derivedTitle = deriveSignalTitle(members);
   const categoryDisplay = (category ?? signal.signal_type).replace(/_/g, ' ');
   const title = derivedTitle ?? `${categoryDisplay} (${groupSize} membros)`;
   const emoji = categoryEmoji(category);
+  const groupSizeLabel = `${groupSize} membros`;
 
   // Stake & viability
   const stake = calcStake(bankroll, maxStakePct, edgePct);
@@ -167,14 +183,17 @@ export function formatSignal(
   const top3 = members
     .slice(0, 3)
     .map((m) => {
-      const name = extractSubject(m.title);
+      const name = truncate(extractSubject(m.title), 12);
       return `${name} ${(m.yes_price * 100).toFixed(1)}%`;
     })
     .join(' · ');
 
   return (
-    `${emoji} *${title}*\n` +
-    `Edge: \`${edgePct.toFixed(2)}%\` líquido | direction: \`${direction}\`\n` +
+    `${emoji} ${title}\n` +
+    `Cross-Market Inter · ${groupSizeLabel}\n` +
+    `\n` +
+    `⚡ Confiança: ${confidenceStars(confidence)}\n` +
+    `Edge: ${edgePct.toFixed(2)}% líquido | direction: ${direction}\n` +
     `\n` +
     `📊 ${groupSize} membros compondo o grupo. Soma dos preços = \`${priceSum.toFixed(3)}\`\n` +
     `   (deveria ser 1.000).\n` +

@@ -51,7 +51,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
     const { data, error } = await supabase
       .from('detected_signals')
-      .select('*, events(title, polymarket_id)')
+      .select('*, events(title, polymarket_id, outcomes)')
       .eq('alerted', false)
       .eq('dismissed', false)
       .eq('acted_on', false)
@@ -72,7 +72,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
         const stakeCap = getStakeCap(config, signal.signal_type);
         const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap);
         const keyboard = signal.signal_type === 'calendar_driven'
-          ? calendarDrivenKeyboard(signal.id, polymarketUrl)
+          ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
           : signalKeyboard(signal.id, polymarketUrl);
         await bot.api.sendMessage(chatId, text, {
           parse_mode: 'Markdown',

@@ -59,7 +59,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const { data, error } = await supabase
       .from('detected_signals')
-      .select('*, events(title, polymarket_id)')
+      .select('*, events(title, polymarket_id, outcomes)')
       .eq('dismissed', false)
       .eq('acted_on', false)
       .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
@@ -89,7 +89,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       const stakeCap = getStakeCap(config, signal.signal_type);
       const text = formatSignal(signal, config.bankroll_usd, stakeCap);
       const keyboard = signal.signal_type === 'calendar_driven'
-        ? calendarDrivenKeyboard(signal.id, polymarketUrl)
+        ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
         : signalKeyboard(signal.id, polymarketUrl);
       await ctx.reply(text, {
         parse_mode: 'Markdown',
