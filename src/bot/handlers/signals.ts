@@ -89,18 +89,26 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const slugMap = await resolveSlugMap(signals);
 
     for (const signal of signals) {
-      const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
-        ? await resolveCalendarDrivenUrl(signal.event_id)
-        : buildPolymarketUrl(signal, slugMap);
-      const stakeCap = getStakeCap(config, signal.signal_type);
-      const text = formatSignal(signal, config.bankroll_usd, stakeCap);
-      const keyboard = signal.signal_type === 'calendar_driven'
-        ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
-        : signalKeyboard(signal.id, polymarketUrl);
-      await replyLongMessage(ctx, text, {
-        parseMode: 'Markdown',
-        replyMarkup: keyboard,
-      });
+      try {
+        const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
+          ? await resolveCalendarDrivenUrl(signal.event_id)
+          : buildPolymarketUrl(signal, slugMap);
+        const stakeCap = getStakeCap(config, signal.signal_type);
+        const text = formatSignal(signal, config.bankroll_usd, stakeCap);
+        const keyboard = signal.signal_type === 'calendar_driven'
+          ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
+          : signalKeyboard(signal.id, polymarketUrl);
+        await replyLongMessage(ctx, text, {
+          parseMode: 'Markdown',
+          replyMarkup: keyboard,
+        });
+      } catch (err) {
+        await logEvent({
+          component: 'telegram_bot',
+          status: 'error',
+          message: `Failed to send signal ${signal.id}: ${String(err)}`,
+        });
+      }
     }
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `signalsHandler error: ${String(err)}` });

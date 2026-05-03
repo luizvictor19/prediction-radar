@@ -64,18 +64,27 @@ export async function sendLongMessage(
   const chunks = splitTextIntoChunks(text);
   let firstMessageId: number | undefined;
 
+  console.log(`[sendLongMessage] Splitting into ${chunks.length} chunks. Lengths: ${chunks.map(c => c.length).join(', ')}`);
+
   for (let i = 0; i < chunks.length; i++) {
     const isLast = i === chunks.length - 1;
-
-    const sent = await bot.api.sendMessage(chatId, chunks[i]!, {
+    const sendOpts = {
       parse_mode: options.parseMode,
       reply_parameters: i > 0 && firstMessageId !== undefined
         ? { message_id: firstMessageId }
         : undefined,
       reply_markup: isLast ? options.replyMarkup : undefined,
-    });
+    };
 
-    if (i === 0) firstMessageId = sent.message_id;
+    console.log(`[sendLongMessage] Sending chunk ${i+1}/${chunks.length}, ${chunks[i]!.length} chars`);
+    try {
+      const sent = await bot.api.sendMessage(chatId, chunks[i]!, sendOpts);
+      console.log(`[sendLongMessage] Chunk ${i+1} sent OK, message_id=${sent.message_id}`);
+      if (i === 0) firstMessageId = sent.message_id;
+    } catch (err) {
+      console.error(`[sendLongMessage] Chunk ${i+1} FAILED: ${err}`);
+      throw err;
+    }
   }
 }
 
