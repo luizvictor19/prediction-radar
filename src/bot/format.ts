@@ -93,6 +93,12 @@ export function deriveSignalTitle(members: Array<{ title: string }>): string | n
   return null;
 }
 
+function memberDisplayTitle(title: string, maxLen = 70): string {
+  const cleaned = title.replace(/\?$/, '').trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  return cleaned.slice(0, maxLen - 1) + '…';
+}
+
 interface ScenarioResult {
   winnerName: string;
   payoff: number;
@@ -106,11 +112,10 @@ function computeScenarios(
   stakePerLeg: number,
   priceSum: number,
   groupSize: number,
-  labelMap: Map<string, string>,
 ): ScenarioResult[] {
   const stakeTotal = stakePerLeg * groupSize;
   return members.map((member) => {
-    const winnerName = labelMap.get(member.event_id) ?? extractSubject(member.title);
+    const winnerName = memberDisplayTitle(member.title);
     let payoff: number;
     if (direction === 'under') {
       // Buy Yes in all: only X's Yes pays when X wins
@@ -330,10 +335,8 @@ export function formatSignal(
     viabilityLine = `✅ Operacional. Edge líquido esperado: ${edgePct.toFixed(2)}%.`;
   }
 
-  const memberLabels = buildMemberLabels(members);
-
   // Scenarios
-  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize, memberLabels);
+  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
   const probLucroTotal = scenarios.reduce((acc, s) => acc + (s.profit > 0 ? s.probability : 0), 0);
   const scenariosSorted = [...scenarios].sort((a, b) => b.probability - a.probability);
 
@@ -365,7 +368,7 @@ export function formatSignal(
   const execTitle = viable === 'A' ? `📋 Composição (referência)` : `📋 Pra executar`;
   let execSec = `${execTitle}:\n`;
   for (const m of members) {
-    const name = memberLabels.get(m.event_id) ?? m.title;
+    const name = memberDisplayTitle(m.title);
     const priceForBuy = direction === 'over' ? 1 - m.yes_price : m.yes_price;
     const shares = stakePerLeg > 0 && priceForBuy > 0 ? stakePerLeg / priceForBuy : 0;
     execSec += `   • ${name} → ${side} → $${stakePerLeg.toFixed(2)} a ${priceForBuy.toFixed(3)} (${shares.toFixed(1)} shares)\n`;
