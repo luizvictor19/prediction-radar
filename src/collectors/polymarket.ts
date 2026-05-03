@@ -7,13 +7,12 @@ import { logEvent } from '../lib/logger.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MAX_DAYS_TO_RESOLUTION = 90;
-const MIN_DAYS_TO_RESOLUTION = 7;
 
 function isWithinResolutionWindow(endDate: string): boolean {
   const end = new Date(endDate);
   const now = new Date();
   const days = (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  return days >= MIN_DAYS_TO_RESOLUTION && days <= MAX_DAYS_TO_RESOLUTION;
+  return days > 0 && days <= MAX_DAYS_TO_RESOLUTION;
 }
 
 function passesBaseFilters(market: GammaMarket): boolean {

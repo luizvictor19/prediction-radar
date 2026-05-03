@@ -168,12 +168,24 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       validMembers.push({ event, yesPrice });
     }
 
-    if (validMembers.length < minMembers) {
+    const MIN_YES_PRICE_PER_MEMBER = 0.05;
+    const eligibleMembers = validMembers.filter(m => m.yesPrice >= MIN_YES_PRICE_PER_MEMBER);
+
+    if (validMembers.length > eligibleMembers.length) {
+      const dropped = validMembers.length - eligibleMembers.length;
+      await logEvent({
+        component: 'cross_market_inter_detector',
+        status: 'partial',
+        message: `Group ${negRiskMarketId} dropped ${dropped} member(s) with yes_price < 0.05`,
+      });
+    }
+
+    if (eligibleMembers.length < minMembers) {
       groupsSkippedTooSmall++;
       continue;
     }
 
-    const totalVolume = validMembers.reduce((sum, m) => sum + (m.event.volume_24h ?? 0), 0);
+    const totalVolume = eligibleMembers.reduce((sum, m) => sum + (m.event.volume_24h ?? 0), 0);
     if (totalVolume < minTotalVolume) {
       groupsSkippedLowVolume++;
       continue;
@@ -183,7 +195,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
     // Category + fee rate = taken from member with highest volume_24h
     // (all members in a negRisk group share the same feeType and feeSchedule)
-    const leadByVolume = validMembers
+    const leadByVolume = eligibleMembers
       .sort((a, b) => (b.event.volume_24h ?? 0) - (a.event.volume_24h ?? 0))[0]!;
     const groupCategory = leadByVolume.event.polymarket_category ?? null;
     const directFeeRate = leadByVolume.event.polymarket_fee_rate ?? null;
@@ -191,12 +203,12 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     // Coverage guard: discard group if we don't hold all DB-tracked members.
     // Incomplete coverage makes priceSum artificially low, producing phantom edge.
     const totalGroupSize = groupTotalMap.get(negRiskMarketId) ?? 0;
-    const coverageRatio = totalGroupSize > 0 ? validMembers.length / totalGroupSize : 0;
+    const coverageRatio = totalGroupSize > 0 ? eligibleMembers.length / totalGroupSize : 0;
     if (coverageRatio < 0.95) {
       await logEvent({
         component: 'cross_market_inter_detector',
         status: 'partial',
-        message: `Group ${negRiskMarketId} skipped: incomplete coverage ${validMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
+        message: `Group ${negRiskMarketId} skipped: incomplete coverage ${eligibleMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
         metadata: {
           neg_risk_market_id: negRiskMarketId,
           coverage_ratio: coverageRatio,
@@ -210,7 +222,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     await logEvent({
       component: 'cross_market_inter_detector',
       status: 'partial',
-      message: `Group ${negRiskMarketId} passed coverage: ${validMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
+      message: `Group ${negRiskMarketId} passed coverage: ${eligibleMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
       metadata: {
         neg_risk_market_id: negRiskMarketId,
         coverage_ratio: coverageRatio,
@@ -219,7 +231,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     });
 
     const feeRate = getFeeRate(groupCategory, directFeeRate);
-    const yesPrices = validMembers.map((m) => m.yesPrice);
+    const yesPrices = eligibleMembers.map((m) => m.yesPrice);
     const priceSum = yesPrices.reduce((sum, p) => sum + p, 0);
     const grossDeviation = Math.abs(priceSum - 1.0);
     const { edgePct: expectedEdgePct, direction } = calculateExpectedEdgePct(priceSum, feeRate, yesPrices);
@@ -236,7 +248,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
           neg_risk_market_id: negRiskMarketId,
           price_sum: priceSum,
           direction,
-          group_size: validMembers.length,
+          group_size: eligibleMembers.length,
           category: groupCategory ?? 'unknown',
         },
       });
@@ -280,7 +292,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     if (confidenceScore > 0) highConfidenceCount++;
 
     // Sort members by yes_price desc
-    const sortedMembers = [...validMembers].sort((a, b) => b.yesPrice - a.yesPrice);
+    const sortedMembers = [...eligibleMembers].sort((a, b) => b.yesPrice - a.yesPrice);
 
     const memberList: CrossMarketInterMember[] = sortedMembers.map((m) => ({
       event_id: m.event.id,
@@ -298,7 +310,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
     const categoryLabel = groupCategory ?? 'categoria desconhecida';
     const reasoning =
-      `Grupo de ${validMembers.length} markets em ${categoryLabel} ` +
+      `Grupo de ${eligibleMembers.length} markets em ${categoryLabel} ` +
       `(fee ${(feeRate * 100).toFixed(1)}%). ` +
       `Soma ${(priceSum * 100).toFixed(2)}% (desvio bruto ${(grossDeviation * 100).toFixed(2)}%). ` +
       `Edge líquido estimado após fees: ${expectedEdgePct.toFixed(2)}%. ` +
@@ -343,7 +355,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         neg_risk_market_id: negRiskMarketId,
         polymarket_category: groupCategory,
         fee_rate: feeRate,
-        group_size: validMembers.length,
+        group_size: eligibleMembers.length,
         price_sum: priceSum,
         deviation_gross: grossDeviation,
         estimated_fee_cost: estimatedFeeCost,
@@ -366,7 +378,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         neg_risk_market_id: negRiskMarketId,
         polymarket_category: groupCategory,
         fee_rate: feeRate,
-        group_size: validMembers.length,
+        group_size: eligibleMembers.length,
         price_sum: priceSum,
         deviation_gross: grossDeviation,
         estimated_fee_cost: estimatedFeeCost,
