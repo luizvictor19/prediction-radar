@@ -32,6 +32,27 @@ export function formatSignalAge(lastSeenIso: string): string {
   return mins === 0 ? `🕐 Atualizado há ${hours}h` : `🕐 Atualizado há ${hours}h ${mins}min`;
 }
 
+export function formatTimeUntilResolution(endDateIso: string): string {
+  const ms = new Date(endDateIso).getTime() - Date.now();
+
+  if (ms <= 0) return 'Resolução vencida';
+
+  const totalMin = Math.floor(ms / 60000);
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+
+  if (days >= 2) return `Resolve em ${days} dias`;
+  if (days === 1) {
+    return hours > 0 ? `Resolve em 1 dia e ${hours}h` : 'Resolve em 1 dia';
+  }
+  if (hours >= 1) {
+    return mins > 0 ? `Resolve em ${hours}h ${mins}min` : `Resolve em ${hours}h`;
+  }
+  if (mins >= 1) return `Resolve em ${mins}min`;
+  return 'Resolve em segundos';
+}
+
 export function calcMinBankroll(
   legs: number,
   cap: number,

@@ -1,5 +1,5 @@
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge } from '../lib/format-helpers.js';
+import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -162,7 +162,6 @@ export function formatCalendarDrivenSignal(
   const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
   const lastSeenAt = meta.last_seen_at as string | undefined;
   const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
-  const daysUntil = meta.days_until_resolution ?? 0;
   const yesPrice = meta.current_yes_price ?? 0;
   const volatility = meta.volatility_24h ?? 0;
   const vol24h = meta.volume_24h ?? 0;
@@ -241,7 +240,7 @@ export function formatCalendarDrivenSignal(
 
   return (
     `${emoji} ${title}\n` +
-    `Calendar-Driven · Resolve em ${Math.round(daysUntil)} dias\n` +
+    `Calendar-Driven · ${formatTimeUntilResolution(meta.end_date ?? '')}\n` +
     `\n` +
     `⚡ Confiança: ${confidenceStars(confidence)}\n` +
     `📊 Variação 24h: ${(volatility * 100).toFixed(2)}pp (${describeVolatility(volatility)})\n` +
@@ -252,7 +251,7 @@ export function formatCalendarDrivenSignal(
     `🔍 O que o sinal detectou\n` +
     `   Mercado convergiu nos últimos dias. Preço ${label0} estável\n` +
     `   em ~${p0}% há 24h, com volume de ${formatVolume(vol24h)}.\n` +
-    `   Resolução em ${Math.round(daysUntil)} dias.\n` +
+    `   ${formatTimeUntilResolution(meta.end_date ?? '')}.\n` +
     `   \n` +
     `   Possíveis leituras:\n` +
     `   1. Consenso firme: mercado tá certo, sem edge\n` +

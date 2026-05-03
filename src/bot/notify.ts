@@ -76,8 +76,36 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       return notifyNow - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
     });
 
+    // = calendar_driven extreme price threshold
+    const PRICE_EXTREME_LOW = 0.05;
+    const PRICE_EXTREME_HIGH = 0.95;
+
     for (const signal of signals) {
       try {
+        if (signal.signal_type === 'calendar_driven' && signal.event_id) {
+          const { data: latest } = await supabase
+            .from('polymarket_snapshots')
+            .select('mid_price, captured_at')
+            .eq('event_id', signal.event_id)
+            .order('captured_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (latest && (latest.mid_price <= PRICE_EXTREME_LOW || latest.mid_price >= PRICE_EXTREME_HIGH)) {
+            await supabase
+              .from('detected_signals')
+              .update({ dismissed: true })
+              .eq('id', signal.id);
+
+            await logEvent({
+              component: 'telegram_bot',
+              status: 'success',
+              message: `Dismissed signal ${signal.id} pre-alert: yes_price ${latest.mid_price} is extreme`,
+            });
+            continue;
+          }
+        }
+
         const polymarketUrl = await resolvePolymarketUrl(signal);
         const stakeCap = getStakeCap(config, signal.signal_type);
         const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap);

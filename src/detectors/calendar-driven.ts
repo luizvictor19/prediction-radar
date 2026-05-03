@@ -81,6 +81,10 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let skippedLowSnapshots = 0;
   let skippedHighVolatility = 0;
   let skippedMalformedOutcomes = 0;
+  let skippedExtremePrice = 0;
+
+  const PRICE_EXTREME_LOW = 0.05;
+  const PRICE_EXTREME_HIGH = 0.95;
 
   const snapshotCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -136,6 +140,12 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
     if (vol >= 0.005) {
       skippedHighVolatility++;
+      continue;
+    }
+
+    const lastPrice = validPrices[validPrices.length - 1]!;
+    if (lastPrice <= PRICE_EXTREME_LOW || lastPrice >= PRICE_EXTREME_HIGH) {
+      skippedExtremePrice++;
       continue;
     }
 
@@ -226,7 +236,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   await logEvent({
     component: 'calendar_driven_detector',
     status: 'success',
-    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale`,
+    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ${skippedExtremePrice} skipped_extreme_price`,
     metadata: {
       markets_evaluated: marketsEvaluated,
       flagged: flaggedCount,
@@ -235,6 +245,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       skipped_high_volatility: skippedHighVolatility,
       skipped_malformed_outcomes: skippedMalformedOutcomes,
       skipped_stale: skippedStale,
+      skipped_extreme_price: skippedExtremePrice,
       duration_ms: Date.now() - start,
     },
   });
