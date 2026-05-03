@@ -71,7 +71,6 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
     const FRESH_WINDOW_MS = 15 * 60 * 1000;
     const notifyNow = Date.now();
     const signals = rawSignals.filter(s => {
-      if (s.signal_type === 'calendar_driven') return true;
       const lastSeen = (s.metadata as any)?.last_seen_at;
       if (!lastSeen) return false;
       return notifyNow - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;

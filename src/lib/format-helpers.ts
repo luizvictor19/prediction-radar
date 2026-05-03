@@ -23,6 +23,15 @@ export function calcCalendarDrivenStake(
   return Math.round(raw * 100) / 100;
 }
 
+export function formatSignalAge(lastSeenIso: string): string {
+  const ageMin = Math.floor((Date.now() - new Date(lastSeenIso).getTime()) / 60000);
+  if (ageMin < 1) return '🕐 Atualizado agora há pouco';
+  if (ageMin < 60) return `🕐 Atualizado há ${ageMin}min`;
+  const hours = Math.floor(ageMin / 60);
+  const mins = ageMin % 60;
+  return mins === 0 ? `🕐 Atualizado há ${hours}h` : `🕐 Atualizado há ${hours}h ${mins}min`;
+}
+
 export function calcMinBankroll(
   legs: number,
   cap: number,

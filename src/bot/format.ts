@@ -1,5 +1,5 @@
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll } from '../lib/format-helpers.js';
+import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -143,6 +143,8 @@ export function formatCalendarDrivenSignal(
   stakeCap: number,
 ): string {
   const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
+  const lastSeenAt = meta.last_seen_at as string | undefined;
+  const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
   const daysUntil = meta.days_until_resolution ?? 0;
   const yesPrice = meta.current_yes_price ?? 0;
   const volatility = meta.volatility_24h ?? 0;
@@ -257,7 +259,8 @@ export function formatCalendarDrivenSignal(
     `\n` +
     `⚙️ Como operar\n` +
     `   Stake sugerido: $${stake.toFixed(2)} (${(cap * 100).toFixed(0)}% × confiança ${confidence.toFixed(2)} × bankroll $${bankroll})\n` +
-    `   ${viabilityLine}`
+    `   ${viabilityLine}` +
+    ageLine
   );
 }
 
@@ -271,6 +274,8 @@ export function formatSignal(
   }
 
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+  const lastSeenAt = meta.last_seen_at as string | undefined;
+  const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
   const edgePct = meta.expected_edge_pct ?? 0;
   const direction = meta.direction ?? 'over';
   const priceSum = meta.price_sum ?? 0;
@@ -364,7 +369,8 @@ export function formatSignal(
     `${howToSec}\n` +
     `\n` +
     `${execSec}\n` +
-    `📊 Volume 24h: ${formatVolume(totalVol)}`
+    `📊 Volume 24h: ${formatVolume(totalVol)}` +
+    ageLine
   );
 }
 

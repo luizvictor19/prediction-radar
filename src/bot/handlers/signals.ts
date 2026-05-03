@@ -85,7 +85,6 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const FRESH_WINDOW_MS = 15 * 60 * 1000;
     const now = Date.now();
     const signals = rawSignals.filter(s => {
-      if (s.signal_type === 'calendar_driven') return true;
       const lastSeen = (s.metadata as any)?.last_seen_at;
       if (!lastSeen) return false;
       return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;

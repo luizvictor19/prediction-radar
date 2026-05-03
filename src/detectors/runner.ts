@@ -22,7 +22,7 @@ async function dismissStaleSignals(): Promise<void> {
   const { data: stale, error: selErr } = await supabase
     .from('detected_signals')
     .select('id, signal_type, metadata')
-    .in('signal_type', ['cross_market_inter', 'cross_market_intra'])
+    .in('signal_type', ['cross_market_inter', 'cross_market_intra', 'calendar_driven'])
     .eq('dismissed', false)
     .eq('acted_on', false)
     .filter('metadata->>last_seen_at', 'lt', cutoff);
@@ -56,7 +56,7 @@ async function dismissStaleSignals(): Promise<void> {
   await logEvent({
     component: 'detector_runner',
     status: 'success',
-    message: `Dismissed ${ids.length} stale cross_market signal(s) (last_seen_at < ${cutoff})`,
+    message: `Dismissed ${ids.length} stale signal(s) (last_seen_at < ${cutoff})`,
   });
 }
 
