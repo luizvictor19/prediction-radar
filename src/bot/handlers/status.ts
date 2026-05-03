@@ -27,7 +27,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .select('id', { count: 'exact', head: true })
         .eq('dismissed', false)
         .eq('acted_on', false)
-        .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString()),
+        .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
       supabase
         .from('detected_signals')
         .select('id', { count: 'exact', head: true })
