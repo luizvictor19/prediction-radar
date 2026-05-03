@@ -4,6 +4,7 @@ import { getSystemConfig } from '../../lib/config.js';
 import { logEvent } from '../../lib/logger.js';
 import { formatSignal, getStakeCap } from '../format.js';
 import { signalKeyboard, calendarDrivenKeyboard } from '../keyboards.js';
+import { replyLongMessage } from '../message-utils.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 
@@ -97,9 +98,9 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       const keyboard = signal.signal_type === 'calendar_driven'
         ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
         : signalKeyboard(signal.id, polymarketUrl);
-      await ctx.reply(text, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard,
+      await replyLongMessage(ctx, text, {
+        parseMode: 'Markdown',
+        replyMarkup: keyboard,
       });
     }
   } catch (err) {
