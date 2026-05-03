@@ -8,14 +8,18 @@ interface LogEventParams {
 }
 
 export async function logEvent(params: LogEventParams): Promise<void> {
-  const { error } = await supabase.from('system_logs').insert({
-    component: params.component,
-    status: params.status,
-    message: params.message,
-    metadata: params.metadata ?? null,
-  });
+  try {
+    const { error } = await supabase.from('system_logs').insert({
+      component: params.component,
+      status: params.status,
+      message: params.message,
+      metadata: params.metadata ?? null,
+    });
 
-  if (error) {
-    console.error('[logger] Failed to write log entry:', error.message, params);
+    if (error) {
+      console.error('[logger] Failed to write log entry:', error.message, params);
+    }
+  } catch (err) {
+    console.error('[logger] Exception writing log entry:', String(err), params);
   }
 }

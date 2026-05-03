@@ -80,6 +80,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
           replyMarkup: keyboard,
         });
         await supabase.from('detected_signals').update({ alerted: true }).eq('id', signal.id);
+        await logEvent({ component: 'bot_notify', status: 'success', message: `Sent signal ${signal.id}` });
       } catch (sendErr) {
         await logEvent({ component: 'telegram_bot', status: 'error', message: `notify send failed for signal ${signal.id}: ${String(sendErr)}` });
       }

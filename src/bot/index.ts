@@ -43,6 +43,14 @@ bot.use(createConversation(
 
 bot.use(authMiddleware());
 
+bot.use(async (ctx, next) => {
+  const cmd = ctx.message?.text?.match(/^\/(\w+)/)?.[1];
+  if (cmd) {
+    await logEvent({ component: 'bot_command', status: 'success', message: `/${cmd} received` });
+  }
+  return next();
+});
+
 bot.command('signals', signalsHandler);
 bot.command('positions', positionsHandler);
 bot.command('status', statusHandler);
@@ -91,4 +99,5 @@ startNotifyLoop(bot);
 console.log('[bot] Waiting 60s before starting long-polling to avoid 409 conflicts...');
 await new Promise((resolve) => setTimeout(resolve, 60_000));
 console.log('[bot] Starting long-polling now');
+await logEvent({ component: 'telegram_bot', status: 'success', message: 'Bot started (long-polling)' });
 bot.start({ drop_pending_updates: true });
