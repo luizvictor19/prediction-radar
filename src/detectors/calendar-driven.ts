@@ -193,7 +193,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
       await supabase
         .from('detected_signals')
-        .update({ confidence_score: confidenceScore, metadata: updatedMeta })
+        .update({ confidence_score: confidenceScore, metadata: updatedMeta, expires_at: expiresAt })
         .eq('id', existing.id);
     } else {
       const metadata: CalendarDrivenSignalMetadata = {
