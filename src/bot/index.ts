@@ -88,6 +88,7 @@ bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
 
 startNotifyLoop(bot);
 
+console.log('[bot] Waiting 60s before starting long-polling to avoid 409 conflicts...');
+await new Promise((resolve) => setTimeout(resolve, 60_000));
+console.log('[bot] Starting long-polling now');
 bot.start({ drop_pending_updates: true });
-
-console.log('[bot] Prediction Radar Bot running (long-polling)');
