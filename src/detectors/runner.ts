@@ -16,16 +16,18 @@ const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
 ];
 
 async function dismissStaleSignals(): Promise<void> {
-  // = detector freshness window
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const cutoffMs = Date.now() - 15 * 60 * 1000;
 
-  const { data: stale, error: selErr } = await supabase
+  const { data: candidates, error: selErr } = await supabase
     .from('detected_signals')
     .select('id, signal_type, metadata')
-    .in('signal_type', ['cross_market_inter', 'cross_market_intra', 'calendar_driven'])
+    .in('signal_type', [
+      'cross_market_inter',
+      'cross_market_intra',
+      'calendar_driven',
+    ])
     .eq('dismissed', false)
-    .eq('acted_on', false)
-    .filter('metadata->>last_seen_at', 'lt', cutoff);
+    .eq('acted_on', false);
 
   if (selErr) {
     await logEvent({
@@ -36,7 +38,20 @@ async function dismissStaleSignals(): Promise<void> {
     return;
   }
 
-  if (!stale || stale.length === 0) return;
+  const stale = (candidates ?? []).filter(s => {
+    const lastSeen = (s.metadata as any)?.last_seen_at;
+    if (!lastSeen) return false;
+    return new Date(lastSeen).getTime() < cutoffMs;
+  });
+
+  if (stale.length === 0) {
+    await logEvent({
+      component: 'detector_runner',
+      status: 'success',
+      message: `dismissStaleSignals: no stale signals (checked ${candidates?.length ?? 0})`,
+    });
+    return;
+  }
 
   const ids = stale.map(s => s.id);
   const { error: updErr } = await supabase
@@ -56,7 +71,7 @@ async function dismissStaleSignals(): Promise<void> {
   await logEvent({
     component: 'detector_runner',
     status: 'success',
-    message: `Dismissed ${ids.length} stale signal(s) (last_seen_at < ${cutoff})`,
+    message: `Dismissed ${ids.length} stale signal(s) (cutoff ${new Date(cutoffMs).toISOString()})`,
   });
 }
 
