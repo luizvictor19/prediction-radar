@@ -246,13 +246,12 @@ export function formatCalendarDrivenSignal(
   if (stake < 1.0) {
     const minBankroll = calcMinBankroll(1, cap, confidence);
     viabilityLine =
-      `❌ Abaixo do mínimo Polymarket ($1).\n` +
-      `      Pra operar precisa de bankroll de ~$${minBankroll} ` +
+      `❌ Inviável: pra operar precisa de bankroll de ~$${minBankroll} ` +
       `(com cap ${(cap * 100).toFixed(0)}% e confiança ${confidence.toFixed(2)}).\n` +
       `   \n` +
       `   Recomendado: ignorar.`;
   } else {
-    viabilityLine = `✅ Viável (acima de $1 mínimo Polymarket)`;
+    viabilityLine = `✅ Viável`;
   }
 
   const pfx0 = prefixSide0 ? `${prefixSide0} ` : '';
@@ -338,8 +337,7 @@ export function formatSignal(
     const fracaoEfetiva = Math.min(maxStakePct, edgePct / 200);
     const bankrollMin = fracaoEfetiva > 0 ? Math.ceil(groupSize / fracaoEfetiva) : 999999;
     viabilityLine =
-      `❌ Inviável: Polymarket exige mín. $1/leg.\n` +
-      `      Pra essa basket precisaria de bankroll de ~$${bankrollMin}.\n` +
+      `❌ Inviável: pra essa basket precisaria de bankroll de ~$${bankrollMin}.\n` +
       `   \n` +
       `   Recomendado: ignorar.`;
   } else if (stakePerLeg < 5.0) {

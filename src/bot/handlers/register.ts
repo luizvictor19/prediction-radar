@@ -39,6 +39,57 @@ const CATEGORY_LABEL: Record<string, string> = {
   finance_prices_fees: 'Finanças',
 };
 
+interface EventMatch {
+  id: string;
+  title: string;
+  polymarket_category: string | null;
+}
+
+async function findMatchingEvents(searchText: string): Promise<EventMatch[]> {
+  const keywords = searchText
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length >= 3);
+
+  if (keywords.length === 0) return [];
+
+  let query = supabase
+    .from('events')
+    .select('id, title, polymarket_category')
+    .eq('status', 'active')
+    .limit(10);
+
+  for (const kw of keywords) {
+    query = query.ilike('title', `%${kw}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    await logEvent({
+      component: 'bot_command',
+      status: 'error',
+      message: `Event match query failed: ${error.message}`,
+    });
+    return [];
+  }
+
+  return (data ?? []) as EventMatch[];
+}
+
+async function findActiveSignalForEvent(eventId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('detected_signals')
+    .select('id')
+    .eq('event_id', eventId)
+    .eq('dismissed', false)
+    .eq('acted_on', false)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data?.id ?? null;
+}
+
 async function waitConfirm(conversation: BotConversation, ctx: BotContext, text: string): Promise<boolean> {
   await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: SIM_NAO_KBD });
   const btnCtx = await conversation.waitFor('callback_query:data');
@@ -65,8 +116,56 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   const titleCtx = await conversation.waitFor('message:text');
   const eventTitle = titleCtx.message.text.trim();
 
-  // b. Categoria
-  const category = await askCategory(conversation, ctx);
+  // a.1. Event match
+  let eventIdMatch: string | null = null;
+  let signalIdMatch: string | null = null;
+  let matchedCategory: string | null = null;
+  let matchedTitle: string | null = null;
+
+  const matches = await findMatchingEvents(eventTitle);
+
+  if (matches.length === 1) {
+    const match = matches[0]!;
+    eventIdMatch = match.id;
+    matchedCategory = match.polymarket_category;
+    matchedTitle = match.title;
+    signalIdMatch = await findActiveSignalForEvent(match.id);
+    const catDisplay = match.polymarket_category ? catLabel(match.polymarket_category) : 'sem categoria';
+    await ctx.reply(`✅ Evento encontrado: ${match.title}\nCategoria: ${catDisplay}`);
+  } else if (matches.length >= 2) {
+    const kbd = new InlineKeyboard();
+    for (const m of matches) {
+      const label = m.title.length > 60 ? m.title.slice(0, 57) + '...' : m.title;
+      kbd.text(label, `match_event:${m.id}`).row();
+    }
+    kbd.text('Nenhum, registrar manualmente', 'match_event:none');
+
+    await ctx.reply(`Encontrei ${matches.length} eventos parecidos. Qual?`, { reply_markup: kbd });
+    const choiceCtx = await conversation.waitFor('callback_query:data');
+    await choiceCtx.answerCallbackQuery();
+    const chosen = choiceCtx.callbackQuery.data;
+
+    if (chosen !== 'match_event:none') {
+      const chosenId = chosen.replace('match_event:', '');
+      const chosenMatch = matches.find(m => m.id === chosenId) ?? null;
+      if (chosenMatch) {
+        eventIdMatch = chosenMatch.id;
+        matchedCategory = chosenMatch.polymarket_category;
+        matchedTitle = chosenMatch.title;
+        signalIdMatch = await findActiveSignalForEvent(chosenMatch.id);
+        const catDisplay = chosenMatch.polymarket_category ? catLabel(chosenMatch.polymarket_category) : 'sem categoria';
+        await ctx.reply(`✅ Evento encontrado: ${chosenMatch.title}\nCategoria: ${catDisplay}`);
+      }
+    }
+  }
+
+  // b. Categoria (pula se match já forneceu)
+  let category: string | null;
+  if (eventIdMatch !== null) {
+    category = matchedCategory;
+  } else {
+    category = await askCategory(conversation, ctx);
+  }
 
   // c. Outcome
   await ctx.reply('Outcome (ex: Yes, No, Over 2.5):');
@@ -113,9 +212,10 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
 
   // h. Resumo + confirmação
   const shares = stakeUsd / entryPrice;
+  const titleDisplay = matchedTitle ? `${matchedTitle} _(vinculado)_` : eventTitle;
   const summary =
     `*Confirmar?*\n` +
-    `📋 ${eventTitle}\n` +
+    `📋 ${titleDisplay}\n` +
     `Outcome: \`${outcome}\`\n` +
     `Stake: \`$${stakeUsd.toFixed(2)}\` @ \`${entryPrice}\`\n` +
     `Shares: \`${shares.toFixed(4)}\`\n` +
@@ -133,8 +233,8 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
-      signal_id: null,
-      event_id: null,
+      signal_id: signalIdMatch,
+      event_id: eventIdMatch,
       thesis,
       thesis_type: 'manual',
       confidence_self: confidenceSelf,
@@ -154,7 +254,7 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
 
   const { error: legErr } = await supabase.from('my_bet_legs').insert({
     bet_id: bet.id,
-    event_id: null,
+    event_id: eventIdMatch,
     outcome,
     entry_price: entryPrice,
     stake_usd: stakeUsd,
@@ -168,8 +268,29 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     return;
   }
 
+  // Marcar sinal como acted_on se houve match
+  if (signalIdMatch) {
+    await supabase
+      .from('detected_signals')
+      .update({ acted_on: true })
+      .eq('id', signalIdMatch);
+
+    await logEvent({
+      component: 'bot_command',
+      status: 'success',
+      message: `/register: linked manual bet to signal ${signalIdMatch}`,
+      metadata: { bet_id: bet.id, signal_id: signalIdMatch, event_id: eventIdMatch },
+    });
+  }
+
   // j. Resposta
-  await ctx.reply('✅ Bet registrada manualmente.');
+  if (signalIdMatch) {
+    await ctx.reply('✅ Bet registrada e vinculada ao sinal.');
+  } else if (eventIdMatch) {
+    await ctx.reply('✅ Bet registrada e vinculada ao evento.');
+  } else {
+    await ctx.reply('✅ Bet registrada manualmente.');
+  }
 }
 
 async function registerBasket(conversation: BotConversation, ctx: BotContext): Promise<void> {
