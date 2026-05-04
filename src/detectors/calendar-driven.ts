@@ -166,14 +166,13 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       `Avaliar tese fundamental antes de operar.`;
 
     // Dedup: por event_id + signal_type dentro da janela
-    const { data: existing, error: dedupErr } = await supabase
+    const { data: existingRows, error: dedupErr } = await supabase
       .from('detected_signals')
-      .select('id, metadata')
+      .select('id, metadata, created_at')
       .eq('signal_type', 'calendar_driven')
       .eq('event_id', event.id)
       .eq('dismissed', false)
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
 
     if (dedupErr) {
       await logEvent({
@@ -183,6 +182,23 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         metadata: { event_id: event.id, error: dedupErr.message },
       });
       continue;
+    }
+
+    const existing = (existingRows ?? [])[0] ?? null;
+
+    if ((existingRows ?? []).length > 1) {
+      const olderIds = (existingRows ?? []).slice(1).map(r => r.id);
+      await supabase
+        .from('detected_signals')
+        .update({ dismissed: true })
+        .in('id', olderIds);
+
+      await logEvent({
+        component: 'calendar_driven_detector',
+        status: 'partial',
+        message: `Auto-dismissed ${olderIds.length} duplicate signal(s) for event ${event.id}`,
+        metadata: { event_id: event.id, dismissed_ids: olderIds },
+      });
     }
 
     if (existing) {
