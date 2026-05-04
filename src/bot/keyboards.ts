@@ -33,6 +33,12 @@ export function positionKeyboard(positionId: string): InlineKeyboard {
   return new InlineKeyboard().text('Fechar posição', `close:${positionId}`);
 }
 
+export function basketKeyboard(betId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text('Fechar tudo', `close:${betId}`)
+    .text('Fechar leg específica', `close_leg_select:${betId}`);
+}
+
 export function confirmKeyboard(action: string): InlineKeyboard {
   return new InlineKeyboard()
     .text('Confirmar', `confirm:${action}`)

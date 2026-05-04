@@ -2,16 +2,38 @@ import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
 import { relativeTime } from '../format.js';
-import type { PositionRow } from '../format.js';
-import { positionKeyboard } from '../keyboards.js';
+import { positionKeyboard, basketKeyboard } from '../keyboards.js';
+
+type LegRow = {
+  id: string;
+  bet_id: string;
+  outcome: string;
+  entry_price: number;
+  stake_usd: number;
+  shares: number | null;
+  created_at: string;
+  my_bets: { placed_at: string; polymarket_category: string | null } | null;
+  events: { title: string } | null;
+};
+
+type BetGroup = {
+  bet_id: string;
+  placed_at: string;
+  polymarket_category: string | null;
+  legs: LegRow[];
+};
 
 export async function positionsHandler(ctx: BotContext): Promise<void> {
   try {
     const { data, error } = await supabase
-      .from('my_bets')
-      .select('*, events(title)')
+      .from('my_bet_legs')
+      .select(`
+        id, bet_id, outcome, entry_price, stake_usd, shares, created_at,
+        my_bets!inner ( placed_at, polymarket_category ),
+        events ( title )
+      `)
       .is('closed_at', null)
-      .order('placed_at', { ascending: false });
+      .order('created_at', { ascending: true });
 
     if (error) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `positions query failed: ${error.message}` });
@@ -19,39 +41,70 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const positions = (data ?? []) as PositionRow[];
+    const legs = (data ?? []) as unknown as LegRow[];
 
-    if (positions.length === 0) {
+    if (legs.length === 0) {
       await ctx.reply('Nenhuma posição aberta.');
       return;
     }
 
-    const displayedPositions: PositionRow[] = [];
-    for (let i = 0; i < positions.length; i++) {
-      const pos = positions[i]!;
-      const label = (pos.events as { title: string } | null)?.title ?? pos.polymarket_category ?? 'Sem título';
-      const text =
-        `*Posição #${i + 1}* — ${label}\n` +
-        `\`${pos.outcome}\` a \`${pos.entry_price}\` | Stake \`$${pos.stake_usd.toFixed(2)}\` | Shares \`${pos.shares.toFixed(4)}\`\n` +
-        `Aberta há ${relativeTime(pos.placed_at)}`;
-
-      await ctx.reply(text, {
-        parse_mode: 'Markdown',
-        reply_markup: positionKeyboard(pos.id),
-      });
-      displayedPositions.push(pos);
-    }
-
-    if (displayedPositions.length > 0) {
-      const counts = new Map<string, number>();
-      for (const pos of displayedPositions) {
-        counts.set(pos.outcome, (counts.get(pos.outcome) ?? 0) + 1);
+    // Group by bet_id preserving creation order within each group
+    const groupMap = new Map<string, BetGroup>();
+    for (const leg of legs) {
+      if (!groupMap.has(leg.bet_id)) {
+        const betMeta = leg.my_bets as { placed_at: string; polymarket_category: string | null } | null;
+        groupMap.set(leg.bet_id, {
+          bet_id: leg.bet_id,
+          placed_at: betMeta?.placed_at ?? leg.created_at,
+          polymarket_category: betMeta?.polymarket_category ?? null,
+          legs: [],
+        });
       }
-      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-      const total = displayedPositions.length;
-      const lines = sorted.map(([outcome, n]) => `• ${outcome}: ${n}`).join('\n');
-      await ctx.reply(`📊 Total: ${total} posições\n${lines}`);
+      groupMap.get(leg.bet_id)!.legs.push(leg);
     }
+
+    // Sort groups newest first
+    const groups = [...groupMap.values()].sort(
+      (a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime(),
+    );
+
+    for (const group of groups) {
+      const { legs: groupLegs, bet_id, placed_at, polymarket_category } = group;
+
+      if (groupLegs.length === 1) {
+        const leg = groupLegs[0]!;
+        const eventTitle =
+          (leg.events as { title: string } | null)?.title ?? polymarket_category ?? 'Sem título';
+        const sharesDisplay = (leg.shares ?? 0).toFixed(2);
+        const text =
+          `📅 ${eventTitle}\n` +
+          `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n` +
+          `   Aberta há ${relativeTime(placed_at)}`;
+        await ctx.reply(text, { reply_markup: positionKeyboard(bet_id) });
+      } else {
+        const firstTitle =
+          (groupLegs[0]!.events as { title: string } | null)?.title ?? polymarket_category ?? 'Basket';
+        const totalStake = groupLegs.reduce((s, l) => s + l.stake_usd, 0);
+        let text = `🎯 ${firstTitle} (basket, ${groupLegs.length} legs)\n`;
+        for (const leg of groupLegs) {
+          const evtTitle = (leg.events as { title: string } | null)?.title ?? 'Sem título';
+          const sharesDisplay = (leg.shares ?? 0).toFixed(2);
+          text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n`;
+        }
+        text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
+        await ctx.reply(text, { reply_markup: basketKeyboard(bet_id) });
+      }
+    }
+
+    // Summary by outcome
+    const totalLegs = legs.length;
+    const counts = new Map<string, number>();
+    for (const leg of legs) {
+      counts.set(leg.outcome, (counts.get(leg.outcome) ?? 0) + 1);
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const lines = sorted.map(([outcome, n]) => `• ${outcome}: ${n}`).join('\n');
+    await ctx.reply(`📊 Total: ${totalLegs} legs abertas\n${lines}`);
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `positionsHandler error: ${String(err)}` });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
@@ -94,7 +147,6 @@ export async function closePositionConversation(
     }
 
     const shares: number = pos.shares;
-    const stakeUsd: number = pos.stake_usd;
     const pnlUsd = (closingPrice - pos.entry_price) * shares;
 
     await supabase.from('my_bets').update({

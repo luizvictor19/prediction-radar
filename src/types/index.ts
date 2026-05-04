@@ -148,6 +148,38 @@ export interface CalendarDrivenSignalMetadata {
   last_seen_at: string;
 }
 
+export interface MyBet {
+  id: string;
+  signal_id: string | null;
+  event_id: string | null;
+  thesis: string | null;
+  thesis_type: string | null;
+  confidence_self: number | null;
+  domain_confidence: number | null;
+  polymarket_category: string | null;
+  notes: string | null;
+  placed_at: string;
+  closed_at: string | null;
+}
+
+export interface MyBetLeg {
+  id: string;
+  bet_id: string;
+  event_id: string | null;
+  outcome: string;
+  entry_price: number;
+  stake_usd: number;
+  shares: number | null;
+  closing_price: number | null;
+  resolution_price: number | null;
+  result: 'win' | 'loss' | 'void' | null;
+  pnl_usd: number | null;
+  clv: number | null;
+  notes: string | null;
+  closed_at: string | null;
+  created_at: string;
+}
+
 export interface DetectedSignalInsert {
   event_id: string | null;
   signal_type: SignalType;
