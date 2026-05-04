@@ -10,6 +10,7 @@ import { bankrollHandler } from './handlers/bankroll.js';
 import { configHandler } from './handlers/config_cmd.js';
 import { helpHandler } from './handlers/help.js';
 import { registerHandler, registerConversation } from './handlers/register.js';
+import { editHandler, editConversation } from './handlers/edit.js';
 import { startNotifyLoop } from './notify.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
@@ -50,6 +51,13 @@ bot.use(createConversation(
   'register',
 ));
 
+bot.use(createConversation(
+  async (conversation, ctx, legId: unknown) => {
+    await editConversation(conversation as BotConversation, ctx as BotContext, legId);
+  },
+  'edit',
+));
+
 bot.use(authMiddleware());
 
 bot.use(async (ctx, next) => {
@@ -67,6 +75,13 @@ bot.command('bankroll', bankrollHandler);
 bot.command('config', configHandler);
 bot.command('help', helpHandler);
 bot.command('register', registerHandler);
+bot.command('edit', editHandler);
+
+bot.callbackQuery(/^edit_leg:(.+)$/, async (ctx) => {
+  const legId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('edit', legId);
+});
 
 bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
@@ -116,6 +131,7 @@ try {
     { command: 'config',    description: 'Configuração atual' },
     { command: 'help',      description: 'Listar comandos disponíveis' },
     { command: 'register',  description: 'Registrar bet feita fora do bot' },
+    { command: 'edit',      description: 'Editar legs abertas' },
   ]);
   console.log('[bot] Commands registered');
 } catch (err) {

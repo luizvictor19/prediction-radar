@@ -168,7 +168,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     // Dedup: por event_id + signal_type dentro da janela
     const { data: existingRows, error: dedupErr } = await supabase
       .from('detected_signals')
-      .select('id, metadata, created_at')
+      .select('id, metadata, created_at, acted_on')
       .eq('signal_type', 'calendar_driven')
       .eq('event_id', event.id)
       .eq('dismissed', false)
@@ -201,6 +201,16 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       });
     }
 
+    // Verificar se há bet aberta no evento
+    const { data: openBets, error: openBetsErr } = await supabase
+      .from('my_bets')
+      .select('id')
+      .eq('event_id', event.id)
+      .is('closed_at', null)
+      .limit(1);
+
+    const hasOpenBet = !openBetsErr && (openBets ?? []).length > 0;
+
     if (existing) {
       dedupedCount++;
       const prevMeta = (existing.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
@@ -217,9 +227,19 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         last_seen_at: nowIso,
       };
 
+      const updateData: Record<string, unknown> = {
+        confidence_score: confidenceScore,
+        metadata: updatedMeta,
+        expires_at: expiresAt,
+      };
+
+      if (hasOpenBet && !(existing as { acted_on: boolean }).acted_on) {
+        updateData['acted_on'] = true;
+      }
+
       await supabase
         .from('detected_signals')
-        .update({ confidence_score: confidenceScore, metadata: updatedMeta, expires_at: expiresAt })
+        .update(updateData)
         .eq('id', existing.id);
     } else {
       const metadata: CalendarDrivenSignalMetadata = {
@@ -244,7 +264,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         suggested_outcome: null,
         suggested_stake_pct: null,
         expires_at: expiresAt,
-        alerted: false,
+        alerted: hasOpenBet,
+        acted_on: hasOpenBet,
       });
     }
   }

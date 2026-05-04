@@ -6,6 +6,7 @@ const HELP_TEXT = `📡 *Sinais*
 📈 *Posições*
 /positions — Listar posições abertas
 /register — Registrar bet feita fora do bot (manual)
+/edit — Editar legs abertas
 
 ⚙️ *Sistema*
 /status — Resumo geral (bankroll, bets, sinais)
