@@ -172,7 +172,6 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .eq('signal_type', 'calendar_driven')
       .eq('event_id', event.id)
       .eq('dismissed', false)
-      .eq('acted_on', false)
       .limit(1)
       .maybeSingle();
 

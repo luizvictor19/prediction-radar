@@ -55,6 +55,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const openRows = openLegs.data ?? [];
     const openCount = new Set(openRows.map((r: { bet_id: string }) => r.bet_id)).size;
     const openStake = openRows.reduce((s: number, r: { stake_usd: number }) => s + r.stake_usd, 0);
+    const disponivel = config.bankroll_usd - openStake;
 
     // Closed metrics from legs (7d win rate and PnL)
     const closedLegRows = closedLegs.data ?? [];
@@ -82,6 +83,8 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const text =
       `*Status*\n` +
       `Bankroll: \`$${config.bankroll_usd.toFixed(2)}\`\n` +
+      `  Comprometido: \`$${openStake.toFixed(2)}\` (${openRows.length} legs abertas)\n` +
+      `  Disponível: \`$${disponivel.toFixed(2)}\`\n` +
       `Bets abertas: \`${openCount}\` (stake total \`$${openStake.toFixed(2)}\`)\n` +
       `Bets fechadas (7d): \`${closedBetCount}\` | Win rate \`${winRate}%\` | PnL \`${pnlSign}$${pnlTotal.toFixed(2)}\`\n` +
       `Último detector: \`${lastRun}\`\n` +

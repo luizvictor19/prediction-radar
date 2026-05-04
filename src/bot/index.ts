@@ -9,6 +9,7 @@ import { statusHandler } from './handlers/status.js';
 import { bankrollHandler } from './handlers/bankroll.js';
 import { configHandler } from './handlers/config_cmd.js';
 import { helpHandler } from './handlers/help.js';
+import { registerHandler, registerConversation } from './handlers/register.js';
 import { startNotifyLoop } from './notify.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
@@ -42,6 +43,13 @@ bot.use(createConversation(
   'close_position',
 ));
 
+bot.use(createConversation(
+  async (conversation, ctx) => {
+    await registerConversation(conversation as BotConversation, ctx as BotContext);
+  },
+  'register',
+));
+
 bot.use(authMiddleware());
 
 bot.use(async (ctx, next) => {
@@ -58,6 +66,7 @@ bot.command('status', statusHandler);
 bot.command('bankroll', bankrollHandler);
 bot.command('config', configHandler);
 bot.command('help', helpHandler);
+bot.command('register', registerHandler);
 
 bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
@@ -106,6 +115,7 @@ try {
     { command: 'bankroll',  description: 'Ver ou ajustar bankroll' },
     { command: 'config',    description: 'Configuração atual' },
     { command: 'help',      description: 'Listar comandos disponíveis' },
+    { command: 'register',  description: 'Registrar bet feita fora do bot' },
   ]);
   console.log('[bot] Commands registered');
 } catch (err) {

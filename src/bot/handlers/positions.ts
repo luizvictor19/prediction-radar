@@ -12,7 +12,7 @@ type LegRow = {
   stake_usd: number;
   shares: number | null;
   created_at: string;
-  my_bets: { placed_at: string; polymarket_category: string | null } | null;
+  my_bets: { placed_at: string; polymarket_category: string | null; thesis: string | null } | null;
   events: { title: string } | null;
 };
 
@@ -20,6 +20,7 @@ type BetGroup = {
   bet_id: string;
   placed_at: string;
   polymarket_category: string | null;
+  thesis: string | null;
   legs: LegRow[];
 };
 
@@ -29,7 +30,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       .from('my_bet_legs')
       .select(`
         id, bet_id, outcome, entry_price, stake_usd, shares, created_at,
-        my_bets!inner ( placed_at, polymarket_category ),
+        my_bets!inner ( placed_at, polymarket_category, thesis ),
         events ( title )
       `)
       .is('closed_at', null)
@@ -52,11 +53,12 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
     const groupMap = new Map<string, BetGroup>();
     for (const leg of legs) {
       if (!groupMap.has(leg.bet_id)) {
-        const betMeta = leg.my_bets as { placed_at: string; polymarket_category: string | null } | null;
+        const betMeta = leg.my_bets as { placed_at: string; polymarket_category: string | null; thesis: string | null } | null;
         groupMap.set(leg.bet_id, {
           bet_id: leg.bet_id,
           placed_at: betMeta?.placed_at ?? leg.created_at,
           polymarket_category: betMeta?.polymarket_category ?? null,
+          thesis: betMeta?.thesis ?? null,
           legs: [],
         });
       }
@@ -69,12 +71,12 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
     );
 
     for (const group of groups) {
-      const { legs: groupLegs, bet_id, placed_at, polymarket_category } = group;
+      const { legs: groupLegs, bet_id, placed_at, polymarket_category, thesis } = group;
 
       if (groupLegs.length === 1) {
         const leg = groupLegs[0]!;
         const eventTitle =
-          (leg.events as { title: string } | null)?.title ?? polymarket_category ?? 'Sem título';
+          (leg.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Bet manual';
         const sharesDisplay = (leg.shares ?? 0).toFixed(2);
         const text =
           `📅 ${eventTitle}\n` +
@@ -83,7 +85,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         await ctx.reply(text, { reply_markup: positionKeyboard(bet_id) });
       } else {
         const firstTitle =
-          (groupLegs[0]!.events as { title: string } | null)?.title ?? polymarket_category ?? 'Basket';
+          (groupLegs[0]!.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Basket';
         const totalStake = groupLegs.reduce((s, l) => s + l.stake_usd, 0);
         let text = `🎯 ${firstTitle} (basket, ${groupLegs.length} legs)\n`;
         for (const leg of groupLegs) {
