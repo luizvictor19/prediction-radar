@@ -232,7 +232,10 @@ export function formatCalendarDrivenSignal(
   const isEvenMatch = Math.abs(price0 - 0.5) < 0.01;
   let prefixSide0 = '';
   let prefixSide1 = '';
-  if (!isEvenMatch) {
+  if (isEvenMatch) {
+    prefixSide0 = '🪙 equilibrado —';
+    prefixSide1 = '🎲 equilibrado —';
+  } else {
     prefixSide0 = price0 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
     prefixSide1 = price1 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
   }

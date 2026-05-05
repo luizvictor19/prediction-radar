@@ -16,6 +16,7 @@ function getOutcomeEmojis(values: string[], prices: string[]): [string, string] 
 
   const p0 = parseFloat(prices[0] ?? '0.5');
   const p1 = parseFloat(prices[1] ?? '0.5');
+  if (Math.abs(p0 - p1) < 0.02) return ['🪙', '🎲'];
   return p0 >= p1 ? ['👑', '🐺'] : ['🐺', '👑'];
 }
 
