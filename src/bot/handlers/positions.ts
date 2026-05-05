@@ -244,6 +244,7 @@ export async function closePositionConversation(
         }
         winKbd.text('Nenhuma (anulado)', 'resolved_leg:none');
 
+
         await ctx.reply('Qual leg ganhou?', { reply_markup: winKbd });
         const winCtx = await conversation.waitFor('callback_query:data');
         await winCtx.answerCallbackQuery();
