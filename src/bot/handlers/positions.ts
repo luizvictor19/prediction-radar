@@ -96,7 +96,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         const leg = groupLegs[0]!;
         const eventTitle =
           (leg.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Bet manual';
-        const sharesDisplay = (leg.shares ?? 0).toFixed(2);
+        const sharesDisplay = (leg.shares ?? 0).toFixed(1);
         const text =
           `📅 ${eventTitle}\n` +
           `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n` +
@@ -109,7 +109,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         let text = `🎯 ${firstTitle} (basket, ${groupLegs.length} legs)\n`;
         for (const leg of groupLegs) {
           const evtTitle = (leg.events as { title: string } | null)?.title ?? 'Sem título';
-          const sharesDisplay = (leg.shares ?? 0).toFixed(2);
+          const sharesDisplay = (leg.shares ?? 0).toFixed(1);
           text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n`;
         }
         text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
@@ -308,7 +308,7 @@ export async function closePositionConversation(
 
           await ctx.reply(
             `Leg ${i + 1}/${legs.length}: ${label}\n` +
-            `Stake: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price}, ${shares.toFixed(4)} shares\n` +
+            `Stake: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price}, ${shares.toFixed(1)} shares\n` +
             `Preço de fechamento (decimal) ou 'win' / 'loss' / 'anulado':`
           );
           const inputCtx = await conversation.waitFor('message:text');
