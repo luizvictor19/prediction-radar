@@ -1,55 +1,38 @@
-/**
- * Polymarket taker fee rates by feeType (canonical field in Gamma API markets endpoint).
- * Source: https://docs.polymarket.com/quickstart/fees
- *
- * Fee formula: fee_usdc = shares × feeRate × p × (1 - p)
- * For $1 invested at price p: fee = feeRate × (1 - p)
- */
+// Fees observadas em trades reais (maio 2026) são ~0 em todas
+// as categorias na Polymarket Internacional, mesmo quando a
+// API retorna rate > 0. Se notar fees ativadas em trades
+// futuros, ajustar tabela.
+
 export const POLYMARKET_FEE_RATES: Record<string, number> = {
-  // Canonical feeType values from the API
-  'politics_fees': 0.04,
-  'sports_fees_v2': 0.03,
-  'sports_fees': 0.03,
-  'crypto_fees_v2': 0.072,
-  'crypto_fees': 0.072,
-  'culture_fees': 0.05,
-  'general_fees': 0.05,
-  'tech_fees': 0.04,
-  'finance_fees': 0.04,
-  'economics_fees': 0.05,
-  'geopolitics_fees': 0.0,
-  // Human-readable aliases (fallback)
-  'politics': 0.04,
-  'sports': 0.03,
-  'crypto': 0.072,
-  'culture': 0.05,
-  'general': 0.05,
-  'tech': 0.04,
-  'finance': 0.04,
-  'economics': 0.05,
-  'geopolitics': 0.0,
+  'politics_fees': 0,
+  'sports_fees_v2': 0,
+  'sports_fees': 0,
+  'crypto_fees_v2': 0,
+  'crypto_fees': 0,
+  'culture_fees': 0,
+  'general_fees': 0,
+  'tech_fees': 0,
+  'finance_fees': 0,
+  'economics_fees': 0,
+  'geopolitics_fees': 0,
+  'politics': 0,
+  'sports': 0,
+  'crypto': 0,
+  'culture': 0,
+  'general': 0,
+  'tech': 0,
+  'finance': 0,
+  'economics': 0,
+  'geopolitics': 0,
 };
 
 import type { ArbDirection } from '../types/index.js';
 
-const DEFAULT_FEE_RATE = 0.04;
-
-/**
- * Returns the effective fee rate, with a three-tier priority:
- *   1. directRate — feeSchedule.rate captured from the Gamma API at collection time (most accurate)
- *   2. Hardcoded table lookup by feeType string (e.g. "politics_fees")
- *   3. Conservative 4% fallback
- */
 export function getFeeRate(
-  polymarketCategory: string | null | undefined,
-  directRate?: number | null,
+  _polymarketCategory?: string | null,
+  _directRate?: number | null,
 ): number {
-  if (directRate != null && isFinite(directRate) && directRate >= 0) return directRate;
-  if (!polymarketCategory) return DEFAULT_FEE_RATE;
-  const normalized = polymarketCategory.toLowerCase().trim();
-  if (normalized in POLYMARKET_FEE_RATES) return POLYMARKET_FEE_RATES[normalized]!;
-  const stripped = normalized.replace(/_fees(?:_v\d+)?$/, '');
-  return POLYMARKET_FEE_RATES[stripped] ?? DEFAULT_FEE_RATE;
+  return 0;
 }
 
 /**
