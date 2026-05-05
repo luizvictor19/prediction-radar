@@ -80,6 +80,31 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
     const PRICE_EXTREME_LOW = 0.05;
     const PRICE_EXTREME_HIGH = 0.95;
 
+    const interSignals = signals.filter(s => s.signal_type === 'cross_market_inter');
+    const allMemberIds = interSignals.flatMap(s => {
+      const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+      return members.map(m => m.polymarket_id).filter((id): id is string => Boolean(id));
+    });
+    const endDateById = new Map<string, string>();
+    if (allMemberIds.length > 0) {
+      const { data: memberEvents } = await supabase
+        .from('events')
+        .select('polymarket_id, end_date')
+        .in('polymarket_id', allMemberIds);
+      for (const row of memberEvents ?? []) {
+        if (row.end_date) endDateById.set(row.polymarket_id as string, row.end_date as string);
+      }
+    }
+    const earliestEndMap = new Map<string, string | null>();
+    for (const s of interSignals) {
+      const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+      const sorted = members
+        .map(m => endDateById.get(m.polymarket_id))
+        .filter((d): d is string => Boolean(d))
+        .sort();
+      earliestEndMap.set(s.id, sorted[0] ?? null);
+    }
+
     for (const signal of signals) {
       try {
         if (signal.signal_type === 'calendar_driven' && signal.event_id) {
@@ -108,7 +133,10 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
         const polymarketUrl = await resolvePolymarketUrl(signal);
         const stakeCap = getStakeCap(config, signal.signal_type);
-        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap);
+        const earliestEnd = signal.signal_type === 'cross_market_inter'
+          ? earliestEndMap.get(signal.id) ?? null
+          : null;
+        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap, earliestEnd);
         const keyboard = signal.signal_type === 'calendar_driven'
           ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
           : signalKeyboard(signal.id, polymarketUrl);

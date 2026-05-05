@@ -328,6 +328,7 @@ export function formatSignal(
   signal: SignalRow,
   bankroll: number,
   maxStakePct: number,
+  earliestEnd?: string | null,
 ): string {
   if (signal.signal_type === 'calendar_driven') {
     return formatCalendarDrivenSignal(signal, bankroll, maxStakePct);
@@ -415,6 +416,7 @@ export function formatSignal(
   return (
     `${emoji} ${title}\n` +
     `Cross-Market Inter · ${groupSize} membros\n` +
+    (earliestEnd ? `Encerra ${formatEndDate(earliestEnd)} · ${formatTimeUntilResolution(earliestEnd)}\n` : '') +
     `\n` +
     `⚡ Confiança: ${confidenceStars(confidence)}\n` +
     `Edge: ${edgePct.toFixed(2)}% líquido | direction: ${direction}\n` +

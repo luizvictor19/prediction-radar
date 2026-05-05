@@ -36,6 +36,38 @@ async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, SlugEnt
   return map;
 }
 
+async function resolveEarliestEndMap(signals: SignalRow[]): Promise<Map<string, string | null>> {
+  const interSignals = signals.filter(s => s.signal_type === 'cross_market_inter');
+  if (interSignals.length === 0) return new Map();
+
+  const allIds = interSignals.flatMap(s => {
+    const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+    return members.map(m => m.polymarket_id).filter((id): id is string => Boolean(id));
+  });
+  if (allIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from('events')
+    .select('polymarket_id, end_date')
+    .in('polymarket_id', allIds);
+
+  const endDateById = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.end_date) endDateById.set(row.polymarket_id as string, row.end_date as string);
+  }
+
+  const result = new Map<string, string | null>();
+  for (const s of interSignals) {
+    const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+    const sorted = members
+      .map(m => endDateById.get(m.polymarket_id))
+      .filter((d): d is string => Boolean(d))
+      .sort();
+    result.set(s.id, sorted[0] ?? null);
+  }
+  return result;
+}
+
 async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
   const { data } = await supabase
     .from('events')
@@ -124,6 +156,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     });
 
     const slugMap = await resolveSlugMap(sorted);
+    const earliestEndMap = await resolveEarliestEndMap(sorted);
 
     const displayedSignals: SignalRow[] = [];
     for (const signal of sorted) {
@@ -132,7 +165,10 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
           ? await resolveCalendarDrivenUrl(signal.event_id)
           : buildPolymarketUrl(signal, slugMap);
         const stakeCap = getStakeCap(config, signal.signal_type);
-        const text = formatSignal(signal, config.bankroll_usd, stakeCap);
+        const earliestEnd = signal.signal_type === 'cross_market_inter'
+          ? earliestEndMap.get(signal.id) ?? null
+          : null;
+        const text = formatSignal(signal, config.bankroll_usd, stakeCap, earliestEnd);
         const keyboard = signal.signal_type === 'calendar_driven'
           ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
           : signalKeyboard(signal.id, polymarketUrl);
