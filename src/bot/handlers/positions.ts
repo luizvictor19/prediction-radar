@@ -170,7 +170,7 @@ export async function closePositionConversation(
       const leg = legs[0]!;
 
       await ctx.reply(
-        'Preço de fechamento (decimal, ex: 0.65) ou /resolved se resolveu (sem fechar antecipado):'
+        'Preço de fechamento (decimal, ex: 0.65) ou resolved se resolveu (sem fechar antecipado):'
       );
       const inputCtx = await conversation.waitFor('message:text');
       const inputRaw = inputCtx.message.text.trim();
@@ -178,7 +178,7 @@ export async function closePositionConversation(
       let closingPrice: number | null = null;
       let resolutionPrice: number | null = null;
 
-      if (inputRaw !== '/resolved') {
+      if (inputRaw !== 'resolved') {
         closingPrice = parseFloat(inputRaw);
         if (isNaN(closingPrice) || closingPrice < 0 || closingPrice > 1) {
           await ctx.reply('Preço inválido (deve ser entre 0 e 1). Operação cancelada.');
@@ -191,8 +191,8 @@ export async function closePositionConversation(
       await resCtx.answerCallbackQuery();
       const result = resCtx.callbackQuery.data.replace('res:', '');
 
-      if (result === 'win') resolutionPrice = inputRaw === '/resolved' ? 1.0 : null;
-      if (result === 'loss') resolutionPrice = inputRaw === '/resolved' ? 0.0 : null;
+      if (result === 'win') resolutionPrice = inputRaw === 'resolved' ? 1.0 : null;
+      if (result === 'loss') resolutionPrice = inputRaw === 'resolved' ? 0.0 : null;
 
       const shares = legShares(leg);
       let pnlUsd: number;
