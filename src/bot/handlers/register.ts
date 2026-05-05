@@ -183,12 +183,17 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     return;
   }
 
-  // e. Preço
-  await ctx.reply('Preço de entrada (decimal, ex: 0.58):');
+  // e. To win
+  await ctx.reply('Valor a receber se ganhar (em USD):\nEx: 6.88 (vem do Polymarket no campo "to win")');
   const priceCtx = await conversation.waitFor('message:text');
-  const entryPrice = parseFloat(priceCtx.message.text.trim());
-  if (isNaN(entryPrice) || entryPrice <= 0 || entryPrice >= 1) {
-    await ctx.reply('Preço inválido (deve ser entre 0 e 1). Operação cancelada.');
+  const toWin = parseFloat(priceCtx.message.text.trim());
+  if (isNaN(toWin) || toWin <= 0) {
+    await ctx.reply('Valor inválido. Operação cancelada.');
+    return;
+  }
+  const entryPrice = stakeUsd / toWin;
+  if (entryPrice <= 0 || entryPrice > 1) {
+    await ctx.reply(`Preço calculado inválido (${entryPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`);
     return;
   }
 
@@ -209,14 +214,16 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   const thesis = thesisRaw === 'skip' ? eventTitle : thesisRaw;
 
   // h. Resumo + confirmação
-  const shares = stakeUsd / entryPrice;
+  const shares = toWin;
   const titleDisplay = matchedTitle ? `${matchedTitle} _(vinculado)_` : eventTitle;
   const summary =
     `*Confirmar?*\n` +
     `📋 ${titleDisplay}\n` +
     `Outcome: \`${outcome}\`\n` +
-    `Stake: \`$${stakeUsd.toFixed(2)}\` @ \`${entryPrice}\`\n` +
-    `Shares: \`${shares.toFixed(4)}\`\n` +
+    `Stake: \`$${stakeUsd.toFixed(2)}\`\n` +
+    `To win: \`$${toWin.toFixed(2)}\`\n` +
+    `Shares: \`${shares.toFixed(1)}\`\n` +
+    `Preço entrada (calc): \`${entryPrice.toFixed(4)}\`\n` +
     `Categoria: \`${catLabel(category)}\`\n` +
     (confidenceSelf !== null ? `Confiança: \`${confidenceSelf}/10\`\n` : '') +
     (thesisRaw !== 'skip' ? `Tese: ${thesis}\n` : '');

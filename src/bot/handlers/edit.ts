@@ -103,7 +103,7 @@ export async function editConversation(
     }
 
     const EDIT_KBD = new InlineKeyboard()
-      .text('Preço', 'edit:price')
+      .text('To win', 'edit:price')
       .text('Stake', 'edit:stake')
       .text('Outcome', 'edit:outcome')
       .text('Notes', 'edit:notes')
@@ -120,18 +120,24 @@ export async function editConversation(
     }
 
     if (field === 'edit:price') {
-      await ctx.reply('Novo preço de entrada (decimal, ex: 0.65) ou skip:');
+      await ctx.reply('Novo valor a receber se ganhar (USD) ou skip:');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
       if (raw === 'skip') { await ctx.reply('Sem alterações.'); return; }
-      const newPrice = parseFloat(raw);
-      if (isNaN(newPrice) || newPrice <= 0 || newPrice >= 1) {
-        await ctx.reply('Preço inválido. Operação cancelada.');
+      const newToWin = parseFloat(raw);
+      if (isNaN(newToWin) || newToWin <= 0) {
+        await ctx.reply('Valor inválido. Operação cancelada.');
         return;
       }
-      const newShares = (leg as { stake_usd: number }).stake_usd / newPrice;
+      const stakeUsd = (leg as { stake_usd: number }).stake_usd;
+      const newPrice = stakeUsd / newToWin;
+      if (newPrice <= 0 || newPrice > 1) {
+        await ctx.reply(`Preço calculado inválido (${newPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`);
+        return;
+      }
+      const newShares = newToWin;
       await supabase.from('my_bet_legs').update({ entry_price: newPrice, shares: newShares }).eq('id', id);
-      await ctx.reply(`✅ Leg atualizada. Novo preço: ${newPrice}, novas shares: ${newShares.toFixed(4)} (recalculado).`);
+      await ctx.reply(`✅ Leg atualizada. Preço (calc): ${newPrice.toFixed(4)}, shares: ${newShares.toFixed(1)}.`);
 
     } else if (field === 'edit:stake') {
       await ctx.reply('Novo stake em USD (ou skip):');
