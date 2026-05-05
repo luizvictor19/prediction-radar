@@ -90,29 +90,48 @@ export async function collectAll(): Promise<void> {
       upserted++;
 
       const outcomes = eventRow.outcomes as { values?: string[] } | null;
-      const firstOutcome = outcomes?.values?.[0] ?? 'Yes';
+      const outcomeNames = outcomes?.values ?? ['Yes', 'No'];
+      const firstOutcome = outcomeNames[0] ?? 'Yes';
+      const secondOutcome = outcomeNames[1] ?? 'No';
 
       const best_bid = market.bestBid || null;
       const best_ask = market.bestAsk || null;
       const mid_price = best_bid && best_ask ? (best_bid + best_ask) / 2 : null;
+      const spread = market.spread || null;
 
-      const { error: snapErr } = await supabase.from('polymarket_snapshots').insert({
+      const firstSnapshot = {
         event_id: eventRow.id,
         outcome: firstOutcome,
         best_bid,
         best_ask,
         mid_price,
-        spread: market.spread || null,
+        spread,
         bid_depth: null,
         ask_depth: null,
         volume_24h: volume24h,
-      });
+      };
+
+      const secondSnapshot = {
+        event_id: eventRow.id,
+        outcome: secondOutcome,
+        best_bid: best_ask !== null ? 1 - best_ask : null,
+        best_ask: best_bid !== null ? 1 - best_bid : null,
+        mid_price: mid_price !== null ? 1 - mid_price : null,
+        spread,
+        bid_depth: null,
+        ask_depth: null,
+        volume_24h: volume24h,
+      };
+
+      const { error: snapErr } = await supabase
+        .from('polymarket_snapshots')
+        .insert([firstSnapshot, secondSnapshot]);
 
       if (snapErr) {
         console.error(`[collector] Snapshot failed for ${market.id}:`, snapErr.message);
         errorsCount++;
       } else {
-        snapshots++;
+        snapshots += 2;
       }
     }
 
