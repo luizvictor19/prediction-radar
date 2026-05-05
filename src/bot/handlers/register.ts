@@ -55,29 +55,19 @@ function buildMatchButtonLabel(match: EventMatch): string {
 }
 
 async function findMatchingEvents(searchText: string): Promise<EventMatch[]> {
-  const keywords = searchText
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length >= 3);
+  if (searchText.trim().length < 3) return [];
 
-  if (keywords.length === 0) return [];
+  const { data, error } = await supabase.rpc('search_events_by_title', {
+    query_text: searchText.trim(),
+    similarity_threshold: 0.15,
+  });
 
-  let query = supabase
-    .from('events')
-    .select('id, title, polymarket_category, end_date')
-    .eq('status', 'active')
-    .limit(10);
-
-  for (const kw of keywords) {
-    query = query.ilike('title', `%${kw}%`);
-  }
-
-  const { data, error } = await query;
   if (error) {
     await logEvent({
       component: 'bot_command',
       status: 'error',
-      message: `Event match query failed: ${error.message}`,
+      message: `Event match (trigram) query failed: ${error.message}`,
+      metadata: { search_text: searchText, error: error.message },
     });
     return [];
   }
