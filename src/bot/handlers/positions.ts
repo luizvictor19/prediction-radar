@@ -97,9 +97,10 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         const eventTitle =
           (leg.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Bet manual';
         const sharesDisplay = (leg.shares ?? 0).toFixed(1);
+        const toWin = leg.shares ?? (leg.stake_usd / leg.entry_price);
         const text =
           `📅 ${eventTitle}\n` +
-          `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n` +
+          `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares · paga $${toWin.toFixed(2)} se ganhar\n` +
           `   Aberta há ${relativeTime(placed_at)}`;
         await ctx.reply(text, { reply_markup: positionKeyboard(bet_id) });
       } else {
@@ -110,7 +111,8 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         for (const leg of groupLegs) {
           const evtTitle = (leg.events as { title: string } | null)?.title ?? 'Sem título';
           const sharesDisplay = (leg.shares ?? 0).toFixed(1);
-          text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares\n`;
+          const toWin = leg.shares ?? (leg.stake_usd / leg.entry_price);
+          text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares · paga $${toWin.toFixed(2)} se ganhar\n`;
         }
         text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
         await ctx.reply(text, { reply_markup: basketKeyboard(bet_id) });
