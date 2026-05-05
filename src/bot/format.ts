@@ -246,8 +246,8 @@ export function formatCalendarDrivenSignal(
     sideRepr0 = `(a ${price0.toFixed(3)})`;
     sideRepr1 = `(a ${price1.toFixed(3)})`;
   } else {
-    sideRepr0 = `(Yes ${l0} a ${price0.toFixed(3)}, ou equivalente No ${l1} a ${price0.toFixed(3)})`;
-    sideRepr1 = `(Yes ${l1} a ${price1.toFixed(3)}, ou equivalente No ${l0} a ${price1.toFixed(3)})`;
+    sideRepr0 = `a ${price0.toFixed(3)} (lado oposto: ${l1} a ${price1.toFixed(3)})`;
+    sideRepr1 = `a ${price1.toFixed(3)} (lado oposto: ${l0} a ${price0.toFixed(3)})`;
   }
 
   let scenario0Win: string, scenario0Lose: string;
