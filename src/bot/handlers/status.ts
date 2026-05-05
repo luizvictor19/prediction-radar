@@ -31,9 +31,10 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .maybeSingle(),
       supabase
         .from('detected_signals')
-        .select('signal_type, metadata')
+        .select('signal_type', { count: 'exact', head: true })
         .eq('dismissed', false)
         .eq('acted_on', false)
+        .gt('expires_at', new Date().toISOString())
         .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
       supabase
         .from('detected_signals')
@@ -42,13 +43,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     ]);
 
-    const FRESH_WINDOW_MS = 15 * 60 * 1000;
-    const now = Date.now();
-    const activeSignals = (activeRaw.data ?? []).filter(s => {
-      const lastSeen = (s.metadata as any)?.last_seen_at;
-      if (!lastSeen) return false;
-      return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
-    }).length;
+    const activeSignals = activeRaw.count ?? 0;
 
     const closedLegRows = closedLegs.data ?? [];
     const wins = closedLegRows.filter((r: { result: string | null }) => r.result === 'win').length;
