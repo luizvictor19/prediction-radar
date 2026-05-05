@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import { collectAll } from './collectors/polymarket.js';
+import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 
@@ -16,6 +17,12 @@ async function main(): Promise<void> {
   // Collector: every 3 minutes
   cron.schedule('*/3 * * * *', () => {
     void collectAll();
+  });
+
+  // Open legs collector: every 30 seconds (mid_price fresco pra /positions e /status)
+  void collectOpenLegMarkets();
+  cron.schedule('*/30 * * * * *', () => {
+    void collectOpenLegMarkets();
   });
 
   // Detector runner: every 5 minutes
