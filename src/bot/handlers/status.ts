@@ -39,7 +39,6 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .from('detected_signals')
         .select('id', { count: 'exact', head: true })
         .eq('alerted', true)
-        .eq('dismissed', false)
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     ]);
 
