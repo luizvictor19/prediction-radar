@@ -55,12 +55,21 @@ export function formatTimeUntilResolution(endDateIso: string): string {
 
 export function formatEndDate(endDateIso: string): string {
   const d = new Date(endDateIso);
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const yyyy = d.getUTCFullYear();
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${dd}/${mm}/${yyyy} ${hh}:${min} UTC`;
+
+  const ddU = String(d.getUTCDate()).padStart(2, '0');
+  const mmU = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const yyyyU = d.getUTCFullYear();
+  const hhU = String(d.getUTCHours()).padStart(2, '0');
+  const minU = String(d.getUTCMinutes()).padStart(2, '0');
+
+  const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+  const ddB = String(brt.getUTCDate()).padStart(2, '0');
+  const mmB = String(brt.getUTCMonth() + 1).padStart(2, '0');
+  const yyyyB = brt.getUTCFullYear();
+  const hhB = String(brt.getUTCHours()).padStart(2, '0');
+  const minB = String(brt.getUTCMinutes()).padStart(2, '0');
+
+  return `${ddU}/${mmU}/${yyyyU} ${hhU}:${minU} UTC (${ddB}/${mmB}/${yyyyB} ${hhB}:${minB} BRT)`;
 }
 
 export function calcMinBankroll(
