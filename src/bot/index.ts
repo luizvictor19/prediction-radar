@@ -105,13 +105,27 @@ bot.callbackQuery(/^track:(.+)$/, async (ctx) => {
 bot.callbackQuery(/^track_yes:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
   await ctx.answerCallbackQuery();
-  await ctx.conversation.enter('track', `${signalId}:yes`);
+  const { data: sig } = await supabase
+    .from('detected_signals')
+    .select('events(outcomes)')
+    .eq('id', signalId)
+    .single();
+  const outcomes = (sig as any)?.events?.outcomes;
+  const outcomeName: string = outcomes?.values?.[0] ?? 'Yes';
+  await ctx.conversation.enter('track', `${signalId}:${outcomeName}`);
 });
 
 bot.callbackQuery(/^track_no:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
   await ctx.answerCallbackQuery();
-  await ctx.conversation.enter('track', `${signalId}:no`);
+  const { data: sig } = await supabase
+    .from('detected_signals')
+    .select('events(outcomes)')
+    .eq('id', signalId)
+    .single();
+  const outcomes = (sig as any)?.events?.outcomes;
+  const outcomeName: string = outcomes?.values?.[1] ?? 'No';
+  await ctx.conversation.enter('track', `${signalId}:${outcomeName}`);
 });
 
 bot.callbackQuery(/^close:(.+)$/, async (ctx) => {

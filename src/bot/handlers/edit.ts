@@ -93,7 +93,7 @@ export async function editConversation(
 
     const { data: leg, error: legErr } = await supabase
       .from('my_bet_legs')
-      .select('id, entry_price, stake_usd')
+      .select('id, entry_price, stake_usd, outcome')
       .eq('id', id)
       .single();
 
@@ -105,6 +105,7 @@ export async function editConversation(
     const EDIT_KBD = new InlineKeyboard()
       .text('Preço', 'edit:price')
       .text('Stake', 'edit:stake')
+      .text('Outcome', 'edit:outcome')
       .text('Notes', 'edit:notes')
       .text('Cancelar', 'edit:cancel');
 
@@ -145,6 +146,15 @@ export async function editConversation(
       const newShares = newStake / (leg as { entry_price: number }).entry_price;
       await supabase.from('my_bet_legs').update({ stake_usd: newStake, shares: newShares }).eq('id', id);
       await ctx.reply(`✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).`);
+
+    } else if (field === 'edit:outcome') {
+      const currentOutcome = (leg as { outcome: string }).outcome;
+      await ctx.reply(`Outcome atual: \`${currentOutcome}\`\nDigite o novo outcome (texto livre):`, { parse_mode: 'Markdown' });
+      const inputCtx = await conversation.waitFor('message:text');
+      const newOutcome = inputCtx.message.text.trim();
+      if (!newOutcome) { await ctx.reply('Sem alterações.'); return; }
+      await supabase.from('my_bet_legs').update({ outcome: newOutcome }).eq('id', id);
+      await ctx.reply(`✅ Outcome atualizado: \`${currentOutcome}\` → \`${newOutcome}\``, { parse_mode: 'Markdown' });
 
     } else if (field === 'edit:notes') {
       await ctx.reply('Notas (texto livre, ou skip pra apagar):');

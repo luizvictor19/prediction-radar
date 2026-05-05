@@ -13,12 +13,12 @@ export function calendarDrivenKeyboard(
   polymarketUrl: string,
   outcomes: { values?: string[] } | null,
 ): InlineKeyboard {
-  const label0 = outcomes?.values?.[0] ?? 'Yes';
-  const label1 = outcomes?.values?.[1] ?? 'No';
-  const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
+  const v0 = outcomes?.values?.[0] ?? 'Yes';
+  const v1 = outcomes?.values?.[1] ?? 'No';
+  const isLiteralYesNo = v0 === 'Yes' && v1 === 'No';
 
-  const yesButton = isLiteralYesNo ? 'Track Yes' : `Track ${truncate(label0, 14)}`;
-  const noButton = isLiteralYesNo ? 'Track No'  : `Track ${truncate(label1, 14)}`;
+  const yesButton = isLiteralYesNo ? '✅ Track YES' : `✅ Track ${truncate(v0, 25)}`;
+  const noButton  = isLiteralYesNo ? '❌ Track NO'  : `❌ Track ${truncate(v1, 25)}`;
 
   return new InlineKeyboard()
     .url('🔗 Ver no Polymarket', polymarketUrl)

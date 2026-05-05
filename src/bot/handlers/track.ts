@@ -320,7 +320,9 @@ export async function trackConversation(
   signalIdWithOutcome: string,
 ): Promise<void> {
   try {
-    const [signalId, forcedOutcome] = signalIdWithOutcome.split(':') as [string, string | undefined];
+    const colonIndex = signalIdWithOutcome.indexOf(':');
+    const signalId = colonIndex === -1 ? signalIdWithOutcome : signalIdWithOutcome.slice(0, colonIndex);
+    const forcedOutcome: string | undefined = colonIndex === -1 ? undefined : (signalIdWithOutcome.slice(colonIndex + 1) || undefined);
     const config = await getSystemConfig();
 
     const { data: signal, error: sigErr } = await supabase
