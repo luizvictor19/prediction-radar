@@ -2,6 +2,7 @@ import type { Bot } from 'grammy';
 import type { BotContext } from './index.js';
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
+import { getBankrollState } from '../lib/bankroll.js';
 import { logEvent } from '../lib/logger.js';
 import { formatSignal, getStakeCap } from './format.js';
 import { signalKeyboard, calendarDrivenKeyboard } from './keyboards.js';
@@ -47,7 +48,8 @@ export function startNotifyLoop(bot: Bot<BotContext>): void {
 
 async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
   try {
-    const config = await getSystemConfig();
+    const [config, bankrollState] = await Promise.all([getSystemConfig(), getBankrollState()]);
+    const bankroll = bankrollState.bankroll;
     const chatId = config.telegram_chat_id;
     if (!chatId) return;
 
@@ -136,7 +138,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
         const earliestEnd = signal.signal_type === 'cross_market_inter'
           ? earliestEndMap.get(signal.id) ?? null
           : null;
-        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, config.bankroll_usd, stakeCap, earliestEnd);
+        const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, bankroll, stakeCap, earliestEnd);
         const keyboard = signal.signal_type === 'calendar_driven'
           ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
           : signalKeyboard(signal.id, polymarketUrl);

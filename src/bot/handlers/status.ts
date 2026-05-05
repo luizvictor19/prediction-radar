@@ -1,6 +1,7 @@
 import type { BotContext } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { getSystemConfig } from '../../lib/config.js';
+import { getBankrollState } from '../../lib/bankroll.js';
 import { logEvent } from '../../lib/logger.js';
 
 export async function statusHandler(ctx: BotContext): Promise<void> {
@@ -8,8 +9,8 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const config = await getSystemConfig();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [openLegs, closedLegs, closedBetsMeta, lastDetector, activeRaw, recentAlerts] = await Promise.all([
-      supabase.from('my_bet_legs').select('bet_id, stake_usd').is('closed_at', null),
+    const [state, closedLegs, closedBetsMeta, lastDetector, activeRaw, recentAlerts] = await Promise.all([
+      getBankrollState(),
       supabase
         .from('my_bet_legs')
         .select('result, pnl_usd')
@@ -42,7 +43,6 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     ]);
 
-    // Detector freshness window
     const FRESH_WINDOW_MS = 15 * 60 * 1000;
     const now = Date.now();
     const activeSignals = (activeRaw.data ?? []).filter(s => {
@@ -51,13 +51,6 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
     }).length;
 
-    // Open bets / stake from legs
-    const openRows = openLegs.data ?? [];
-    const openCount = new Set(openRows.map((r: { bet_id: string }) => r.bet_id)).size;
-    const openStake = openRows.reduce((s: number, r: { stake_usd: number }) => s + r.stake_usd, 0);
-    const disponivel = config.bankroll_usd - openStake;
-
-    // Closed metrics from legs (7d win rate and PnL)
     const closedLegRows = closedLegs.data ?? [];
     const wins = closedLegRows.filter((r: { result: string | null }) => r.result === 'win').length;
     const decisive = closedLegRows.filter(
@@ -69,7 +62,6 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       0,
     );
     const pnlSign = pnlTotal >= 0 ? '+' : '';
-
     const closedBetCount = closedBetsMeta.count ?? 0;
 
     const lastRun = (() => {
@@ -85,10 +77,8 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     const text =
       `*Status*\n` +
-      `Bankroll: \`$${config.bankroll_usd.toFixed(2)}\`\n` +
-      `  Comprometido: \`$${openStake.toFixed(2)}\` (${openRows.length} legs abertas)\n` +
-      `  Disponível: \`$${disponivel.toFixed(2)}\`\n` +
-      `Bets abertas: \`${openCount}\` (stake total \`$${openStake.toFixed(2)}\`)\n` +
+      `Bankroll: \`$${state.bankroll.toFixed(2)}\` (cash \`$${state.cash.toFixed(2)}\` + portfolio \`$${state.portfolio_value.toFixed(2)}\`)\n` +
+      `Bets abertas: \`${state.legs_count}\` (stake \`$${state.stake_committed.toFixed(2)}\`, valor atual \`$${state.portfolio_value.toFixed(2)}\`)\n` +
       `Bets fechadas (7d): \`${closedBetCount}\` | Win rate \`${winRate}%\` | PnL \`${pnlSign}$${pnlTotal.toFixed(2)}\`\n` +
       `Último detector: \`${lastRun}\`\n` +
       `Sinais ativos: \`${activeSignals}\`\n` +

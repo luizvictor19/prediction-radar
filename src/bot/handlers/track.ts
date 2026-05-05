@@ -5,6 +5,7 @@ import { getSystemConfig } from '../../lib/config.js';
 import { logEvent } from '../../lib/logger.js';
 import { calcStake, getStakeCap } from '../format.js';
 import { calcCalendarDrivenStake } from '../../lib/format-helpers.js';
+import { adjustCash } from '../../lib/bankroll.js';
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../../types/index.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
@@ -43,11 +44,11 @@ async function singleLegTrack(
   let suggestedStake: number;
   if (signal['signal_type'] === 'calendar_driven') {
     const confidence = (signal['confidence_score'] as number) ?? 0.5;
-    suggestedStake = calcCalendarDrivenStake(config.bankroll_usd, stakeCap, confidence);
+    suggestedStake = calcCalendarDrivenStake(config.cash_usd, stakeCap, confidence);
   } else {
     const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
     const edgePct = meta.expected_edge_pct ?? 0;
-    suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
+    suggestedStake = calcStake(config.cash_usd, stakeCap, edgePct);
   }
 
   const stakeLabel =
@@ -155,9 +156,10 @@ async function singleLegTrack(
   }
 
   await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
+  await adjustCash(-stakeUsd);
 
   await ctx.reply(
-    `✅ Operação registrada. ID: \`${bet.id}\`. Stake \`$${stakeUsd.toFixed(2)}\` em \`${resolvedOutcome ?? '?'}\` a \`${entryPrice}\`.`,
+    `✅ Operação registrada. ID: \`${bet.id}\`. Stake \`$${stakeUsd.toFixed(2)}\` em \`${resolvedOutcome ?? '?'}\` a \`${entryPrice.toFixed(4)}\`.`,
     { parse_mode: 'Markdown' },
   );
 }
@@ -172,7 +174,7 @@ async function basketTrack(
   const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
   const stakeCap = getStakeCap(config, signal['signal_type'] as string);
   const edgePct = meta.expected_edge_pct ?? 0;
-  const suggestedStake = calcStake(config.bankroll_usd, stakeCap, edgePct);
+  const suggestedStake = calcStake(config.cash_usd, stakeCap, edgePct);
   const stakeLabel =
     suggestedStake < 1.0
       ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
@@ -313,6 +315,7 @@ async function basketTrack(
   }
 
   await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
+  await adjustCash(-actualTotal);
 
   await ctx.reply(
     `✅ Basket registrada. ID: \`${bet.id}\`. ${computedLegs.length} legs, stake total \`$${actualTotal.toFixed(2)}\`.`,

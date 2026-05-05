@@ -6,7 +6,7 @@ const CACHE_TTL_MS = 60 * 1000;
 
 const DEFAULTS: SystemConfig = {
   id: 1,
-  bankroll_usd: 500,
+  cash_usd: 0,
   max_stake_pct: 0.03,
   cross_market_max_stake_pct: 0.10,
   kelly_fraction: 0.25,

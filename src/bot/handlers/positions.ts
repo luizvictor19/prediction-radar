@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
+import { adjustCash } from '../../lib/bankroll.js';
 import { relativeTime } from '../format.js';
 import { positionKeyboard, basketKeyboard } from '../keyboards.js';
 
@@ -217,8 +218,13 @@ export async function closePositionConversation(
 
       await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
 
+      if (result !== 'void') {
+        const retorno = shares * (resolutionPrice ?? closingPrice ?? 0);
+        await adjustCash(retorno);
+      }
+
       const sign = pnlUsd >= 0 ? '+' : '';
-      await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\`\n\n💡 Atualize o bankroll com /bankroll <novo_valor>`, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\``, { parse_mode: 'Markdown' });
 
     } else {
       // === BASKET ===
@@ -287,6 +293,8 @@ export async function closePositionConversation(
             pnl_usd: pnlUsd,
             closed_at: nowIso,
           }).eq('id', leg.id);
+
+          await adjustCash(resPrice * shares);
         }
 
         await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
@@ -295,8 +303,7 @@ export async function closePositionConversation(
         await ctx.reply(
           `✅ Basket fechada. PnL total: \`${sign}$${totalPnl.toFixed(2)}\`\n` +
           `Leg vencedora: ${legLabel(winnerLeg)}, lucro \`+$${winnerPnl.toFixed(2)}\`\n` +
-          `Outras ${legs.length - 1} legs: prejuízo total \`$${losersPnl.toFixed(2)}\`\n\n` +
-          `💡 Atualize o bankroll com /bankroll <novo_valor>`,
+          `Outras ${legs.length - 1} legs: prejuízo total \`$${losersPnl.toFixed(2)}\``,
           { parse_mode: 'Markdown' },
         );
 
@@ -348,6 +355,11 @@ export async function closePositionConversation(
             closed_at: nowIso,
           }).eq('id', leg.id);
 
+          if (result !== 'void') {
+            const retorno = shares * (resolutionPrice ?? closingPrice ?? 0);
+            await adjustCash(retorno);
+          }
+
           legResults.push({ label, pnl: pnlUsd, result });
         }
 
@@ -360,7 +372,6 @@ export async function closePositionConversation(
           const s = r.pnl >= 0 ? '+' : '';
           reply += `• ${r.label}: \`${s}$${r.pnl.toFixed(2)}\` (${r.result})\n`;
         }
-        reply += `\n💡 Atualize o bankroll com /bankroll <novo_valor>`;
         await ctx.reply(reply, { parse_mode: 'Markdown' });
       }
     }

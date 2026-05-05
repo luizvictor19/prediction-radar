@@ -75,7 +75,7 @@ export interface DetectedSignal {
 
 export interface SystemConfig {
   id: number;
-  bankroll_usd: number;
+  cash_usd: number;
   max_stake_pct: number;
   cross_market_max_stake_pct: number;
   kelly_fraction: number;

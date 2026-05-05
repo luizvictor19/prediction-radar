@@ -6,7 +6,8 @@ import { signalsHandler } from './handlers/signals.js';
 import { trackConversation } from './handlers/track.js';
 import { positionsHandler, closePositionConversation } from './handlers/positions.js';
 import { statusHandler } from './handlers/status.js';
-import { bankrollHandler } from './handlers/bankroll.js';
+import { topupHandler } from './handlers/topup.js';
+import { withdrawHandler } from './handlers/withdraw.js';
 import { configHandler } from './handlers/config_cmd.js';
 import { helpHandler } from './handlers/help.js';
 import { registerHandler, registerConversation } from './handlers/register.js';
@@ -71,7 +72,8 @@ bot.use(async (ctx, next) => {
 bot.command('signals', signalsHandler);
 bot.command('positions', positionsHandler);
 bot.command('status', statusHandler);
-bot.command('bankroll', bankrollHandler);
+bot.command('topup', topupHandler);
+bot.command('withdraw', withdrawHandler);
 bot.command('config', configHandler);
 bot.command('help', helpHandler);
 bot.command('register', registerHandler);
@@ -141,7 +143,8 @@ try {
     { command: 'signals',   description: 'Listar sinais ativos' },
     { command: 'positions', description: 'Posições abertas' },
     { command: 'status',    description: 'Resumo do sistema' },
-    { command: 'bankroll',  description: 'Ver ou ajustar bankroll' },
+    { command: 'topup',     description: 'Adicionar cash ao bankroll' },
+    { command: 'withdraw',  description: 'Retirar cash do bankroll' },
     { command: 'config',    description: 'Configuração atual' },
     { command: 'help',      description: 'Listar comandos disponíveis' },
     { command: 'register',  description: 'Registrar bet feita fora do bot' },
