@@ -50,7 +50,7 @@ function currentValueLine(shares: number, stake: number, midPrice: number, inden
   const diff = curr - stake;
   const pct = (diff / stake) * 100;
   const sign = diff >= 0 ? '+' : '-';
-  return `${indent}📊 Atual: $${curr.toFixed(2)} (${sign}$${Math.abs(diff).toFixed(2)}, ${sign}${Math.abs(pct).toFixed(1)}%)\n`;
+  return `${indent}📊 Atual: $${curr.toFixed(2)} (${sign}$${Math.abs(diff).toFixed(2)}, ${sign}${Math.abs(pct).toFixed(2)}%)\n`;
 }
 
 export async function positionsHandler(ctx: BotContext): Promise<void> {
@@ -155,7 +155,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
           const basketDiff = basketCurrTotal - basketStakeWithSnap;
           const basketPct = (basketDiff / basketStakeWithSnap) * 100;
           const s = basketDiff >= 0 ? '+' : '-';
-          text += `   Stake total: $${totalStake.toFixed(2)} → Atual: $${basketCurrTotal.toFixed(2)} (${s}$${Math.abs(basketDiff).toFixed(2)}, ${s}${Math.abs(basketPct).toFixed(1)}%) | Aberta há ${relativeTime(placed_at)}`;
+          text += `   Stake total: $${totalStake.toFixed(2)} → Atual: $${basketCurrTotal.toFixed(2)} (${s}$${Math.abs(basketDiff).toFixed(2)}, ${s}${Math.abs(basketPct).toFixed(2)}%) | Aberta há ${relativeTime(placed_at)}`;
         } else {
           text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
         }
@@ -190,7 +190,7 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       const totalDiff = totalCurrAll - stakeWithSnap;
       const totalPct = (totalDiff / stakeWithSnap) * 100;
       const s = totalDiff >= 0 ? '+' : '-';
-      footerText += `\n\n💰 Stake total: $${totalStakeAll.toFixed(2)} → Atual: $${totalCurrAll.toFixed(2)} (${s}$${Math.abs(totalDiff).toFixed(2)}, ${s}${Math.abs(totalPct).toFixed(1)}%)`;
+      footerText += `\n\n💰 Stake total: $${totalStakeAll.toFixed(2)} → Atual: $${totalCurrAll.toFixed(2)} (${s}$${Math.abs(totalDiff).toFixed(2)}, ${s}${Math.abs(totalPct).toFixed(2)}%)`;
     } else {
       footerText += `\n\n💰 Stake total: $${totalStakeAll.toFixed(2)}`;
     }
