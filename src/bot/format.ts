@@ -205,7 +205,9 @@ export function formatCalendarDrivenSignal(
   let label0 = outcomes?.values?.[0] ?? 'Yes';
   let label1 = outcomes?.values?.[1] ?? 'No';
 
-  if (sportsMarketType === 'spreads' && line !== null) {
+  const isSpreadType = sportsMarketType === 'spreads' || sportsMarketType === 'map_handicap';
+
+  if (isSpreadType && line !== null) {
     label0 = `${label0} (${formatLine(line)})`;
     label1 = `${label1} (${formatLine(line, true)})`;
   } else if (sportsMarketType === 'totals' && line !== null) {
@@ -235,8 +237,9 @@ export function formatCalendarDrivenSignal(
     prefixSide1 = price1 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
   }
 
-  const l0 = truncate(label0, 16);
-  const l1 = truncate(label1, 16);
+  const truncLimit = (isSpreadType && line !== null) || (sportsMarketType === 'totals' && line !== null) ? 24 : 16;
+  const l0 = truncate(label0, truncLimit);
+  const l1 = truncate(label1, truncLimit);
   let sideRepr0: string;
   let sideRepr1: string;
   if (isLiteralYesNo) {
