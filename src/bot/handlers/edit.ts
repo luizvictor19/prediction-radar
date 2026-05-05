@@ -53,10 +53,10 @@ export async function editHandler(ctx: BotContext): Promise<void> {
           (leg.events as { title: string } | null)?.title ??
           (leg.my_bets as { thesis: string | null } | null)?.thesis ??
           'Bet manual';
-        const shares = (leg.shares ?? 0).toFixed(4);
+        const sharesVal = leg.shares ?? 0;
         const text =
           `📅 ${title} (single-leg)\n` +
-          `   • ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${shares} shares`;
+          `   • ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesVal.toFixed(1)} shares · paga $${sharesVal.toFixed(2)} se ganhar`;
         const kbd = new InlineKeyboard().text('Editar leg', `edit_leg:${leg.id}`);
         await ctx.reply(text, { reply_markup: kbd });
       } else {
@@ -68,8 +68,8 @@ export async function editHandler(ctx: BotContext): Promise<void> {
         let text = `🎯 ${firstTitle} (basket, ${groupLegs.length} legs)\n`;
         for (const leg of groupLegs) {
           const evtTitle = (leg.events as { title: string } | null)?.title ?? 'Sem título';
-          const shares = (leg.shares ?? 0).toFixed(4);
-          text += `   • ${evtTitle}: ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${shares} shares\n`;
+          const sharesVal = leg.shares ?? 0;
+          text += `   • ${evtTitle}: ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesVal.toFixed(1)} shares · paga $${sharesVal.toFixed(2)} se ganhar\n`;
         }
         const kbd = new InlineKeyboard();
         for (let i = 0; i < groupLegs.length; i++) {
