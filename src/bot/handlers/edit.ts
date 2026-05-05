@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
+import { adjustCash } from '../../lib/bankroll.js';
 import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
 
 type OpenLegRow = {
@@ -150,9 +151,15 @@ export async function editConversation(
         await ctx.reply('Stake inválido. Operação cancelada.');
         return;
       }
+      const oldStake = (leg as { stake_usd: number }).stake_usd;
+      const stakeDelta = newStake - oldStake;
       const newShares = newStake / (leg as { entry_price: number }).entry_price;
       await supabase.from('my_bet_legs').update({ stake_usd: newStake, shares: newShares }).eq('id', id);
-      await ctx.reply(`✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).`);
+      await adjustCash(-stakeDelta);
+      const cashMsg = stakeDelta !== 0
+        ? `\nCash ajustado: ${stakeDelta > 0 ? '-' : '+'}$${Math.abs(stakeDelta).toFixed(2)}`
+        : '';
+      await ctx.reply(`✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).${cashMsg}`);
 
     } else if (field === 'edit:outcome') {
       const currentOutcome = (leg as { outcome: string }).outcome;
