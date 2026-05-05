@@ -31,7 +31,6 @@
     "@types/node-telegram-bot-api": "^0.64.14",
     "eslint": "^10.2.1",
     "prettier": "^3.8.3",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.1"
   },
@@ -42,6 +41,7 @@
     "dotenv": "^17.4.2",
     "grammy": "^1.42.0",
     "node-cron": "^4.2.1",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^0.67.0",
+    "tsx": "^4.21.0"
   }
 }
