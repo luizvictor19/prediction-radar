@@ -33,6 +33,24 @@ export async function collectAll(): Promise<void> {
   const minLiquidity = config.collector_min_liquidity ?? 20000;
   const excludedCategories = config.excluded_categories ?? [];
 
+  const { data: openLegs } = await supabase
+    .from('my_bet_legs')
+    .select('event_id')
+    .is('closed_at', null);
+
+  const protectedEventIds = new Set(
+    (openLegs ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
+  );
+
+  const { data: protectedEvents } = await supabase
+    .from('events')
+    .select('polymarket_id')
+    .in('id', [...protectedEventIds]);
+
+  const protectedPolymarketIds = new Set(
+    (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
+  );
+
   let offset = 0;
   let scanned = 0;
   let upserted = 0;
@@ -42,6 +60,7 @@ export async function collectAll(): Promise<void> {
   let includedNegRiskLowVolume = 0;
   let skippedLiquidity = 0;
   let skippedExcluded = 0;
+  let protectedIncluded = 0;
 
   while (true) {
     const markets = await fetchActiveMarkets({ limit: 500, offset });
@@ -50,8 +69,10 @@ export async function collectAll(): Promise<void> {
     for (const market of markets) {
       if (!passesBaseFilters(market)) continue;
 
+      const isProtected = protectedPolymarketIds.has(market.id);
+
       const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
-      if (volume24h < minVolume24h) {
+      if (volume24h < minVolume24h && !isProtected) {
         if (!market.negRiskMarketID) {
           skippedLowVolumeIsolated++;
           continue;
@@ -60,10 +81,12 @@ export async function collectAll(): Promise<void> {
       }
 
       const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
-      if (liquidity < minLiquidity) {
+      if (liquidity < minLiquidity && !isProtected) {
         skippedLiquidity++;
         continue;
       }
+
+      if (isProtected) protectedIncluded++;
 
       // Apply excluded_categories filter (uses polymarket feeType)
       const feeType = market.feeType ?? null;
@@ -158,6 +181,7 @@ export async function collectAll(): Promise<void> {
       included_neg_risk_low_volume: includedNegRiskLowVolume,
       skipped_low_liquidity: skippedLiquidity,
       skipped_excluded_category: skippedExcluded,
+      protected_included: protectedIncluded,
     },
   });
 
