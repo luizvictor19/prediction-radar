@@ -72,13 +72,16 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     const closedBetCount = closedBetsMeta.count ?? 0;
 
-    const lastRun = lastDetector.data?.created_at
-      ? new Date(lastDetector.data.created_at).toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'UTC',
-        }) + ' UTC'
-      : 'nunca';
+    const lastRun = (() => {
+      if (!lastDetector.data?.created_at) return 'nunca';
+      const d = new Date(lastDetector.data.created_at);
+      const hhU = String(d.getUTCHours()).padStart(2, '0');
+      const minU = String(d.getUTCMinutes()).padStart(2, '0');
+      const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+      const hhB = String(brt.getUTCHours()).padStart(2, '0');
+      const minB = String(brt.getUTCMinutes()).padStart(2, '0');
+      return `${hhU}:${minU} UTC (${hhB}:${minB} BRT)`;
+    })();
 
     const text =
       `*Status*\n` +
