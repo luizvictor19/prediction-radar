@@ -173,20 +173,24 @@ export async function closePositionConversation(
       const leg = legs[0]!;
 
       await ctx.reply(
-        'Preço de fechamento (decimal, ex: 0.65) ou resolved se resolveu (sem fechar antecipado):'
+        'Valor total recebido em USD (ex: 4.32) ou "resolved" se resolveu:'
       );
       const inputCtx = await conversation.waitFor('message:text');
       const inputRaw = inputCtx.message.text.trim();
 
+      const shares = legShares(leg);
+      let saleValue: number | null = null;
       let closingPrice: number | null = null;
       let resolutionPrice: number | null = null;
 
-      if (inputRaw !== 'resolved') {
-        closingPrice = parseFloat(inputRaw);
-        if (isNaN(closingPrice) || closingPrice < 0 || closingPrice > 1) {
-          await ctx.reply('Preço inválido (deve ser entre 0 e 1). Operação cancelada.');
+      if (inputRaw.toLowerCase() !== 'resolved') {
+        saleValue = parseFloat(inputRaw);
+        const maxSale = shares * 1.001;
+        if (isNaN(saleValue) || saleValue <= 0 || saleValue > maxSale) {
+          await ctx.reply(`Valor inválido. Deve ser positivo em USD (máx. $${maxSale.toFixed(2)}). Operação cancelada.`);
           return;
         }
+        closingPrice = saleValue / shares;
       }
 
       await ctx.reply('Resultado?', { reply_markup: RESULT_KBD });
@@ -194,14 +198,14 @@ export async function closePositionConversation(
       await resCtx.answerCallbackQuery();
       const result = resCtx.callbackQuery.data.replace('res:', '');
 
-      if (result === 'win') resolutionPrice = inputRaw === 'resolved' ? 1.0 : null;
-      if (result === 'loss') resolutionPrice = inputRaw === 'resolved' ? 0.0 : null;
+      if (result === 'win') resolutionPrice = saleValue === null ? 1.0 : null;
+      if (result === 'loss') resolutionPrice = saleValue === null ? 0.0 : null;
 
-      const shares = legShares(leg);
       let pnlUsd: number;
-      if (result === 'win') {
-        const cp = resolutionPrice ?? closingPrice ?? 1.0;
-        pnlUsd = (cp - leg.entry_price) * shares;
+      if (saleValue !== null) {
+        pnlUsd = saleValue - leg.stake_usd;
+      } else if (result === 'win') {
+        pnlUsd = (1.0 - leg.entry_price) * shares;
       } else if (result === 'loss') {
         pnlUsd = -leg.stake_usd;
       } else {
@@ -218,13 +222,20 @@ export async function closePositionConversation(
 
       await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
 
-      if (result !== 'void') {
-        const retorno = shares * (resolutionPrice ?? closingPrice ?? 0);
-        await adjustCash(retorno);
+      if (saleValue !== null) {
+        await adjustCash(saleValue);
+      } else if (result !== 'void') {
+        await adjustCash(shares * (resolutionPrice ?? 0));
       }
 
       const sign = pnlUsd >= 0 ? '+' : '';
-      await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\``, { parse_mode: 'Markdown' });
+      if (saleValue !== null) {
+        await ctx.reply(
+          `✅ Posição fechada.\nRecebido: $${saleValue.toFixed(2)}\nPnL: ${sign}$${pnlUsd.toFixed(2)} (stake $${leg.stake_usd.toFixed(2)})`,
+        );
+      } else {
+        await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\``, { parse_mode: 'Markdown' });
+      }
 
     } else {
       // === BASKET ===
@@ -308,7 +319,7 @@ export async function closePositionConversation(
         );
 
       } else if (choice === 'basket:manual') {
-        const legResults: { label: string; pnl: number; result: string }[] = [];
+        const legResults: { label: string; pnl: number; result: string; saleVal: number | null }[] = [];
 
         for (let i = 0; i < legs.length; i++) {
           const leg = legs[i]!;
@@ -318,7 +329,7 @@ export async function closePositionConversation(
           await ctx.reply(
             `Leg ${i + 1}/${legs.length}: ${label}\n` +
             `Stake: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price}, ${shares.toFixed(1)} shares\n` +
-            `Preço de fechamento (decimal) ou 'win' / 'loss' / 'anulado':`
+            `Valor recebido em USD (ex: 4.32) ou 'win' / 'loss' / 'anulado':`
           );
           const inputCtx = await conversation.waitFor('message:text');
           const raw = inputCtx.message.text.trim().toLowerCase();
@@ -327,6 +338,7 @@ export async function closePositionConversation(
           let closingPrice: number | null = null;
           let resolutionPrice: number | null = null;
           let pnlUsd: number;
+          let legSaleVal: number | null = null;
 
           if (raw === 'win') {
             result = 'win'; resolutionPrice = 1.0;
@@ -337,14 +349,16 @@ export async function closePositionConversation(
           } else if (raw === 'anulado') {
             result = 'void'; pnlUsd = 0;
           } else {
-            closingPrice = parseFloat(raw);
-            if (isNaN(closingPrice) || closingPrice < 0 || closingPrice > 1) {
-              await ctx.reply(`Valor inválido na leg ${i + 1}. Encerrando fluxo.`);
+            const saleVal = parseFloat(raw);
+            const maxSale = shares * 1.001;
+            if (isNaN(saleVal) || saleVal <= 0 || saleVal > maxSale) {
+              await ctx.reply(`Valor inválido na leg ${i + 1}. Deve ser positivo (máx. $${maxSale.toFixed(2)}). Encerrando fluxo.`);
               break;
             }
-            const diff = (closingPrice - leg.entry_price) * shares;
-            result = diff > 0 ? 'win' : diff < 0 ? 'loss' : 'void';
-            pnlUsd = diff;
+            closingPrice = saleVal / shares;
+            pnlUsd = saleVal - leg.stake_usd;
+            result = pnlUsd > 0 ? 'win' : pnlUsd < 0 ? 'loss' : 'void';
+            legSaleVal = saleVal;
           }
 
           await supabase.from('my_bet_legs').update({
@@ -355,12 +369,13 @@ export async function closePositionConversation(
             closed_at: nowIso,
           }).eq('id', leg.id);
 
-          if (result !== 'void') {
-            const retorno = shares * (resolutionPrice ?? closingPrice ?? 0);
-            await adjustCash(retorno);
+          if (legSaleVal !== null) {
+            await adjustCash(legSaleVal);
+          } else if (result !== 'void') {
+            await adjustCash(shares * (resolutionPrice ?? 0));
           }
 
-          legResults.push({ label, pnl: pnlUsd, result });
+          legResults.push({ label, pnl: pnlUsd, result, saleVal: legSaleVal });
         }
 
         await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
@@ -370,7 +385,11 @@ export async function closePositionConversation(
         let reply = `✅ Basket fechada. PnL total: \`${sign}$${totalPnl.toFixed(2)}\`\n`;
         for (const r of legResults) {
           const s = r.pnl >= 0 ? '+' : '';
-          reply += `• ${r.label}: \`${s}$${r.pnl.toFixed(2)}\` (${r.result})\n`;
+          if (r.saleVal !== null) {
+            reply += `• ${r.label}: Recebido $${r.saleVal.toFixed(2)} · PnL ${s}$${r.pnl.toFixed(2)}\n`;
+          } else {
+            reply += `• ${r.label}: \`${s}$${r.pnl.toFixed(2)}\` (${r.result})\n`;
+          }
         }
         await ctx.reply(reply, { parse_mode: 'Markdown' });
       }

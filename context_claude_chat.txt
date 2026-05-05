@@ -6,23 +6,33 @@ Nota: project.md e esquemas das tabelas estão sendo colados separadamente.
 ================================================================================
 
 ARQUIVOS INCLUÍDOS:
-  src/types/index.ts              — interfaces de dados (SignalType, SystemConfig, GammaMarket, metadatas…)
+  src/types/index.ts              — interfaces de dados (SignalType, SystemConfig, GammaMarket, MyBet, MyBetLeg…)
   src/lib/config.ts               — getSystemConfig(), cache 60s, DEFAULTS
+  src/lib/bankroll.ts             — getBankrollState(), adjustCash() — bankroll derivado de cash + portfolio
+  src/lib/outcome-normalizer.ts   — normalizeOutcome() — match case-insensitive contra events.outcomes.values
   src/index.ts                    — entry point main process, cron jobs (collector 3min, detectors 5min, retention daily)
-  src/collectors/polymarket.ts    — collectAll(): single-pass Gamma API, filtra e upserta events + snapshots
+  src/collectors/polymarket.ts    — collectAll(): single-pass Gamma API, filtra e upserta events + snapshots (ambos outcomes)
   src/collectors/categorizer.ts   — categorizeMarket() regex patterns (ai_llm, big_tech, ai_infra, ai_policy)
-  src/lib/normalize.ts            — gammaToEvent(): GammaMarket → Event
+  src/lib/normalize.ts            — gammaToEvent(): GammaMarket → Event (inclui sports_market_type, line)
   src/lib/polymarket-api.ts       — fetchActiveMarkets, fetchOrderbook
   src/claude/report.ts            — generateDailyReport() via Anthropic SDK
   src/claude/prompts.ts           — buildDailyReportPrompt()
   src/bot/auth.ts                 — authMiddleware (valida telegram_chat_id)
   src/bot/format.ts               — calcStake, getStakeCap, formatSignal (dispatch por signal_type)
-  src/bot/keyboards.ts            — signalKeyboard, calendarDrivenKeyboard, positionKeyboard
+  src/bot/keyboards.ts            — signalKeyboard, calendarDrivenKeyboard, positionKeyboard, basketKeyboard
   src/bot/message-utils.ts        — splitTextIntoChunks, sendLongMessage, replyLongMessage
   src/bot/index.ts                — entry point bot, commands, callbacks registrados
   src/bot/handlers/signals.ts     — /signals command handler
   src/bot/notify.ts               — notify loop (polling a cada 60s, marca alerted=true)
-  src/bot/handlers/track.ts       — fluxo conversacional de track (stake → preço → tese → confirm)
+  src/bot/handlers/track.ts       — fluxo conversacional de track (stake → to_win → tese → confirm; basket para cross_market_inter)
+  src/bot/handlers/positions.ts   — /positions + close position (single-leg e basket)
+  src/bot/handlers/register.ts    — /register: registrar bet manual, single-leg ou basket, com event match por trigram
+  src/bot/handlers/edit.ts        — /edit: editar legs abertas (to_win, stake, outcome, notes)
+  src/bot/handlers/topup.ts       — /topup <valor>: adiciona ao cash
+  src/bot/handlers/withdraw.ts    — /withdraw <valor>: retira do cash
+  src/bot/handlers/status.ts      — /status handler (mostra bankroll, bets abertas, PnL, detector status)
+  src/bot/handlers/help.ts        — /help handler
+  src/bot/handlers/config_cmd.ts  — /config handler
   src/detectors/runner.ts         — orquestra detectors ativos
   src/detectors/calendar-driven.ts — detector calendar-driven (implementado)
   src/jobs/cleanup-stale-signals.ts — dismiss signals cujos eventos pararam de receber snapshots
@@ -31,10 +41,7 @@ ARQUIVOS NÃO INCLUÍDOS (existem mas não são críticos pro planejamento):
   src/detectors/cross-market-inter.ts  — detector basket arb inter-market (padrão similar ao calendar-driven)
   src/detectors/cross-market.ts        — detector intra-market
   src/detectors/hype-reality-gap.ts    — stub ainda
-  src/bot/handlers/positions.ts        — /positions + close position conversation
-  src/bot/handlers/bankroll.ts         — /bankroll handler
-  src/bot/handlers/status.ts           — /status handler (mostra bankroll, bets abertas, PnL, detector status)
-  src/bot/handlers/config_cmd.ts       — /config handler
+  src/bot/handlers/bankroll.ts         — removido; substituído por /topup e /withdraw
   src/lib/fees.ts                      — cálculo de fees polymarket
   src/lib/kelly.ts                     — kelly criterion
   src/lib/format-helpers.ts            — truncate, confidenceStars, describeVolatility, calcCalendarDrivenStake
@@ -75,6 +82,8 @@ export interface Event {
   volume_24h: number | null;
   liquidity: number | null;
   end_date: string | null;
+  sports_market_type: string | null;   // ex: "moneyline", "spread", "total"
+  line: number | null;                 // spread/total line value
   status: string;
   resolved_outcome: string | null;
   tracked: boolean;
@@ -120,7 +129,7 @@ export interface DetectedSignal {
 
 export interface SystemConfig {
   id: number;
-  bankroll_usd: number;
+  cash_usd: number;                    // ATENÇÃO: era bankroll_usd — agora representa apenas o cash disponível
   max_stake_pct: number;
   cross_market_max_stake_pct: number;
   kelly_fraction: number;
@@ -142,6 +151,40 @@ export interface SystemConfig {
   collector_min_volume_24h: number;
   collector_min_liquidity: number;
   updated_at: string;
+}
+
+// my_bets: cabeçalho de uma aposta (pode ter 1 ou N legs)
+export interface MyBet {
+  id: string;
+  signal_id: string | null;
+  event_id: string | null;
+  thesis: string | null;
+  thesis_type: string | null;       // 'manual' | signal_type string
+  confidence_self: number | null;
+  domain_confidence: number | null;
+  polymarket_category: string | null;
+  notes: string | null;
+  placed_at: string;
+  closed_at: string | null;
+}
+
+// my_bet_legs: cada leg individual de uma aposta
+export interface MyBetLeg {
+  id: string;
+  bet_id: string;
+  event_id: string | null;
+  outcome: string;
+  entry_price: number;
+  stake_usd: number;
+  shares: number | null;            // = to_win value (stake / entry_price)
+  closing_price: number | null;
+  resolution_price: number | null;
+  result: 'win' | 'loss' | 'void' | null;
+  pnl_usd: number | null;
+  clv: number | null;
+  notes: string | null;
+  closed_at: string | null;
+  created_at: string;
 }
 
 export interface CrossMarketSignalMetadata {
@@ -229,11 +272,13 @@ export interface GammaMarket {
   lastTradePrice: number;
   negRisk?: boolean;
   negRiskMarketID?: string | null;
-  feeType?: string | null;             // Polymarket canonical category (e.g. "politics_fees")
+  feeType?: string | null;
   feeSchedule?: { rate: number; exponent: number; takerOnly: boolean; rebateRate: number } | null;
   series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
   events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null }> | null;
   eventMetadata?: Record<string, unknown> | null;
+  sportsMarketType?: string | null;
+  line?: number | null;
 }
 
 export interface ClobOrderbook {
@@ -255,7 +300,7 @@ const CACHE_TTL_MS = 60 * 1000;
 
 const DEFAULTS: SystemConfig = {
   id: 1,
-  bankroll_usd: 500,
+  cash_usd: 500,           // era bankroll_usd
   max_stake_pct: 0.03,
   cross_market_max_stake_pct: 0.10,
   kelly_fraction: 0.25,
@@ -279,37 +324,38 @@ const DEFAULTS: SystemConfig = {
   updated_at: new Date().toISOString(),
 };
 
-let cachedConfig: SystemConfig | null = null;
-let cacheExpiresAt = 0;
+export async function getSystemConfig(): Promise<SystemConfig> { ... }
+export function invalidateConfigCache(): void { ... }
 
-export async function getSystemConfig(): Promise<SystemConfig> {
-  const now = Date.now();
-  if (cachedConfig !== null && now < cacheExpiresAt) return cachedConfig;
-
-  const { data, error } = await supabase
-    .from('system_config')
-    .select('*')
-    .eq('id', 1)
-    .single();
-
-  if (error || !data) {
-    await logEvent({
-      component: 'config',
-      status: 'error',
-      message: `Failed to load system_config, using defaults: ${error?.message ?? 'no data'}`,
-    });
-    return DEFAULTS;
-  }
-
-  cachedConfig = data as SystemConfig;
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return cachedConfig;
+================================================================================
+FILE: src/lib/bankroll.ts   (NOVO)
+================================================================================
+export interface BankrollState {
+  cash: number;              // system_config.cash_usd
+  portfolio_value: number;   // soma de shares × mid_price de todas as legs abertas
+  bankroll: number;          // cash + portfolio_value
+  legs_count: number;
+  stake_committed: number;   // soma dos stake_usd das legs abertas
 }
 
-export function invalidateConfigCache(): void {
-  cachedConfig = null;
-  cacheExpiresAt = 0;
-}
+export async function getBankrollState(): Promise<BankrollState>
+// Lê config.cash_usd; para cada leg aberta em my_bet_legs, busca último snapshot
+// mid_price do event_id/outcome. Se sem snapshot, usa stake_usd como fallback.
+
+export async function adjustCash(delta: number): Promise<void>
+// Atualiza system_config.cash_usd += delta (positivo = topup, negativo = stake/withdraw)
+// Invalida o cache de config após atualização.
+
+================================================================================
+FILE: src/lib/outcome-normalizer.ts   (NOVO)
+================================================================================
+export async function normalizeOutcome(
+  eventId: string,
+  rawInput: string,
+): Promise<{ ok: true; outcome: string } | { ok: false; available: string[] }>
+// Busca events.outcomes.values[] pelo eventId.
+// Faz match case-insensitive do rawInput contra os valores disponíveis.
+// Retorna { ok: true, outcome } com o nome canônico, ou { ok: false, available }.
 
 ================================================================================
 FILE: src/index.ts
@@ -347,20 +393,20 @@ main().catch((err) => {
 });
 
 ================================================================================
-FILE: src/collectors/polymarket.ts  (single-pass collector, reescrito)
+FILE: src/collectors/polymarket.ts  (single-pass collector)
 ================================================================================
 // Fetches from Gamma API only (no CLOB). Filters: active, 7-90 days to resolution,
 // volume_24h >= min, liquidity >= min, excluded_categories check.
 // negRiskMarketID markets with low volume are still included (basket arb needs them).
-// For each market: upserts event row, inserts snapshot.
-export async function collectAll(): Promise<void> { ... }
-
+// Para cada mercado: upserta event row, insere snapshot para AMBOS os outcomes
+//   (ex: Yes e No) — necessário para normalizeOutcome e calendar_driven detector.
 // Key filtering logic:
 // - passesBaseFilters: active=true, closed=false, end_date 7-90 days from now
 // - volume_24h < minVolume → skip unless negRiskMarketID present (basket arb)
 // - liquidity < minLiquidity → always skip
 // - feeType in excluded_categories → skip
 // - categorizeMarket() → sets is_ai_tech flag; 'other' markets still collected
+export async function collectAll(): Promise<void> { ... }
 
 ================================================================================
 FILE: src/collectors/categorizer.ts
@@ -387,6 +433,8 @@ FILE: src/lib/normalize.ts
 // - polymarket_fee_rate  = market.feeSchedule?.rate
 // - is_ai_tech = categorizeMarket(market).category !== 'other'
 // - event_group_slug = market.events?.[0]?.slug  (used for Polymarket URLs)
+// - sports_market_type = market.sportsMarketType
+// - line = market.line
 // - status: closed→'resolved', active→'active', else→'inactive'
 
 ================================================================================
@@ -444,15 +492,26 @@ export function categoryEmoji(category): string  // 🏆 🗳️ 🤖 🎵 📈 
 ================================================================================
 FILE: src/bot/keyboards.ts
 ================================================================================
+// getOutcomeEmojis(values, prices) — emojis dinâmicos por outcome:
+//   Yes/No → ✅/❌ | Up/Down → ⬆️/⬇️ | Over/Under → ⬆️/⬇️
+//   Empate (~mesmo preço, <0.02 diff) → 🪙/🎲
+//   Favorito/Azarão → 👑/🐺
+
 export function signalKeyboard(signalId, polymarketUrl): InlineKeyboard
 // [Ver no Polymarket] [Track] [Dismiss]
 
-export function calendarDrivenKeyboard(signalId, polymarketUrl): InlineKeyboard
-// [Ver no Polymarket]
-// [Track YES] [Track NO] [Dismiss]
+export function calendarDrivenKeyboard(signalId, polymarketUrl, outcomes): InlineKeyboard
+// outcomes: { values?: string[]; prices?: string[] } — usa nomes reais dos outcomes
+// [Ver no Polymarket ↗]
+// [<emoji0> Track <outcome0>] [<emoji1> Track <outcome1>]
+// [Dismiss]
+// Se outcomes = Yes/No: mostra "Track YES" / "Track NO" (label fixo)
 
 export function positionKeyboard(positionId): InlineKeyboard
-// [Fechar posição]
+// [Fechar posição]  — para single-leg (positionId = bet_id)
+
+export function basketKeyboard(betId): InlineKeyboard
+// [Fechar tudo] [Fechar leg específica]  — para baskets (betId = bet_id)
 
 export function confirmKeyboard(action): InlineKeyboard
 // [Confirmar] [Cancelar]
@@ -482,20 +541,29 @@ const bot = new Bot<BotContext>(process.env['TELEGRAM_BOT_TOKEN']!);
 bot.use(conversations());
 bot.use(createConversation(trackConversation,          'track'));
 bot.use(createConversation(closePositionConversation,  'close_position'));
+bot.use(createConversation(registerConversation,       'register'));
+bot.use(createConversation(editConversation,           'edit'));
 bot.use(authMiddleware());
 
 bot.command('signals',   signalsHandler);
 bot.command('positions', positionsHandler);
 bot.command('status',    statusHandler);
-bot.command('bankroll',  bankrollHandler);
+bot.command('topup',     topupHandler);
+bot.command('withdraw',  withdrawHandler);
 bot.command('config',    configHandler);
+bot.command('help',      helpHandler);
+bot.command('register',  registerHandler);
+bot.command('edit',      editHandler);
 
 // Callbacks:
+bot.callbackQuery(/^edit_leg:(.+)$/,  /* enters 'edit' conversation with legId */);
 bot.callbackQuery(/^dismiss:(.+)$/,   /* marks dismissed=true, edits message */);
 bot.callbackQuery(/^track:(.+)$/,     /* enters 'track' conversation (cross_market) */);
-bot.callbackQuery(/^track_yes:(.+)$/, /* enters 'track' with ':yes' suffix */);
-bot.callbackQuery(/^track_no:(.+)$/,  /* enters 'track' with ':no' suffix */);
-bot.callbackQuery(/^close:(.+)$/,     /* enters 'close_position' conversation */);
+bot.callbackQuery(/^track_yes:(.+)$/, /* resolve outcome real via events.outcomes.values[0], entra em 'track' */);
+bot.callbackQuery(/^track_no:(.+)$/,  /* resolve outcome real via events.outcomes.values[1], entra em 'track' */);
+bot.callbackQuery(/^close:(.+)$/,     /* enters 'close_position' conversation com bet_id */);
+
+// setMyCommands: 9 comandos registrados no Telegram
 
 startNotifyLoop(bot);
 bot.start({ drop_pending_updates: true });
@@ -507,6 +575,7 @@ FILE: src/bot/handlers/signals.ts
 // Filters: expires_at not passed + (calendar_driven OR edge >= min_expected_edge_pct)
 // Orders by metadata->>expected_edge_pct desc, limit 10
 // For each signal: resolves Polymarket URL, chooses keyboard by signal_type, sends message
+// calendarDrivenKeyboard recebe outcomes do evento para botões com nomes reais
 
 ================================================================================
 FILE: src/bot/notify.ts
@@ -520,15 +589,117 @@ FILE: src/bot/handlers/track.ts
 ================================================================================
 // trackConversation(conversation, ctx, signalIdWithOutcome)
 // signalIdWithOutcome formats:
-//   "uuid"      → cross_market (outcome from signal.suggested_outcome)
-//   "uuid:yes"  → calendar_driven YES
-//   "uuid:no"   → calendar_driven NO
+//   "uuid"         → cross_market (outcome from signal.suggested_outcome)
+//   "uuid:outcome" → calendar_driven ou outros (outcome forçado, nome real do evento)
 //
-// Flow: stake → entry price → confidence (optional, /skip) → thesis (optional, /skip) → confirm
-// On confirm: inserts into my_bets, marks signal acted_on=true
+// Roteamento:
+//   cross_market_inter → basketTrack() — coleta stake total, distribui entre legs
+//   outros             → singleLegTrack() — fluxo single-leg
 //
-// my_bets insert fields: signal_id, event_id, outcome, entry_price, stake_usd, shares,
-//   thesis, thesis_type, confidence_self, domain_confidence, polymarket_category, placed_at
+// singleLegTrack flow: stake → TO WIN (vem do campo "to win" do Polymarket) → confiança (skip) → tese (skip) → confirm
+//   entry_price calculado = stake / to_win
+//   shares = to_win (= quanto recebe se ganhar)
+//   On confirm: inserts my_bets + my_bet_legs, marks signal acted_on=true, adjustCash(-stakeUsd)
+//
+// basketTrack flow (cross_market_inter):
+//   Step 1: stake total
+//   Step 2: exibe execução (N legs: outcome, stake por leg, shares, entry_price)
+//   Step 3: tese (skip) → confirm
+//   On confirm: inserts my_bets + N my_bet_legs, adjustCash(-totalStake)
+//
+// my_bets fields: signal_id, event_id, thesis, thesis_type, confidence_self,
+//   domain_confidence, polymarket_category, placed_at
+// my_bet_legs fields: bet_id, event_id, outcome, entry_price, stake_usd, shares
+
+================================================================================
+FILE: src/bot/handlers/positions.ts
+================================================================================
+// positionsHandler(ctx): fetches open my_bet_legs (closed_at IS NULL)
+//   Groups by bet_id (single-leg vs basket)
+//   Single-leg: exibe evento, outcome, stake, entry_price, shares (1 decimal), paga $X se ganhar
+//              Botão: [Fechar posição]
+//   Basket:    exibe título, N legs com detalhes, stake total
+//              Botão: [Fechar tudo] [Fechar leg específica]
+//   Rodapé: total de legs, agrupado por outcome
+//
+// closePositionConversation(conversation, ctx, betId):
+//   Busca todas as legs abertas do betId
+//   Single-leg: pede preço de fechamento (decimal) ou "resolved" → resultado → calcula PnL
+//               adjustCash(shares × closing/resolution_price) ao fechar
+//   Basket (2+ legs):
+//     Opção A — "Resolveu (1 leg ganhou)": seleciona leg vencedora → win/others loss
+//     Opção B — "Fechar cada leg manualmente": percorre cada leg
+//   Atualiza my_bet_legs (closing_price, resolution_price, result, pnl_usd, closed_at)
+//   Atualiza my_bets (closed_at)
+
+================================================================================
+FILE: src/bot/handlers/register.ts   (NOVO)
+================================================================================
+// registerHandler(ctx) → enters 'register' conversation
+//
+// registerConversation: pergunta se é 1 leg ou basket (2+), roteia para:
+//
+// registerSingleLeg():
+//   a. Título do evento (texto livre)
+//   b. Event match via trigram RPC search_events_by_title (similarity_threshold=0.15)
+//      - 1 match: confirma automaticamente
+//      - 2+ matches: exibe botões para escolher (ou "nenhum, registrar manualmente")
+//      - Categoria inferida do evento ou perguntada manualmente
+//   c. Outcome (texto livre; se event match → normalizeOutcome() para canônico)
+//   d. Stake em USD
+//   e. To win (em USD, vem do Polymarket); entry_price = stake / to_win; shares = to_win
+//   f. Confiança 1-10 (ou skip)
+//   g. Tese curta (ou skip)
+//   h. Resumo + confirmação (Sim/Não)
+//   i. INSERT my_bets + my_bet_legs
+//      - Se signal match encontrado: marca acted_on=true
+//
+// registerBasket():
+//   a. Categoria
+//   b. Título da basket (referência)
+//   c. Número de legs
+//   d. Loop N legs: outcome + stake + entry_price decimal (não usa to_win)
+//   e. Tese (ou skip) → resumo + confirmação
+//   f. INSERT my_bets + N my_bet_legs
+
+================================================================================
+FILE: src/bot/handlers/edit.ts   (NOVO)
+================================================================================
+// editHandler(ctx): lista todas as legs abertas agrupadas por bet_id
+//   Single-leg: [Editar leg]
+//   Basket: [Editar leg 1], [Editar leg 2], … por linha
+//   Exibe: evento, outcome, stake, entry_price, shares, paga $X se ganhar
+//
+// editConversation(conversation, ctx, legId):
+//   Oferece campos editáveis: To win | Stake | Outcome | Notes | Cancelar
+//   To win: recalcula entry_price = stake_usd / newToWin; shares = newToWin
+//   Stake: recalcula shares = newStake / entry_price
+//   Outcome: texto livre; se event_id presente → normalizeOutcome()
+//   Notes: texto livre ou skip (null)
+
+================================================================================
+FILE: src/bot/handlers/topup.ts   (NOVO)
+================================================================================
+// topupHandler(ctx): /topup <valor>
+//   Valida valor positivo → adjustCash(+valor) → exibe cash/portfolio/bankroll atualizados
+//   Sem argumento: mostra instrução de uso
+
+================================================================================
+FILE: src/bot/handlers/withdraw.ts   (NOVO)
+================================================================================
+// withdrawHandler(ctx): /withdraw <valor>
+//   Valida valor positivo e ≤ cash atual → adjustCash(-valor)
+//   Exibe cash/portfolio/bankroll atualizados
+
+================================================================================
+FILE: src/bot/handlers/status.ts
+================================================================================
+// statusHandler(ctx):
+//   Usa getBankrollState() (cash + portfolio separados)
+//   Bets fechadas (7d): conta por my_bets.closed_at; win rate e PnL por my_bet_legs
+//   Alertas 24h: conta pelo total de sinais alerted=true (não filtra dismissed)
+//   Último detector: busca system_logs component=cross_market_inter_detector, status=success
+//   Exibe horário em UTC e BRT lado a lado
 
 ================================================================================
 FILE: src/detectors/runner.ts
@@ -564,48 +735,78 @@ FILE: src/jobs/cleanup-stale-signals.ts
 NOTAS DE DESIGN — DECISÕES RECENTES
 ================================================================================
 
-1. Cap de stake por signal_type
+1. Bankroll = cash + portfolio (não mais campo único)
+   - system_config.cash_usd: dinheiro disponível (não investido)
+   - Portfolio: calculado em tempo real via mid_price das legs abertas
+   - bankroll = cash + portfolio — exibido em /status e /topup, /withdraw
+   - /topup e /withdraw substituem o antigo /bankroll
+   - Track e close position chamam adjustCash() para manter cash sincronizado
+
+2. Modelo de dados: my_bets + my_bet_legs (schema normalizado)
+   - my_bets: cabeçalho (thesis, category, placed_at, closed_at, signal_id)
+   - my_bet_legs: cada leg individual com entry_price, stake, shares, result, pnl
+   - Basket = 1 my_bets + N my_bet_legs com mesmo bet_id
+   - Single-leg = 1 my_bets + 1 my_bet_leg
+
+3. Input "to win" em vez de preço decimal
+   - /track e /register (single-leg) pedem "valor a receber se ganhar" (vem do Polymarket)
+   - entry_price calculado = stake_usd / to_win
+   - shares = to_win (porque 1 share paga $1 se ganhar)
+   - /edit campo "To win" recalcula entry_price e shares
+   - Basket legs: usam entry_price decimal diretamente (não usa to_win)
+
+4. Outcomes reais (não hard-coded Yes/No)
+   - normalizeOutcome(): match case-insensitive contra events.outcomes.values
+   - /register e /edit (campo outcome) normalizam via normalizeOutcome()
+   - track_yes/track_no callbacks resolvem outcomes[0]/outcomes[1] do evento
+   - calendarDrivenKeyboard recebe outcomes do evento para botões dinâmicos
+   - Emojis dinâmicos: ✅/❌ Yes/No, ⬆️/⬇️ Over/Under, 🪙/🎲 empate, 👑/🐺 favorito
+
+5. Cap de stake por signal_type
    - cross_market_inter / cross_market_intra → config.cross_market_max_stake_pct (default 10%)
    - outros (calendar_driven, hype_reality_gap, …) → config.max_stake_pct (default 3%)
    - helper getStakeCap(config, signalType) em format.ts
 
-2. calendar_driven não tem expected_edge_pct na metadata
+6. calendar_driven não tem expected_edge_pct na metadata
    - Queries que filtram por expected_edge_pct usam .or() para incluir calendar_driven:
      .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${threshold}`)
    - suggested_outcome = null; outcome vem do callback (track_yes / track_no)
-   - track.ts parseia signalIdWithOutcome como "uuid" ou "uuid:yes"/"uuid:no"
+   - track.ts parseia signalIdWithOutcome como "uuid" ou "uuid:outcome_name"
 
-3. Callbacks registrados no bot:
-   - track:{id}      → cross_market (outcome vem de signal.suggested_outcome)
-   - track_yes:{id}  → calendar_driven YES
-   - track_no:{id}   → calendar_driven NO
+7. Callbacks registrados no bot:
+   - track:{id}        → cross_market (outcome vem de signal.suggested_outcome)
+   - track_yes:{id}    → outcome = events.outcomes.values[0]
+   - track_no:{id}     → outcome = events.outcomes.values[1]
    - dismiss:{id}
-   - close:{id}      → fechar posição
+   - close:{bet_id}    → fechar posição (single ou basket)
+   - edit_leg:{leg_id} → editar leg específica
 
-4. URLs Polymarket:
+8. URLs Polymarket:
    - cross_market: lookup via members[0].polymarket_id → event_group_slug
    - calendar_driven: lookup via event_id → event_group_slug
 
-5. Collector: single-pass Gamma API (sem CLOB)
+9. Collector: single-pass Gamma API (sem CLOB)
+   - Insere snapshot para AMBOS os outcomes por evento (ex: Yes e No)
    - negRiskMarketID com baixo volume é incluído para viabilizar basket arb
    - polymarket_category vem de market.feeType (canônico da Polymarket)
    - is_ai_tech = categorizeMarket().category !== 'other' (flag interna, não filtra coleta)
+   - sports_market_type e line mapeados de GammaMarket → Event
 
-6. Categorizer (src/collectors/categorizer.ts)
-   - Filtra apenas por title (não description) — evita falsos positivos de URLs/boilerplate
-   - Exclusões: Claude Giroux (NHL), Meta/Russia geopolítico, Apple com case-sensitive
-   - isRelevantMarket() usada para logging; 'other' ainda é coletado (para basket arb)
+10. Event match em /register
+    - Usa RPC trigram search_events_by_title (similarity_threshold=0.15)
+    - Retorna até N matches com botões de escolha
+    - Se match encontrado: herda category; outlook procura sinal ativo para linkar
 
-7. message-utils.ts: mensagens longas no Telegram
-   - MAX_CHARS = 3800 (limite Telegram é 4096, margem de segurança)
-   - Chunks 2+ são threads reply ao chunk 1
+11. message-utils.ts: mensagens longas no Telegram
+    - MAX_CHARS = 3800 (limite Telegram é 4096, margem de segurança)
+    - Chunks 2+ são threads reply ao chunk 1
 
-8. Detector runner: cross_market_intra, cross_market_inter, calendar_driven (ativos)
-   hype_reality_gap comentado (stub)
+12. Detector runner: cross_market_intra, cross_market_inter, calendar_driven (ativos)
+    hype_reality_gap comentado (stub)
 
-9. src/telegram/ vs src/bot/
-   - src/telegram/ contém stubs para roadmap futuro (Week 5-6)
-   - src/bot/ é a implementação real e atual
+13. src/telegram/ vs src/bot/
+    - src/telegram/ contém stubs para roadmap futuro (Week 5-6)
+    - src/bot/ é a implementação real e atual
 
 ================================================================================
 FIM DO ARQUIVO

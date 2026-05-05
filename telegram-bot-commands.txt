@@ -10,84 +10,166 @@ Prediction Radar — Telegram Bot Commands
   ("🕐 Atualizado há Xmin").
   Calendar_driven exibe tempo até resolução granular ("Resolve em N dias",
   "Resolve em Xh Ymin", etc).
-  Botões: [Ver no Polymarket] [Track] [Dismiss]
+  Botões cross_market: [Ver no Polymarket] [Track] [Dismiss]
+  Botões calendar_driven: [Ver no Polymarket ↗]
+                          [<emoji0> Track <outcome0>] [<emoji1> Track <outcome1>]
+                          [Dismiss]
+  Emojis dinâmicos por tipo de outcome (✅/❌ Yes/No, ⬆️/⬇️ Over/Under,
+  🪙/🎲 empate, 👑/🐺 favorito/azarão).
   Rodapé: resumo agrupado por signal_type (count) dos sinais exibidos.
 
 /positions
-  Lista todas as posições abertas (closed_at IS NULL), ordenadas pela
-  mais recente. Exibe: outcome, preço de entrada, stake, shares, tempo
-  aberta. Botão: [Fechar posição]
-  Rodapé: resumo agrupado por outcome (count) das posições exibidas.
+  Lista todas as posições abertas (closed_at IS NULL), agrupadas por bet.
+  Single-leg: exibe evento, outcome, stake, preço entrada, shares (1 decimal),
+              paga $X se ganhar, tempo aberta.
+              Botão: [Fechar posição]
+  Basket (2+ legs): exibe título, cada leg com detalhes, stake total.
+                    Botões: [Fechar tudo] [Fechar leg específica]
+  Rodapé: total de legs abertas, agrupado por outcome (count).
 
 /status
   Resumo do sistema em uma tela:
-  - Bankroll atual
-  - Bets abertas (count + stake total comprometido)
-  - Bets fechadas nos últimos 7 dias (count, win rate, PnL total)
-  - Último ciclo bem-sucedido do detector
-  - Sinais ativos agora (com mesmo filtro do /signals: edge mínimo
-    + freshness 15min)
-  - Sinais alertados nas últimas 24h
+  - Bankroll: cash + portfolio separados (ex: "$520.00 (cash $480 + portfolio $40)")
+  - Bets abertas: count de legs + stake comprometido + valor atual de portfolio
+  - Bets fechadas nos últimos 7 dias: count bets, win rate (por legs), PnL total
+  - Último ciclo bem-sucedido do detector (UTC e BRT lado a lado)
+  - Sinais ativos agora (com filtro edge mínimo + freshness 15min)
+  - Alertas enviados nas últimas 24h (conta total, incluindo dismissed)
 
-/bankroll
-  Sem argumento: mostra o bankroll atual.
-  Exemplo: /bankroll
-/bankroll <valor>
-  Atualiza o bankroll. Valor deve ser entre $1 e $100000.
-  Exemplo: /bankroll 150.50
-  Resposta: "✅ Bankroll atualizado: $100.00 → $150.50"
+/topup <valor>
+  Adiciona ao cash disponível (system_config.cash_usd += valor).
+  Exemplo: /topup 50
+  Sem argumento: mostra instrução de uso.
+  Resposta: "✅ Cash atualizado: +$50.00 | Cash: $X | Portfolio: $Y | Bankroll: $Z"
+
+/withdraw <valor>
+  Retira do cash disponível (system_config.cash_usd -= valor).
+  Bloqueia se valor > cash atual.
+  Exemplo: /withdraw 20
+  Sem argumento: mostra instrução de uso.
+  Resposta: "✅ Cash atualizado: -$20.00 | Cash: $X | Portfolio: $Y | Bankroll: $Z"
 
 /config
   Mostra os parâmetros de configuração atuais (somente leitura):
-  - Bankroll
+  - Cash disponível
   - Stake máximo (%)
   - Edge mínimo para listagem (%)
   - Edge mínimo para notificação automática (%)
 
+/register
+  Registrar bet feita fora do bot (manual).
+  Pergunta se é 1 leg ou basket (2+) e abre fluxo conversacional.
+
+  Single-leg:
+  1. Título do evento (texto livre)
+  2. Event match automático via trigram (similarity ≥ 0.15):
+     - 1 match: confirma automaticamente com categoria
+     - 2+ matches: botões de escolha (ou "registrar manualmente")
+  3. Categoria (se não houve match: Esportes / Política / Cripto / Tech /
+     Cultura / Economia / Finanças / Outro)
+  4. Outcome (texto livre; se event match → normalizado case-insensitive)
+  5. Stake em USD
+  6. To win em USD (campo "to win" do Polymarket); preço calculado = stake/to_win
+  7. Confiança 1-10 (ou skip)
+  8. Tese curta (ou skip)
+  9. Resumo + confirmação (Sim/Não)
+  Resultado: INSERT em my_bets + my_bet_legs.
+  Se signal ativo encontrado para o evento: marcado como acted_on=true.
+
+  Basket:
+  1. Categoria
+  2. Título da basket (referência)
+  3. Número de legs
+  4. Para cada leg: outcome + stake + preço de entrada decimal
+  5. Tese (ou skip) → resumo + confirmação
+  Resultado: INSERT em my_bets + N my_bet_legs.
+
+/edit
+  Listar legs abertas com botão [Editar leg] em cada uma.
+  Single-leg: exibe evento, outcome, stake, entry_price, shares, paga $X se ganhar.
+  Basket: exibe título + cada leg com [Editar leg N] por linha.
+  Clicando em [Editar leg]: abre fluxo conversacional.
+
 /help
   Lista todos os comandos disponíveis, agrupados por contexto:
   - 📡 Sinais (/signals)
-  - 📈 Posições (/positions)
-  - ⚙️ Sistema (/status, /bankroll, /config, /help)
+  - 📈 Posições (/positions, /register, /edit)
+  - ⚙️ Sistema (/status, /topup, /withdraw, /config, /help)
 
 =========================================
 Autocomplete (setMyCommands)
 =========================================
-  Os 6 comandos acima são registrados no Telegram via
+  Os 9 comandos abaixo são registrados no Telegram via
   bot.api.setMyCommands() no startup do bot. Aparecem como sugestões
-  ao digitar "/" no chat.
+  ao digitar "/" no chat:
+    /signals   — Listar sinais ativos
+    /positions — Posições abertas
+    /status    — Resumo do sistema
+    /topup     — Adicionar cash ao bankroll
+    /withdraw  — Retirar cash do bankroll
+    /config    — Configuração atual
+    /help      — Listar comandos disponíveis
+    /register  — Registrar bet feita fora do bot
+    /edit      — Editar legs abertas
 
 =========================================
 Callbacks (disparados por botões inline)
 =========================================
 
 [Track] — track:<signal_id>
-  Inicia fluxo conversacional para registrar uma operação cross_market:
+  Inicia fluxo conversacional para registrar uma operação:
+  - cross_market_inter → basketTrack (fluxo de basket, múltiplas legs)
+  - outros → singleLegTrack (fluxo single-leg)
+
+  singleLegTrack:
   1. Stake em USD (ou "ok" para usar o sugerido)
-  2. Preço de entrada (Yes price, ex.: 0.045)
-  3. Confiança própria 1-10 (ou /skip)
-  4. Tese curta (ou /skip)
-  5. Confirmação ("sim" / "não")
-  Resultado: INSERT em my_bets + signal marcado como acted_on=true.
+  2. To win em USD (campo "to win" do Polymarket)
+     → entry_price calculado = stake / to_win; shares = to_win
+  3. Confiança própria 1-10 (ou skip)
+  4. Tese curta (ou skip)
+  5. Confirmação (Sim/Não)
+  Resultado: INSERT em my_bets + my_bet_legs, sinal marcado acted_on=true,
+             adjustCash(-stakeUsd).
 
-[Track YES] — track_yes:<signal_id>
-  Para sinais calendar_driven onde o usuário quer apostar Yes.
-  Mesmo fluxo do Track, com outcome='Yes' fixado.
+  basketTrack (cross_market_inter):
+  1. Stake total da basket
+  2. Bot exibe execução detalhada: cada leg com outcome, stake, shares, entry_price
+  3. Tese curta (ou skip)
+  4. Confirmação (Sim/Não)
+  Resultado: INSERT em my_bets + N my_bet_legs, adjustCash(-stakeTotal).
 
-[Track NO] — track_no:<signal_id>
-  Para sinais calendar_driven onde o usuário quer apostar No.
-  Mesmo fluxo do Track, com outcome='No' fixado.
+[<emoji> Track <outcome>] — track_yes:<signal_id> / track_no:<signal_id>
+  Para sinais calendar_driven com nomes reais de outcomes.
+  track_yes → resolve para events.outcomes.values[0]
+  track_no  → resolve para events.outcomes.values[1]
+  Mesmo fluxo singleLegTrack com outcome fixado.
 
 [Dismiss] — dismiss:<signal_id>
   Marca o sinal como dismissed=true e edita a mensagem original
   adicionando "❌ DISMISSED" e removendo os botões.
 
-[Fechar posição] — close:<position_id>
-  Inicia fluxo conversacional para fechar uma posição:
-  1. Preço de saída (closing_price)
-  2. Resultado: win / loss / void
-  Calcula PnL = (closing_price - entry_price) × shares.
-  Resultado: UPDATE em my_bets com closing_price, result, pnl_usd, closed_at.
+[Fechar posição] — close:<bet_id>  (single-leg)
+  Inicia fluxo para fechar a leg única do bet:
+  1. Preço de fechamento (decimal 0-1) ou "resolved"
+  2. Resultado: Win / Loss / Anulado
+  Calcula PnL = (closing/resolution_price - entry_price) × shares
+  (loss → pnl = -stake_usd)
+  Resultado: UPDATE my_bet_legs, UPDATE my_bets (closed_at),
+             adjustCash(shares × closing_price).
+
+[Fechar tudo] — close:<bet_id>  (basket)
+  Inicia fluxo para fechar basket:
+  Opção A — "Resolveu (1 leg ganhou)": seleciona leg vencedora → win; demais → loss
+  Opção B — "Fechar cada leg manualmente": percorre cada leg com preço ou win/loss/anulado
+  Resultado: UPDATE todas as my_bet_legs e my_bets, adjustCash por cada leg.
+
+[Editar leg] — edit_leg:<leg_id>
+  Inicia fluxo editConversation:
+  Campo: To win | Stake | Outcome | Notes | Cancelar
+  To win: recalcula entry_price e shares
+  Stake: recalcula shares
+  Outcome: normalizado via normalizeOutcome() se event_id disponível
+  Notes: texto livre ou skip (null)
 
 =========================================
 Notificações automáticas
@@ -95,7 +177,7 @@ Notificações automáticas
   Loop a cada 60 segundos. Envia mensagem proativa para o chat_id
   configurado quando há sinais novos com:
   - alerted=false, dismissed=false, acted_on=false
-  - edge >= notify_min_edge_pct (padrão: 2.5%)
+  - edge >= notify_min_edge_pct (padrão: 2.0%)
   - freshness <= 15min (last_seen_at recente)
   - calendar_driven: dismissa pre-alert se preço atual extremo (≤0.05 ou ≥0.95)
   Prefixo: "🔔 Novo sinal:"
