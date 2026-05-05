@@ -14,6 +14,7 @@ type LegRow = {
   stake_usd: number;
   shares: number | null;
   created_at: string;
+  event_id: string | null;
   my_bets: { placed_at: string; polymarket_category: string | null; thesis: string | null } | null;
   events: { title: string } | null;
 };
@@ -44,12 +45,20 @@ function legShares(leg: OpenLeg): number {
   return leg.shares ?? (leg.stake_usd / leg.entry_price);
 }
 
+function currentValueLine(shares: number, stake: number, midPrice: number, indent: string): string {
+  const curr = shares * midPrice;
+  const diff = curr - stake;
+  const pct = (diff / stake) * 100;
+  const sign = diff >= 0 ? '+' : '-';
+  return `${indent}📊 Atual: $${curr.toFixed(2)} (${sign}$${Math.abs(diff).toFixed(2)}, ${sign}${Math.abs(pct).toFixed(1)}%)\n`;
+}
+
 export async function positionsHandler(ctx: BotContext): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('my_bet_legs')
       .select(`
-        id, bet_id, outcome, entry_price, stake_usd, shares, created_at,
+        id, bet_id, outcome, entry_price, stake_usd, shares, created_at, event_id,
         my_bets!inner ( placed_at, polymarket_category, thesis ),
         events ( title )
       `)
@@ -67,6 +76,24 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
     if (legs.length === 0) {
       await ctx.reply('Nenhuma posição aberta.');
       return;
+    }
+
+    // N+1: fetch latest mid_price per leg
+    const midPrices = new Map<string, number | null>();
+    for (const leg of legs) {
+      if (!leg.event_id) {
+        midPrices.set(leg.id, null);
+        continue;
+      }
+      const { data: snap } = await supabase
+        .from('polymarket_snapshots')
+        .select('mid_price')
+        .eq('event_id', leg.event_id)
+        .eq('outcome', leg.outcome)
+        .order('captured_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      midPrices.set(leg.id, snap?.mid_price ?? null);
     }
 
     // Group by bet_id preserving creation order within each group
@@ -97,11 +124,13 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
         const leg = groupLegs[0]!;
         const eventTitle =
           (leg.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Bet manual';
-        const sharesDisplay = (leg.shares ?? 0).toFixed(1);
-        const toWin = leg.shares ?? (leg.stake_usd / leg.entry_price);
+        const shares = leg.shares ?? (leg.stake_usd / leg.entry_price);
+        const midPrice = midPrices.get(leg.id) ?? null;
+        const currLine = midPrice !== null ? currentValueLine(shares, leg.stake_usd, midPrice, '   ') : '';
         const text =
           `📅 ${eventTitle}\n` +
-          `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares · paga $${toWin.toFixed(2)} se ganhar\n` +
+          `   ${leg.outcome} — $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${shares.toFixed(1)} shares · paga $${shares.toFixed(2)} se ganhar\n` +
+          currLine +
           `   Aberta há ${relativeTime(placed_at)}`;
         await ctx.reply(text, { reply_markup: positionKeyboard(bet_id) });
       } else {
@@ -109,13 +138,27 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
           (groupLegs[0]!.events as { title: string } | null)?.title ?? thesis ?? polymarket_category ?? 'Basket';
         const totalStake = groupLegs.reduce((s, l) => s + l.stake_usd, 0);
         let text = `🎯 ${firstTitle} (basket, ${groupLegs.length} legs)\n`;
+        let basketCurrTotal = 0;
+        let basketStakeWithSnap = 0;
         for (const leg of groupLegs) {
           const evtTitle = (leg.events as { title: string } | null)?.title ?? 'Sem título';
-          const sharesDisplay = (leg.shares ?? 0).toFixed(1);
-          const toWin = leg.shares ?? (leg.stake_usd / leg.entry_price);
-          text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${sharesDisplay} shares · paga $${toWin.toFixed(2)} se ganhar\n`;
+          const shares = leg.shares ?? (leg.stake_usd / leg.entry_price);
+          const midPrice = midPrices.get(leg.id) ?? null;
+          text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${shares.toFixed(1)} shares · paga $${shares.toFixed(2)}\n`;
+          if (midPrice !== null) {
+            text += currentValueLine(shares, leg.stake_usd, midPrice, '     ');
+            basketCurrTotal += shares * midPrice;
+            basketStakeWithSnap += leg.stake_usd;
+          }
         }
-        text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
+        if (basketStakeWithSnap > 0) {
+          const basketDiff = basketCurrTotal - basketStakeWithSnap;
+          const basketPct = (basketDiff / basketStakeWithSnap) * 100;
+          const s = basketDiff >= 0 ? '+' : '-';
+          text += `   Stake total: $${totalStake.toFixed(2)} → Atual: $${basketCurrTotal.toFixed(2)} (${s}$${Math.abs(basketDiff).toFixed(2)}, ${s}${Math.abs(basketPct).toFixed(1)}%) | Aberta há ${relativeTime(placed_at)}`;
+        } else {
+          text += `   Stake total: $${totalStake.toFixed(2)} | Aberta há ${relativeTime(placed_at)}`;
+        }
         await ctx.reply(text, { reply_markup: basketKeyboard(bet_id) });
       }
     }
@@ -127,8 +170,31 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       counts.set(leg.outcome, (counts.get(leg.outcome) ?? 0) + 1);
     }
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    const lines = sorted.map(([outcome, n]) => `• ${outcome}: ${n}`).join('\n');
-    await ctx.reply(`📊 Total: ${totalLegs} legs abertas\n${lines}`);
+    const outcomLines = sorted.map(([outcome, n]) => `• ${outcome}: ${n}`).join('\n');
+
+    // Aggregate PnL footer
+    const totalStakeAll = legs.reduce((s, l) => s + l.stake_usd, 0);
+    let totalCurrAll = 0;
+    let stakeWithSnap = 0;
+    for (const leg of legs) {
+      const midPrice = midPrices.get(leg.id) ?? null;
+      if (midPrice !== null) {
+        const shares = leg.shares ?? (leg.stake_usd / leg.entry_price);
+        totalCurrAll += shares * midPrice;
+        stakeWithSnap += leg.stake_usd;
+      }
+    }
+
+    let footerText = `📊 Total: ${totalLegs} legs abertas\n${outcomLines}`;
+    if (stakeWithSnap > 0) {
+      const totalDiff = totalCurrAll - stakeWithSnap;
+      const totalPct = (totalDiff / stakeWithSnap) * 100;
+      const s = totalDiff >= 0 ? '+' : '-';
+      footerText += `\n\n💰 Stake total: $${totalStakeAll.toFixed(2)} → Atual: $${totalCurrAll.toFixed(2)} (${s}$${Math.abs(totalDiff).toFixed(2)}, ${s}${Math.abs(totalPct).toFixed(1)}%)`;
+    } else {
+      footerText += `\n\n💰 Stake total: $${totalStakeAll.toFixed(2)}`;
+    }
+    await ctx.reply(footerText);
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `positionsHandler error: ${String(err)}` });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
