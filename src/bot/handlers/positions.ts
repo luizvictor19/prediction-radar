@@ -163,7 +163,7 @@ export async function closePositionConversation(
     const RESULT_KBD = new InlineKeyboard()
       .text('Win', 'res:win')
       .text('Loss', 'res:loss')
-      .text('Void', 'res:void');
+      .text('Anulado', 'res:void');
 
     if (legs.length === 1) {
       // === SINGLE LEG ===
@@ -216,7 +216,7 @@ export async function closePositionConversation(
       await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
 
       const sign = pnlUsd >= 0 ? '+' : '';
-      await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\``, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Posição fechada. PnL: \`${sign}$${pnlUsd.toFixed(2)}\`\n\n💡 Atualize o bankroll com /bankroll <novo_valor>`, { parse_mode: 'Markdown' });
 
     } else {
       // === BASKET ===
@@ -242,7 +242,7 @@ export async function closePositionConversation(
           const label = `${i + 1}. ${legLabel(leg).slice(0, 55)}`;
           winKbd.text(label, `resolved_leg:${leg.id}`).row();
         }
-        winKbd.text('Nenhuma (basket void)', 'resolved_leg:none');
+        winKbd.text('Nenhuma (anulado)', 'resolved_leg:none');
 
         await ctx.reply('Qual leg ganhou?', { reply_markup: winKbd });
         const winCtx = await conversation.waitFor('callback_query:data');
@@ -256,7 +256,7 @@ export async function closePositionConversation(
             }).eq('id', leg.id);
           }
           await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
-          await ctx.reply('✅ Basket fechada como void. PnL: $0.00');
+          await ctx.reply('✅ Basket anulada. PnL: $0.00');
           return;
         }
 
@@ -292,7 +292,8 @@ export async function closePositionConversation(
         await ctx.reply(
           `✅ Basket fechada. PnL total: \`${sign}$${totalPnl.toFixed(2)}\`\n` +
           `Leg vencedora: ${legLabel(winnerLeg)}, lucro \`+$${winnerPnl.toFixed(2)}\`\n` +
-          `Outras ${legs.length - 1} legs: prejuízo total \`$${losersPnl.toFixed(2)}\``,
+          `Outras ${legs.length - 1} legs: prejuízo total \`$${losersPnl.toFixed(2)}\`\n\n` +
+          `💡 Atualize o bankroll com /bankroll <novo_valor>`,
           { parse_mode: 'Markdown' },
         );
 
@@ -307,7 +308,7 @@ export async function closePositionConversation(
           await ctx.reply(
             `Leg ${i + 1}/${legs.length}: ${label}\n` +
             `Stake: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price}, ${shares.toFixed(4)} shares\n` +
-            `Preço de fechamento (decimal) ou 'win' / 'loss' / 'void':`
+            `Preço de fechamento (decimal) ou 'win' / 'loss' / 'anulado':`
           );
           const inputCtx = await conversation.waitFor('message:text');
           const raw = inputCtx.message.text.trim().toLowerCase();
@@ -323,7 +324,7 @@ export async function closePositionConversation(
           } else if (raw === 'loss') {
             result = 'loss'; resolutionPrice = 0.0;
             pnlUsd = -leg.stake_usd;
-          } else if (raw === 'void') {
+          } else if (raw === 'anulado') {
             result = 'void'; pnlUsd = 0;
           } else {
             closingPrice = parseFloat(raw);
@@ -356,6 +357,7 @@ export async function closePositionConversation(
           const s = r.pnl >= 0 ? '+' : '';
           reply += `• ${r.label}: \`${s}$${r.pnl.toFixed(2)}\` (${r.result})\n`;
         }
+        reply += `\n💡 Atualize o bankroll com /bankroll <novo_valor>`;
         await ctx.reply(reply, { parse_mode: 'Markdown' });
       }
     }

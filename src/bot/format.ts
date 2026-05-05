@@ -1,5 +1,5 @@
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution } from '../lib/format-helpers.js';
+import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution, formatEndDate } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -259,7 +259,7 @@ export function formatCalendarDrivenSignal(
 
   return (
     `${emoji} ${title}\n` +
-    `Calendar-Driven · ${formatTimeUntilResolution(meta.end_date ?? '')}\n` +
+    `Calendar-Driven · Encerra ${formatEndDate(meta.end_date ?? '')} · ${formatTimeUntilResolution(meta.end_date ?? '')}\n` +
     `\n` +
     `⚡ Confiança: ${confidenceStars(confidence)}\n` +
     `📊 Variação 24h: ${(volatility * 100).toFixed(2)}pp (${describeVolatility(volatility)})\n` +

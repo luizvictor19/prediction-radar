@@ -43,6 +43,15 @@ interface EventMatch {
   id: string;
   title: string;
   polymarket_category: string | null;
+  end_date: string | null;
+}
+
+function buildMatchButtonLabel(match: EventMatch): string {
+  const titleStr = match.title.length > 55 ? match.title.slice(0, 55) + '…' : match.title;
+  if (!match.end_date) return titleStr;
+  const d = new Date(match.end_date);
+  const dateStr = `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
+  return `${titleStr} · ${dateStr}`;
 }
 
 async function findMatchingEvents(searchText: string): Promise<EventMatch[]> {
@@ -55,7 +64,7 @@ async function findMatchingEvents(searchText: string): Promise<EventMatch[]> {
 
   let query = supabase
     .from('events')
-    .select('id, title, polymarket_category')
+    .select('id, title, polymarket_category, end_date')
     .eq('status', 'active')
     .limit(10);
 
@@ -135,8 +144,7 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   } else if (matches.length >= 2) {
     const kbd = new InlineKeyboard();
     for (const m of matches) {
-      const label = m.title.length > 60 ? m.title.slice(0, 57) + '...' : m.title;
-      kbd.text(label, `match_event:${m.id}`).row();
+      kbd.text(buildMatchButtonLabel(m), `match_event:${m.id}`).row();
     }
     kbd.text('Nenhum, registrar manualmente', 'match_event:none');
 
@@ -195,20 +203,20 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   }
 
   // f. Confiança
-  await ctx.reply('Confiança 1-10 (ou /skip):');
+  await ctx.reply('Confiança 1-10 (ou skip):');
   const confCtx = await conversation.waitFor('message:text');
   const confRaw = confCtx.message.text.trim();
   let confidenceSelf: number | null = null;
-  if (confRaw !== '/skip') {
+  if (confRaw !== 'skip') {
     const parsed = parseInt(confRaw, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
   }
 
   // g. Tese
-  await ctx.reply('Tese curta (ou /skip):');
+  await ctx.reply('Tese curta (ou skip):');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
-  const thesis = thesisRaw === '/skip' ? eventTitle : thesisRaw;
+  const thesis = thesisRaw === 'skip' ? eventTitle : thesisRaw;
 
   // h. Resumo + confirmação
   const shares = stakeUsd / entryPrice;
@@ -221,7 +229,7 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     `Shares: \`${shares.toFixed(4)}\`\n` +
     `Categoria: \`${catLabel(category)}\`\n` +
     (confidenceSelf !== null ? `Confiança: \`${confidenceSelf}/10\`\n` : '') +
-    (thesisRaw !== '/skip' ? `Tese: ${thesis}\n` : '');
+    (thesisRaw !== 'skip' ? `Tese: ${thesis}\n` : '');
 
   const confirmed = await waitConfirm(conversation, ctx, summary);
   if (!confirmed) {
@@ -340,10 +348,10 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
   }
 
   // e. Tese
-  await ctx.reply('Tese curta (ou /skip):');
+  await ctx.reply('Tese curta (ou skip):');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
-  const thesis = thesisRaw === '/skip' ? basketTitle : thesisRaw;
+  const thesis = thesisRaw === 'skip' ? basketTitle : thesisRaw;
 
   // f. Resumo + confirmação
   const totalStake = legInputs.reduce((s, l) => s + l.stake_usd, 0);
@@ -354,7 +362,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
   }
   summary += `Stake total: \`$${totalStake.toFixed(2)}\`\n`;
   summary += `Categoria: \`${catLabel(category)}\`\n`;
-  if (thesisRaw !== '/skip') summary += `Tese: ${thesis}\n`;
+  if (thesisRaw !== 'skip') summary += `Tese: ${thesis}\n`;
 
   const confirmed = await waitConfirm(conversation, ctx, summary);
   if (!confirmed) {

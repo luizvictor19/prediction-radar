@@ -75,20 +75,20 @@ async function singleLegTrack(
   }
 
   // Step 3: confidence (optional)
-  await ctx.reply('Confiança própria 1-10? (opcional, /skip para pular)');
+  await ctx.reply('Confiança própria 1-10? (opcional, skip para pular)');
   const confCtx = await conversation.waitFor('message:text');
   const confRaw = confCtx.message.text.trim();
   let confidenceSelf: number | null = null;
-  if (confRaw !== '/skip') {
+  if (confRaw !== 'skip') {
     const parsed = parseInt(confRaw, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
   }
 
   // Step 4: thesis (optional)
-  await ctx.reply('Tese curta? (1-3 frases, ou /skip)');
+  await ctx.reply('Tese curta? (1-3 frases, ou skip)');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
-  const thesis = thesisRaw === '/skip' ? null : thesisRaw;
+  const thesis = thesisRaw === 'skip' ? null : thesisRaw;
 
   // Step 5: confirmation
   const resolvedOutcome = forcedOutcome ?? (signal['suggested_outcome'] as string | null);
@@ -247,10 +247,10 @@ async function basketTrack(
   await ctx.reply(execMsg);
 
   // Step 2: thesis (optional)
-  await ctx.reply('Tese curta? (1-3 frases, ou /skip)');
+  await ctx.reply('Tese curta? (1-3 frases, ou skip)');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
-  const thesis = thesisRaw === '/skip' ? null : thesisRaw;
+  const thesis = thesisRaw === 'skip' ? null : thesisRaw;
 
   // Step 3: confirmation
   const summary =

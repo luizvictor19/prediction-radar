@@ -119,10 +119,10 @@ export async function editConversation(
     }
 
     if (field === 'edit:price') {
-      await ctx.reply('Novo preço de entrada (decimal, ex: 0.65) ou /skip:');
+      await ctx.reply('Novo preço de entrada (decimal, ex: 0.65) ou skip:');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
-      if (raw === '/skip') { await ctx.reply('Sem alterações.'); return; }
+      if (raw === 'skip') { await ctx.reply('Sem alterações.'); return; }
       const newPrice = parseFloat(raw);
       if (isNaN(newPrice) || newPrice <= 0 || newPrice >= 1) {
         await ctx.reply('Preço inválido. Operação cancelada.');
@@ -133,10 +133,10 @@ export async function editConversation(
       await ctx.reply(`✅ Leg atualizada. Novo preço: ${newPrice}, novas shares: ${newShares.toFixed(4)} (recalculado).`);
 
     } else if (field === 'edit:stake') {
-      await ctx.reply('Novo stake em USD (ou /skip):');
+      await ctx.reply('Novo stake em USD (ou skip):');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
-      if (raw === '/skip') { await ctx.reply('Sem alterações.'); return; }
+      if (raw === 'skip') { await ctx.reply('Sem alterações.'); return; }
       const newStake = parseFloat(raw);
       if (isNaN(newStake) || newStake <= 0) {
         await ctx.reply('Stake inválido. Operação cancelada.');
@@ -147,10 +147,10 @@ export async function editConversation(
       await ctx.reply(`✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).`);
 
     } else if (field === 'edit:notes') {
-      await ctx.reply('Notas (texto livre, ou /skip pra apagar):');
+      await ctx.reply('Notas (texto livre, ou skip pra apagar):');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
-      const notes = raw === '/skip' ? null : raw;
+      const notes = raw === 'skip' ? null : raw;
       await supabase.from('my_bet_legs').update({ notes }).eq('id', id);
       await ctx.reply('✅ Notas atualizadas.');
     }

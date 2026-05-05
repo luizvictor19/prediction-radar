@@ -53,6 +53,16 @@ export function formatTimeUntilResolution(endDateIso: string): string {
   return 'Resolve em segundos';
 }
 
+export function formatEndDate(endDateIso: string): string {
+  const d = new Date(endDateIso);
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const min = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${min} UTC`;
+}
+
 export function calcMinBankroll(
   legs: number,
   cap: number,
