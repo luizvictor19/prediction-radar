@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
+import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
 
 type OpenLegRow = {
   id: string;
@@ -93,7 +94,7 @@ export async function editConversation(
 
     const { data: leg, error: legErr } = await supabase
       .from('my_bet_legs')
-      .select('id, entry_price, stake_usd, outcome')
+      .select('id, entry_price, stake_usd, outcome, event_id')
       .eq('id', id)
       .single();
 
@@ -157,8 +158,24 @@ export async function editConversation(
       const currentOutcome = (leg as { outcome: string }).outcome;
       await ctx.reply(`Outcome atual: \`${currentOutcome}\`\nDigite o novo outcome (texto livre):`, { parse_mode: 'Markdown' });
       const inputCtx = await conversation.waitFor('message:text');
-      const newOutcome = inputCtx.message.text.trim();
-      if (!newOutcome) { await ctx.reply('Sem alterações.'); return; }
+      const rawOutcome = inputCtx.message.text.trim();
+      if (!rawOutcome) { await ctx.reply('Sem alterações.'); return; }
+
+      const eventId = (leg as { event_id: string | null }).event_id;
+      let newOutcome: string;
+      if (eventId) {
+        const norm = await normalizeOutcome(eventId, rawOutcome);
+        if (!norm.ok) {
+          await ctx.reply(
+            `Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`,
+          );
+          return;
+        }
+        newOutcome = norm.outcome;
+      } else {
+        newOutcome = rawOutcome;
+      }
+
       await supabase.from('my_bet_legs').update({ outcome: newOutcome }).eq('id', id);
       await ctx.reply(`✅ Outcome atualizado: \`${currentOutcome}\` → \`${newOutcome}\``, { parse_mode: 'Markdown' });
 

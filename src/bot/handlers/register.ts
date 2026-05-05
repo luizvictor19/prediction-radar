@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
+import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
 
@@ -168,10 +169,24 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   // c. Outcome
   await ctx.reply('Outcome (ex: Yes, No, Over 2.5):');
   const outcomeCtx = await conversation.waitFor('message:text');
-  const outcome = outcomeCtx.message.text.trim();
-  if (!outcome) {
+  const rawOutcome = outcomeCtx.message.text.trim();
+  if (!rawOutcome) {
     await ctx.reply('Outcome inválido. Operação cancelada.');
     return;
+  }
+
+  let outcome: string;
+  if (eventIdMatch) {
+    const norm = await normalizeOutcome(eventIdMatch, rawOutcome);
+    if (!norm.ok) {
+      await ctx.reply(
+        `Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`,
+      );
+      return;
+    }
+    outcome = norm.outcome;
+  } else {
+    outcome = rawOutcome;
   }
 
   // d. Stake
