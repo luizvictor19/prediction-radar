@@ -66,7 +66,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const { data, error } = await supabase
       .from('detected_signals')
-      .select('*, events(title, polymarket_id, outcomes)')
+      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line)')
       .eq('dismissed', false)
       .eq('acted_on', false);
 

@@ -8,7 +8,7 @@ export interface SignalRow {
   suggested_outcome: string | null;
   confidence_score?: number | null;
   metadata: Record<string, unknown> | null;
-  events?: { title: string; polymarket_id: string; outcomes?: any } | null;
+  events?: { title: string; polymarket_id: string; outcomes?: any; sports_market_type?: string | null; line?: number | null } | null;
 }
 
 export interface PositionRow {
@@ -191,8 +191,27 @@ export function formatCalendarDrivenSignal(
   const confidence = signal.confidence_score ?? 0;
 
   const outcomes = (signal.events?.outcomes ?? null) as OutcomesShape | null;
-  const label0 = outcomes?.values?.[0] ?? 'Yes';
-  const label1 = outcomes?.values?.[1] ?? 'No';
+  const sportsMarketType = signal.events?.sports_market_type ?? null;
+  const line = signal.events?.line ?? null;
+
+  function formatLine(n: number | null, invert = false): string {
+    if (n === null || n === undefined) return '';
+    const v = invert ? -n : n;
+    if (v > 0) return `+${v}`;
+    if (v < 0) return `${v}`;
+    return '';
+  }
+
+  let label0 = outcomes?.values?.[0] ?? 'Yes';
+  let label1 = outcomes?.values?.[1] ?? 'No';
+
+  if (sportsMarketType === 'spreads' && line !== null) {
+    label0 = `${label0} (${formatLine(line)})`;
+    label1 = `${label1} (${formatLine(line, true)})`;
+  } else if (sportsMarketType === 'totals' && line !== null) {
+    label0 = `${label0} ${line}`;
+    label1 = `${label1} ${line}`;
+  }
   const price0 = outcomes?.prices?.[0] != null ? parseFloat(outcomes.prices[0]) : yesPrice;
   const price1 = outcomes?.prices?.[1] != null ? parseFloat(outcomes.prices[1]) : 1 - yesPrice;
   const p0 = Math.round(price0 * 100);

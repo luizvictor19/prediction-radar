@@ -38,5 +38,7 @@ export function gammaToEvent(market: GammaMarket, category: MarketCategory = 'ot
     series_recurrence: market.series?.[0]?.recurrence ?? null,
     event_group_slug: market.events?.[0]?.slug ?? null,
     event_metadata: market.eventMetadata ?? null,
+    sports_market_type: market.sportsMarketType ?? null,
+    line: market.line ?? null,
   };
 }

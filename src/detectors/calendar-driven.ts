@@ -17,6 +17,8 @@ interface EventRow {
   volume_24h: number | null;
   end_date: string;
   outcomes: { values?: string[]; prices?: string[] } | null;
+  sports_market_type: string | null;
+  line: number | null;
 }
 
 export async function runCalendarDrivenDetector(): Promise<void> {
@@ -30,7 +32,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date, outcomes')
+    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date, outcomes, sports_market_type, line')
     .eq('status', 'active')
     .eq('tracked', true)
     .gt('end_date', now.toISOString())

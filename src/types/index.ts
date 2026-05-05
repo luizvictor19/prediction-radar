@@ -28,6 +28,8 @@ export interface Event {
   volume_24h: number | null;
   liquidity: number | null;
   end_date: string | null;
+  sports_market_type: string | null;
+  line: number | null;
   status: string;
   resolved_outcome: string | null;
   tracked: boolean;
@@ -219,6 +221,8 @@ export interface GammaMarket {
   series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
   events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null }> | null;
   eventMetadata?: Record<string, unknown> | null;
+  sportsMarketType?: string | null;
+  line?: number | null;
 }
 
 export interface ClobOrderbook {
