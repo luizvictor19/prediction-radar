@@ -150,44 +150,71 @@ async function closeLegsForResolvedEvent(
   return { closed, payout_total: payoutTotal };
 }
 
+const RESOLVED_DETECTOR_TIMEOUT_MS = 60_000;
+const MAX_PER_CYCLE = 50;
+
 export async function detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<void> {
-  const startedAt = Date.now();
+  const timeoutPromise = new Promise<void>((_, reject) =>
+    setTimeout(() => reject(new Error('resolved_detector timeout 60s')), RESOLVED_DETECTOR_TIMEOUT_MS),
+  );
 
   try {
-    const { data: candidates, error: candErr } = await supabase
-      .from('events')
-      .select('id, polymarket_id, title')
-      .eq('status', 'active');
+    await Promise.race([_detectResolvedMarkets(seenPolymarketIds), timeoutPromise]);
+  } catch (err) {
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'error',
+      message: `unexpected error: ${String(err)}`,
+    });
+  }
+}
 
-    if (candErr || !candidates) {
-      await logEvent({
-        component: 'resolved_detector',
-        status: 'error',
-        message: `query candidates failed: ${candErr?.message}`,
-      });
-      return;
-    }
+async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<void> {
+  const startedAt = Date.now();
 
-    const missing = candidates.filter(c => !seenPolymarketIds.has(c.polymarket_id));
+  const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const cutoffFuture30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    if (missing.length === 0) {
-      await logEvent({
-        component: 'resolved_detector',
-        status: 'success',
-        message: `no missing events to check (${candidates.length} active)`,
-      });
-      return;
-    }
+  const { data: candidates, error: candErr } = await supabase
+    .from('events')
+    .select('id, polymarket_id, title, end_date')
+    .eq('status', 'active')
+    .gte('end_date', cutoff90d)
+    .lte('end_date', cutoffFuture30d)
+    .limit(500);
 
-    let resolvedCount = 0;
-    let voidCount = 0;
-    let totalLegsClosed = 0;
-    let totalPayout = 0;
-    let unresolvedCount = 0;
-    let stillOpenCount = 0;
-    let fetchErrors = 0;
+  if (candErr || !candidates) {
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'error',
+      message: `query candidates failed: ${candErr?.message}`,
+    });
+    return;
+  }
 
-    for (const event of missing) {
+  const missing = candidates.filter(c => !seenPolymarketIds.has(c.polymarket_id));
+
+  if (missing.length === 0) {
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'success',
+      message: `no missing events to check (${candidates.length} active)`,
+    });
+    return;
+  }
+
+  const toProcess = missing.slice(0, MAX_PER_CYCLE);
+  const skippedDueToLimit = missing.length - toProcess.length;
+
+  let resolvedCount = 0;
+  let voidCount = 0;
+  let totalLegsClosed = 0;
+  let totalPayout = 0;
+  let unresolvedCount = 0;
+  let stillOpenCount = 0;
+  let fetchErrors = 0;
+
+  for (const event of toProcess) {
       const market = await fetchMarketWithTimeout(event.polymarket_id);
       if (!market) {
         fetchErrors++;
@@ -259,17 +286,10 @@ export async function detectResolvedMarkets(seenPolymarketIds: Set<string>): Pro
       });
     }
 
-    const durationMs = Date.now() - startedAt;
-    await logEvent({
-      component: 'resolved_detector',
-      status: 'success',
-      message: `checked ${missing.length} missing events: ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
-    });
-  } catch (err) {
-    await logEvent({
-      component: 'resolved_detector',
-      status: 'error',
-      message: `unexpected error: ${String(err)}`,
-    });
-  }
+  const durationMs = Date.now() - startedAt;
+  await logEvent({
+    component: 'resolved_detector',
+    status: 'success',
+    message: `checked ${toProcess.length}/${missing.length} missing events: ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
+  });
 }
