@@ -8,34 +8,32 @@ import { runRetentionJob } from './jobs/retention.js';
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
 
-  try {
-    await collectAll();
-  } catch (err) {
-    console.error('[main] Initial collection failed (will retry on cron):', err);
-  }
-
-  // Collector: every 3 minutes
+  // Schedule crons FIRST so they run regardless of initial collection state
   cron.schedule('*/3 * * * *', () => {
-    void collectAll();
+    void collectAll().catch(err => console.error('[cron collectAll]', err));
   });
 
-  // Open legs collector: every 30 seconds (mid_price fresco pra /positions e /status)
-  void collectOpenLegMarkets();
+  void collectOpenLegMarkets().catch(err =>
+    console.error('[main] Initial open_legs failed:', err),
+  );
   cron.schedule('*/30 * * * * *', () => {
-    void collectOpenLegMarkets();
+    void collectOpenLegMarkets().catch(err => console.error('[cron open_legs]', err));
   });
 
-  // Detector runner: every 5 minutes
   cron.schedule('*/5 * * * *', () => {
-    void runAllDetectors();
+    void runAllDetectors().catch(err => console.error('[cron detectors]', err));
   });
 
-  // Retention job: daily at 3am UTC
   cron.schedule('0 3 * * *', () => {
-    void runRetentionJob();
+    void runRetentionJob().catch(err => console.error('[cron retention]', err));
   });
 
   console.log('[main] Cron jobs scheduled. Running.');
+
+  // Fire initial collectAll AFTER crons are scheduled — fire-and-forget
+  void collectAll().catch(err =>
+    console.error('[main] Initial collection failed (will retry on cron):', err),
+  );
 }
 
 main().catch((err) => {
