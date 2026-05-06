@@ -4,6 +4,7 @@ import type { DetectedSignalInsert } from '../types/index.js';
 
 const MOMENTUM_WINDOW_MS = 60 * 60 * 1000;
 const MOMENTUM_THRESHOLD_PCT = 10;
+const MOMENTUM_ABS_MIN = 0.03;
 const LIQUIDITY_RATIO_THRESHOLD = 5;
 const PRICE_STABLE_PCT = 3;
 const SIGNAL_TTL_MS = 30 * 60 * 1000;
@@ -32,6 +33,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
   let flaggedLiquidity = 0;
   let flaggedBoth = 0;
   let skippedNoData = 0;
+  let skippedTailMarkets = 0;
   let deduped = 0;
 
   try {
@@ -68,6 +70,11 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         continue;
       }
 
+      if (currentSnap.mid_price < 0.05 || currentSnap.mid_price > 0.95) {
+        skippedTailMarkets++;
+        continue;
+      }
+
       const oneHourAgo = new Date(Date.now() - MOMENTUM_WINDOW_MS).toISOString();
       const { data: pastSnap } = await supabase
         .from('polymarket_snapshots')
@@ -85,8 +92,9 @@ export async function runHypeRealityGapDetector(): Promise<void> {
       }
 
       const priceChangePct = Math.abs(currentSnap.mid_price - pastSnap.mid_price) / pastSnap.mid_price * 100;
+      const priceChangeAbs = Math.abs(currentSnap.mid_price - pastSnap.mid_price);
       const momentum: MomentumData = {
-        triggered: priceChangePct >= MOMENTUM_THRESHOLD_PCT,
+        triggered: priceChangePct >= MOMENTUM_THRESHOLD_PCT && priceChangeAbs >= MOMENTUM_ABS_MIN,
         price_change_pct: priceChangePct,
         from: pastSnap.mid_price,
         to: currentSnap.mid_price,
@@ -176,7 +184,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
     await logEvent({
       component: 'hype_reality_gap_detector',
       status: 'success',
-      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${skippedNoData} no_data in ${durationMs}ms`,
+      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
     });
   } catch (err) {
     await logEvent({

@@ -43,6 +43,12 @@ export function stakeLabel(stake: number, isMinimum: boolean): string {
   return isMinimum ? `$0.50 (mínimo)` : `$${stake.toFixed(2)}`;
 }
 
+export function formatPricePct(price: number): string {
+  if (price < 0.05) return `${(price * 100).toFixed(2)}%`;
+  if (price < 0.10) return `${(price * 100).toFixed(1)}%`;
+  return `${(price * 100).toFixed(0)}%`;
+}
+
 export function formatVolume(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}k`;
@@ -340,13 +346,13 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
 
   if (momentum?.triggered) {
     const direction = momentum.to > momentum.from ? '↑' : '↓';
-    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (${(momentum.from * 100).toFixed(0)}% → ${(momentum.to * 100).toFixed(0)}%)\n`;
+    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (${formatPricePct(momentum.from)} → ${formatPricePct(momentum.to)})\n`;
   }
   if (liquidity?.triggered) {
     text += `*Liquidity:* volume 1h $${(liquidity.current_volume_1h / 1000).toFixed(1)}k vs baseline $${(liquidity.baseline_hourly / 1000).toFixed(1)}k/h (${liquidity.volume_ratio.toFixed(1)}x normal, preço estável)\n`;
   }
 
-  text += `\nAtual: ${(currentPrice * 100).toFixed(0)}% | ${((1 - currentPrice) * 100).toFixed(0)}%\n\n`;
+  text += `\nAtual: ${formatPricePct(currentPrice)} | ${formatPricePct(1 - currentPrice)}\n\n`;
   text += `Possíveis leituras:\n`;
   text += `1. Notícia real legítima → preço novo é correto\n`;
   text += `2. Hype puro → vai voltar pro patamar anterior\n`;
