@@ -5,7 +5,7 @@ import { getSystemConfig } from '../../lib/config.js';
 import { logEvent } from '../../lib/logger.js';
 import { calcStake, getStakeCap } from '../format.js';
 import { calcCalendarDrivenStake } from '../../lib/format-helpers.js';
-import { adjustCash } from '../../lib/bankroll.js';
+import { adjustCash, getBankrollState } from '../../lib/bankroll.js';
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../../types/index.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
@@ -40,15 +40,16 @@ async function singleLegTrack(
   config: SystemConfig,
 ): Promise<void> {
   const stakeCap = getStakeCap(config, signal['signal_type'] as string);
+  const bankrollState = await getBankrollState();
 
   let suggestedStake: number;
   if (signal['signal_type'] === 'calendar_driven') {
     const confidence = (signal['confidence_score'] as number) ?? 0.5;
-    suggestedStake = calcCalendarDrivenStake(config.cash_usd, stakeCap, confidence);
+    suggestedStake = calcCalendarDrivenStake(bankrollState.bankroll, stakeCap, confidence);
   } else {
     const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
     const edgePct = meta.expected_edge_pct ?? 0;
-    suggestedStake = calcStake(config.cash_usd, stakeCap, edgePct);
+    suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
   }
 
   const stakeLabel =
@@ -173,8 +174,9 @@ async function basketTrack(
 ): Promise<void> {
   const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
   const stakeCap = getStakeCap(config, signal['signal_type'] as string);
+  const bankrollState = await getBankrollState();
   const edgePct = meta.expected_edge_pct ?? 0;
-  const suggestedStake = calcStake(config.cash_usd, stakeCap, edgePct);
+  const suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
   const stakeLabel =
     suggestedStake < 1.0
       ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
