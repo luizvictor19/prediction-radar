@@ -95,6 +95,9 @@ function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, SlugEntry>):
 
 export async function signalsHandler(ctx: BotContext): Promise<void> {
   try {
+    const filterRaw = (ctx.match as string | undefined ?? '').trim();
+    const filter = filterRaw.length > 0 ? filterRaw.toLowerCase() : null;
+
     const config = await getSystemConfig();
 
     const { data, error } = await supabase
@@ -125,8 +128,16 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
     });
 
-    if (signals.length === 0) {
-      await ctx.reply('Nenhum sinal ativo agora.');
+    const filtered = filter
+      ? signals.filter((s: SignalRow) => (s.events?.title ?? '').toLowerCase().includes(filter))
+      : signals;
+
+    if (filtered.length === 0) {
+      if (filter) {
+        await ctx.reply(`Nenhum sinal ativo com "${filterRaw}".\nTotal ativos: ${signals.length}. Tenta /signals sem filtro.`);
+      } else {
+        await ctx.reply('Nenhum sinal ativo agora.');
+      }
       return;
     }
 
@@ -143,7 +154,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return isNaN(t) ? Number.POSITIVE_INFINITY : t;
     }
 
-    const sorted = [...signals].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const aIsCalendar = a.signal_type === 'calendar_driven';
       const bIsCalendar = b.signal_type === 'calendar_driven';
 
