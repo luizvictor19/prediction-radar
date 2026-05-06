@@ -35,7 +35,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .eq('dismissed', false)
         .eq('acted_on', false)
         .gt('expires_at', new Date().toISOString())
-        .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
+        .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
       supabase
         .from('detected_signals')
         .select('id', { count: 'exact', head: true })

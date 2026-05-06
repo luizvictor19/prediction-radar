@@ -4,7 +4,7 @@ import { getSystemConfig } from '../../lib/config.js';
 import { getBankrollState } from '../../lib/bankroll.js';
 import { logEvent } from '../../lib/logger.js';
 import { formatSignal, getStakeCap } from '../format.js';
-import { signalKeyboard, calendarDrivenKeyboard } from '../keyboards.js';
+import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard } from '../keyboards.js';
 import { replyLongMessage } from '../message-utils.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
@@ -114,6 +114,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const edgeFiltered = (data ?? []).filter((s: SignalRow) => {
       if (s.signal_type === 'calendar_driven') return true;
+      if (s.signal_type === 'hype_reality_gap') return true;
       const raw = (s.metadata as any)?.expected_edge_pct;
       const edge = typeof raw === 'number' ? raw : parseFloat(raw ?? '');
       return !isNaN(edge) && edge >= config.min_expected_edge_pct;
@@ -177,17 +178,23 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const displayedSignals: SignalRow[] = [];
     for (const signal of sorted) {
       try {
-        const polymarketUrl = signal.signal_type === 'calendar_driven' && signal.event_id
-          ? await resolveCalendarDrivenUrl(signal.event_id)
+        const usesEventId = (signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap') && signal.event_id;
+        const polymarketUrl = usesEventId
+          ? await resolveCalendarDrivenUrl(signal.event_id!)
           : buildPolymarketUrl(signal, slugMap);
         const stakeCap = getStakeCap(config, signal.signal_type);
         const earliestEnd = signal.signal_type === 'cross_market_inter'
           ? earliestEndMap.get(signal.id) ?? null
           : null;
         const text = formatSignal(signal, bankroll, stakeCap, earliestEnd);
-        const keyboard = signal.signal_type === 'calendar_driven'
-          ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
-          : signalKeyboard(signal.id, polymarketUrl);
+        let keyboard;
+        if (signal.signal_type === 'calendar_driven') {
+          keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
+        } else if (signal.signal_type === 'hype_reality_gap') {
+          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+        } else {
+          keyboard = signalKeyboard(signal.id, polymarketUrl);
+        }
         await replyLongMessage(ctx, text, {
           parseMode: 'Markdown',
           replyMarkup: keyboard,
