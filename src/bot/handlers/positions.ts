@@ -37,6 +37,24 @@ type OpenLeg = {
   events: { title: string } | null;
 };
 
+async function maybeMarkEventClosedManual(eventId: string | null): Promise<void> {
+  if (!eventId) return;
+
+  const { count: openLegsCount } = await supabase
+    .from('my_bet_legs')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_id', eventId)
+    .is('closed_at', null);
+
+  if (openLegsCount === 0) {
+    await supabase
+      .from('events')
+      .update({ status: 'closed_manual' })
+      .eq('id', eventId)
+      .eq('status', 'active');
+  }
+}
+
 function legLabel(leg: OpenLeg): string {
   return (leg.events as { title: string } | null)?.title ?? leg.outcome;
 }
@@ -288,6 +306,8 @@ export async function closePositionConversation(
 
       await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
 
+      await maybeMarkEventClosedManual(leg.event_id ?? null);
+
       if (saleValue !== null) {
         await adjustCash(saleValue);
       } else if (result !== 'void') {
@@ -342,6 +362,12 @@ export async function closePositionConversation(
             }).eq('id', leg.id);
           }
           await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
+
+          const voidEventIds = [...new Set(legs.map(l => l.event_id).filter(Boolean) as string[])];
+          for (const eventId of voidEventIds) {
+            await maybeMarkEventClosedManual(eventId);
+          }
+
           await ctx.reply('✅ Basket anulada. PnL: $0.00');
           return;
         }
@@ -375,6 +401,11 @@ export async function closePositionConversation(
         }
 
         await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
+
+        const resolvedEventIds = [...new Set(legs.map(l => l.event_id).filter(Boolean) as string[])];
+        for (const eventId of resolvedEventIds) {
+          await maybeMarkEventClosedManual(eventId);
+        }
 
         const sign = totalPnl >= 0 ? '+' : '';
         await ctx.reply(
@@ -445,6 +476,11 @@ export async function closePositionConversation(
         }
 
         await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', betId);
+
+        const manualEventIds = [...new Set(legs.map(l => l.event_id).filter(Boolean) as string[])];
+        for (const eventId of manualEventIds) {
+          await maybeMarkEventClosedManual(eventId);
+        }
 
         const totalPnl = legResults.reduce((s, r) => s + r.pnl, 0);
         const sign = totalPnl >= 0 ? '+' : '';

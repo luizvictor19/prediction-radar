@@ -177,8 +177,8 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
 
   const { data: candidates, error: candErr } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, end_date')
-    .eq('status', 'active')
+    .select('id, polymarket_id, title, end_date, status')
+    .in('status', ['active', 'closed_manual'])
     .gte('end_date', cutoff90d)
     .lte('end_date', cutoffFuture30d)
     .limit(500);
@@ -266,7 +266,7 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
         .from('events')
         .update(updateData)
         .eq('id', event.id)
-        .eq('status', 'active')
+        .in('status', ['active', 'closed_manual'])
         .select('id')
         .maybeSingle();
 
