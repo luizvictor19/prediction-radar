@@ -4,6 +4,7 @@ import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { detectResolvedMarkets } from './resolved-detector.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MAX_DAYS_TO_RESOLUTION = 90;
@@ -51,6 +52,8 @@ export async function collectAll(): Promise<void> {
     (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
   );
 
+  const seenPolymarketIds = new Set<string>();
+
   let offset = 0;
   let scanned = 0;
   let upserted = 0;
@@ -67,6 +70,8 @@ export async function collectAll(): Promise<void> {
     if (markets.length === 0) break;
 
     for (const market of markets) {
+      seenPolymarketIds.add(market.id);
+
       if (!passesBaseFilters(market)) continue;
 
       const isProtected = protectedPolymarketIds.has(market.id);
@@ -184,6 +189,8 @@ export async function collectAll(): Promise<void> {
       protected_included: protectedIncluded,
     },
   });
+
+  await detectResolvedMarkets(seenPolymarketIds);
 
   await logCategorizerStats();
 
