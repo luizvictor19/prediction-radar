@@ -203,8 +203,22 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
     return;
   }
 
-  const toProcess = missing.slice(0, MAX_PER_CYCLE);
-  const skippedDueToLimit = missing.length - toProcess.length;
+  const { data: openLegEvents } = await supabase
+    .from('my_bet_legs')
+    .select('event_id')
+    .is('closed_at', null);
+
+  const priorityEventIds = new Set(
+    (openLegEvents ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
+  );
+
+  const priorityMissing = missing.filter(e => priorityEventIds.has(e.id));
+  const normalMissing = missing.filter(e => !priorityEventIds.has(e.id));
+
+  const normalToProcess = normalMissing.slice(0, MAX_PER_CYCLE);
+  const skippedDueToLimit = normalMissing.length - normalToProcess.length;
+
+  const toProcess = [...priorityMissing, ...normalToProcess];
 
   let resolvedCount = 0;
   let voidCount = 0;
@@ -290,6 +304,6 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
   await logEvent({
     component: 'resolved_detector',
     status: 'success',
-    message: `checked ${toProcess.length}/${missing.length} missing events: ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
+    message: `checked ${toProcess.length}/${missing.length} missing events (${priorityMissing.length} priority, ${normalToProcess.length} normal): ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
   });
 }
