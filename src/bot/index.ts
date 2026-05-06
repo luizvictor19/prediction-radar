@@ -136,6 +136,14 @@ bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
   await ctx.conversation.enter('close_position', positionId);
 });
 
+bot.callbackQuery(/^analyze_ai:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.reply(
+    '🧠 *Análise da IA ainda não está implementada.*\n\nEm breve essa funcionalidade vai estar disponível.\nPor enquanto, use as informações acima para decidir.',
+    { parse_mode: 'Markdown' },
+  );
+});
+
 startNotifyLoop(bot);
 
 try {

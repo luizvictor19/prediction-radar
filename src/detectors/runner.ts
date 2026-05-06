@@ -1,6 +1,7 @@
 import { runCrossMarketIntraDetector } from './cross-market.js';
 import { runCrossMarketInterDetector } from './cross-market-inter.js';
 import { runCalendarDrivenDetector } from './calendar-driven.js';
+import { runHypeRealityGapDetector } from './hype-reality-gap.js';
 import { runStaleSignalsCleanup } from '../jobs/cleanup-stale-signals.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
@@ -11,8 +12,8 @@ const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
   { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },
   { name: 'cross_market_inter', fn: runCrossMarketInterDetector },
   { name: 'calendar_driven', fn: runCalendarDrivenDetector },
+  { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
   { name: 'cleanup_stale_signals', fn: runStaleSignalsCleanup },
-  // { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
 ];
 
 async function dismissStaleSignals(): Promise<void> {
@@ -25,6 +26,7 @@ async function dismissStaleSignals(): Promise<void> {
       'cross_market_inter',
       'cross_market_intra',
       'calendar_driven',
+      'hype_reality_gap',
     ])
     .eq('dismissed', false)
     .eq('acted_on', false);

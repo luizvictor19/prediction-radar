@@ -24,7 +24,9 @@ export function signalKeyboard(signalId: string, polymarketUrl: string): InlineK
   return new InlineKeyboard()
     .url('Ver no Polymarket', polymarketUrl)
     .text('Track', `track:${signalId}`)
-    .text('Dismiss', `dismiss:${signalId}`);
+    .text('Dismiss', `dismiss:${signalId}`)
+    .row()
+    .text('🧠 Analisar com IA', `analyze_ai:${signalId}`);
 }
 
 export function calendarDrivenKeyboard(
@@ -48,6 +50,24 @@ export function calendarDrivenKeyboard(
     .text(label0, `track_yes:${signalId}`)
     .text(label1, `track_no:${signalId}`)
     .row()
+    .text('🧠 Analisar com IA', `analyze_ai:${signalId}`)
+    .row()
+    .text('Dismiss', `dismiss:${signalId}`);
+}
+
+export function hypeRealityGapKeyboard(
+  signalId: string,
+  polymarketUrl: string,
+  outcomes: { values?: string[] },
+): InlineKeyboard {
+  const values = outcomes.values ?? ['Yes', 'No'];
+  const out0 = values[0] ?? 'Yes';
+  const out1 = values[1] ?? 'No';
+
+  return new InlineKeyboard()
+    .url('Ver no Polymarket ↗', polymarketUrl).row()
+    .text(`Track ${out0}`, `track_yes:${signalId}`).text(`Track ${out1}`, `track_no:${signalId}`).row()
+    .text('🧠 Analisar com IA', `analyze_ai:${signalId}`).row()
     .text('Dismiss', `dismiss:${signalId}`);
 }
 

@@ -324,6 +324,38 @@ export function formatCalendarDrivenSignal(
   );
 }
 
+function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStakePct: number): string {
+  const meta = (signal.metadata ?? {}) as Record<string, unknown>;
+  const triggers = (meta['trigger_types'] ?? []) as string[];
+  const momentum = meta['momentum'] as { triggered: boolean; price_change_pct: number; from: number; to: number } | undefined;
+  const liquidity = meta['liquidity'] as { triggered: boolean; current_volume_1h: number; baseline_hourly: number; volume_ratio: number } | undefined;
+  const currentPrice = (meta['current_price'] as number | undefined) ?? 0;
+  const lastSeenAt = meta['last_seen_at'] as string | undefined;
+  const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
+
+  const stake = calcStake(bankroll, maxStakePct, 5);
+
+  let text = `🌪 *Hype/Reality Gap* — ${signal.events?.title ?? 'Mercado'}\n`;
+  text += `Disparou: ${triggers.join(' + ')}\n\n`;
+
+  if (momentum?.triggered) {
+    const direction = momentum.to > momentum.from ? '↑' : '↓';
+    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (${(momentum.from * 100).toFixed(0)}% → ${(momentum.to * 100).toFixed(0)}%)\n`;
+  }
+  if (liquidity?.triggered) {
+    text += `*Liquidity:* volume 1h $${(liquidity.current_volume_1h / 1000).toFixed(1)}k vs baseline $${(liquidity.baseline_hourly / 1000).toFixed(1)}k/h (${liquidity.volume_ratio.toFixed(1)}x normal, preço estável)\n`;
+  }
+
+  text += `\nAtual: ${(currentPrice * 100).toFixed(0)}% | ${((1 - currentPrice) * 100).toFixed(0)}%\n\n`;
+  text += `Possíveis leituras:\n`;
+  text += `1. Notícia real legítima → preço novo é correto\n`;
+  text += `2. Hype puro → vai voltar pro patamar anterior\n`;
+  text += `3. Manipulação coordenada → vai voltar mais devagar\n\n`;
+  text += `Stake sugerido: $${stake.toFixed(2)}`;
+
+  return text + ageLine;
+}
+
 export function formatSignal(
   signal: SignalRow,
   bankroll: number,
@@ -332,6 +364,10 @@ export function formatSignal(
 ): string {
   if (signal.signal_type === 'calendar_driven') {
     return formatCalendarDrivenSignal(signal, bankroll, maxStakePct);
+  }
+
+  if (signal.signal_type === 'hype_reality_gap') {
+    return formatHypeRealityGapSignal(signal, bankroll, maxStakePct);
   }
 
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;

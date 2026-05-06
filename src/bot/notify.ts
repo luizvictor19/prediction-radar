@@ -5,13 +5,13 @@ import { getSystemConfig } from '../lib/config.js';
 import { getBankrollState } from '../lib/bankroll.js';
 import { logEvent } from '../lib/logger.js';
 import { formatSignal, getStakeCap } from './format.js';
-import { signalKeyboard, calendarDrivenKeyboard } from './keyboards.js';
+import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard } from './keyboards.js';
 import { sendLongMessage } from './message-utils.js';
 import type { SignalRow } from './format.js';
 import type { CrossMarketInterSignalMetadata } from '../types/index.js';
 
 async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
-  if (signal.signal_type === 'calendar_driven' && signal.event_id) {
+  if ((signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap') && signal.event_id) {
     const { data } = await supabase
       .from('events')
       .select('event_group_slug, slug')
@@ -59,7 +59,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .eq('alerted', false)
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .or(`signal_type.eq.calendar_driven,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
+      .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -139,9 +139,14 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
           ? earliestEndMap.get(signal.id) ?? null
           : null;
         const text = '🔔 *Novo sinal:*\n\n' + formatSignal(signal, bankroll, stakeCap, earliestEnd);
-        const keyboard = signal.signal_type === 'calendar_driven'
-          ? calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null)
-          : signalKeyboard(signal.id, polymarketUrl);
+        let keyboard;
+        if (signal.signal_type === 'calendar_driven') {
+          keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
+        } else if (signal.signal_type === 'hype_reality_gap') {
+          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+        } else {
+          keyboard = signalKeyboard(signal.id, polymarketUrl);
+        }
         await sendLongMessage(bot, chatId, text, {
           parseMode: 'Markdown',
           replyMarkup: keyboard,
