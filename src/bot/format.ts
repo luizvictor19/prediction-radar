@@ -336,6 +336,8 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
   const momentum = meta['momentum'] as { triggered: boolean; price_change_pct: number; from: number; to: number } | undefined;
   const liquidity = meta['liquidity'] as { triggered: boolean; current_volume_1h: number; baseline_hourly: number; volume_ratio: number } | undefined;
   const currentPrice = (meta['current_price'] as number | undefined) ?? 0;
+  const primaryOutcome = (meta['primary_outcome'] as string | undefined) ?? 'Yes';
+  const secondaryOutcome = (meta['secondary_outcome'] as string | undefined) ?? 'No';
   const lastSeenAt = meta['last_seen_at'] as string | undefined;
   const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
 
@@ -346,13 +348,13 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
 
   if (momentum?.triggered) {
     const direction = momentum.to > momentum.from ? 'subiu' : 'caiu';
-    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (de ${formatPricePct(momentum.from)} para ${formatPricePct(momentum.to)})\n`;
+    text += `*Momentum:* ${primaryOutcome} ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (de ${formatPricePct(momentum.from)} para ${formatPricePct(momentum.to)})\n`;
   }
   if (liquidity?.triggered) {
     text += `*Liquidity:* ${formatVolume(liquidity.current_volume_1h)} em 1h (${liquidity.volume_ratio.toFixed(1)}x mais que baseline de ${formatVolume(liquidity.baseline_hourly)}/h)\n`;
   }
 
-  text += `\nAtual: ${formatPricePct(currentPrice)} | ${formatPricePct(1 - currentPrice)}\n\n`;
+  text += `\nAtual: ${primaryOutcome} ${formatPricePct(currentPrice)} | ${secondaryOutcome} ${formatPricePct(1 - currentPrice)}\n\n`;
   text += `Possíveis leituras:\n`;
   text += `1. Notícia real legítima → preço novo é correto\n`;
   text += `2. Hype puro → vai voltar pro patamar anterior\n`;

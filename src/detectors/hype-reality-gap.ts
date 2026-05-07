@@ -133,6 +133,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         const existingMeta = (recentSignal.metadata as Record<string, unknown>) ?? {};
         const detectionCount = ((existingMeta['detection_count'] as number) ?? 1) + 1;
 
+        const secondaryOutcome = outcomes[1] ?? 'No';
+
         await supabase
           .from('detected_signals')
           .update({
@@ -142,6 +144,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
               momentum,
               liquidity,
               current_price: currentSnap.mid_price,
+              primary_outcome: primaryOutcome,
+              secondary_outcome: secondaryOutcome,
               detection_count: detectionCount,
               last_seen_at: new Date().toISOString(),
             },
@@ -154,6 +158,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
 
       const confidence = momentum.triggered && liquidity.triggered ? 0.8 : (momentum.triggered ? 0.65 : 0.6);
 
+      const secondaryOutcome = outcomes[1] ?? 'No';
+
       const insert: DetectedSignalInsert = {
         event_id: event.id,
         signal_type: 'hype_reality_gap',
@@ -164,6 +170,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
           momentum,
           liquidity,
           current_price: currentSnap.mid_price,
+          primary_outcome: primaryOutcome,
+          secondary_outcome: secondaryOutcome,
           polymarket_category: event.polymarket_category,
           detection_count: 1,
           last_seen_at: new Date().toISOString(),
