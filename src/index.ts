@@ -2,6 +2,7 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import { collectAll } from './collectors/polymarket.js';
 import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
+import { collectEarlyMarkets } from './collectors/early-markets-collector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 
@@ -22,6 +23,13 @@ async function main(): Promise<void> {
 
   cron.schedule('*/5 * * * *', () => {
     void runAllDetectors().catch(err => console.error('[cron detectors]', err));
+  });
+
+  void collectEarlyMarkets().catch(err =>
+    console.error('[early-markets] Initial run failed:', err),
+  );
+  cron.schedule('*/5 * * * *', () => {
+    void collectEarlyMarkets().catch(err => console.error('[cron early-markets]', err));
   });
 
   cron.schedule('0 3 * * *', () => {

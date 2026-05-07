@@ -11,7 +11,7 @@ import type { SignalRow } from './format.js';
 import type { CrossMarketInterSignalMetadata } from '../types/index.js';
 
 async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
-  if ((signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap') && signal.event_id) {
+  if ((signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap' || signal.signal_type === 'early_market') && signal.event_id) {
     const { data } = await supabase
       .from('events')
       .select('event_group_slug, slug')
@@ -68,7 +68,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .eq('alerted', false)
       .eq('dismissed', false)
       .eq('acted_on', false)
-      .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
+      .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,signal_type.eq.early_market,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
       .order('created_at', { ascending: false });
 
     if (eventIdsWithOpenLegs.length > 0) {
@@ -158,6 +158,8 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
         if (signal.signal_type === 'calendar_driven') {
           keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
         } else if (signal.signal_type === 'hype_reality_gap') {
+          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+        } else if (signal.signal_type === 'early_market') {
           keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
         } else if (signal.signal_type === 'cross_market_inter') {
           keyboard = crossMarketInterKeyboard(signal.id, polymarketUrl);

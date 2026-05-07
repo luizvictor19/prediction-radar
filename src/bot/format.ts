@@ -330,6 +330,52 @@ export function formatCalendarDrivenSignal(
   );
 }
 
+function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePct: number): string {
+  const meta = (signal.metadata ?? {}) as Record<string, unknown>;
+  const startDate = meta['start_date'] as string;
+  const hoursSinceOpen = meta['hours_since_open'] as number;
+  const currentPrice = meta['current_yes_price'] as number;
+  const initialPrice = meta['initial_yes_price'] as number | null;
+  const priceMovement = meta['price_movement_pct'] as number | null;
+  const volume24h = meta['current_volume_24h'] as number;
+  const liquidity = meta['current_liquidity'] as number;
+  const spread = meta['current_spread'] as number;
+  const primaryOutcome = (meta['primary_outcome'] as string) ?? 'Yes';
+  const secondaryOutcome = (meta['secondary_outcome'] as string) ?? 'No';
+  const lastSeenAt = meta['last_seen_at'] as string | undefined;
+  const ageLine = lastSeenAt ? `\n\n${formatSignalAge(lastSeenAt)}` : '';
+
+  const stake = calcStake(bankroll, maxStakePct, 5);
+
+  let text = `🆕 *Early Market* — ${signal.events?.title ?? 'Mercado'}\n`;
+  text += `Aberto há ${hoursSinceOpen.toFixed(1)}h (${formatEndDate(startDate)})\n\n`;
+
+  text += `📊 ${primaryOutcome}: ${formatPricePct(currentPrice)} | ${secondaryOutcome}: ${formatPricePct(1 - currentPrice)}\n`;
+  text += `📊 Volume 24h: ${formatVolume(volume24h)}\n`;
+  text += `📊 Liquidez: ${formatVolume(liquidity)}\n`;
+  text += `📊 Spread: ${(spread * 100).toFixed(2)}pp\n\n`;
+
+  if (initialPrice != null && priceMovement != null) {
+    const direction = priceMovement > 0 ? 'subiu' : 'caiu';
+    text += `*Movimento desde abertura:* ${primaryOutcome} ${direction} ${Math.abs(priceMovement).toFixed(1)}% (de ${formatPricePct(initialPrice)} para ${formatPricePct(currentPrice)})\n\n`;
+  }
+
+  text += `💡 *O que detectou*\n`;
+  text += `   Mercado abriu há ${hoursSinceOpen.toFixed(1)}h e já mostra sinais de reprecificação:\n`;
+  text += `   - Preço já moveu ${(Math.abs(currentPrice - 0.5) * 100).toFixed(0)}pp do default 50%\n`;
+  text += `   - Spread apertado (<5pp): liquidez profissional entrou\n`;
+  text += `   - Volume acumulado em poucas horas: ${formatVolume(volume24h)}\n\n`;
+
+  text += `Possíveis leituras:\n`;
+  text += `1. Smart money chegou e calibrou cedo → preço novo é correto\n`;
+  text += `2. Reação exagerada → vai voltar pro patamar inicial\n`;
+  text += `3. Mercado estabilizando → consenso emergente\n\n`;
+
+  text += `Stake sugerido: $${stake.toFixed(2)}`;
+
+  return text + ageLine;
+}
+
 function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStakePct: number): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const triggers = (meta['trigger_types'] ?? []) as string[];
@@ -382,6 +428,10 @@ export function formatSignal(
 
   if (signal.signal_type === 'hype_reality_gap') {
     return formatHypeRealityGapSignal(signal, bankroll, maxStakePct);
+  }
+
+  if (signal.signal_type === 'early_market') {
+    return formatEarlyMarketSignal(signal, bankroll, maxStakePct);
   }
 
   const meta = (signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>;

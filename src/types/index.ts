@@ -10,7 +10,7 @@ export type MarketSubCategory =
   | 'product_launch'
   | 'other';
 
-export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market' | 'cross_market_intra' | 'cross_market_inter';
+export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market' | 'cross_market_intra' | 'cross_market_inter' | 'early_market';
 
 export interface Event {
   id: string;

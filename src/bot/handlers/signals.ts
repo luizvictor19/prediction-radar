@@ -130,6 +130,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const edgeFiltered = (data ?? []).filter((s: SignalRow) => {
       if (s.signal_type === 'calendar_driven') return true;
       if (s.signal_type === 'hype_reality_gap') return true;
+      if (s.signal_type === 'early_market') return true;
       const raw = (s.metadata as any)?.expected_edge_pct;
       const edge = typeof raw === 'number' ? raw : parseFloat(raw ?? '');
       return !isNaN(edge) && edge >= config.min_expected_edge_pct;
@@ -193,7 +194,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const displayedSignals: SignalRow[] = [];
     for (const signal of sorted) {
       try {
-        const usesEventId = (signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap') && signal.event_id;
+        const usesEventId = (signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap' || signal.signal_type === 'early_market') && signal.event_id;
         const polymarketUrl = usesEventId
           ? await resolveCalendarDrivenUrl(signal.event_id!)
           : buildPolymarketUrl(signal, slugMap);
@@ -206,6 +207,8 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
         if (signal.signal_type === 'calendar_driven') {
           keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
         } else if (signal.signal_type === 'hype_reality_gap') {
+          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+        } else if (signal.signal_type === 'early_market') {
           keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
         } else if (signal.signal_type === 'cross_market_inter') {
           keyboard = crossMarketInterKeyboard(signal.id, polymarketUrl);

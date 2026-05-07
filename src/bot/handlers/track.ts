@@ -49,6 +49,8 @@ async function singleLegTrack(
   } else if (signal['signal_type'] === 'hype_reality_gap') {
     // Same fixed edge=5 used by formatHypeRealityGapSignal in the alert
     suggestedStake = calcStake(bankrollState.bankroll, stakeCap, 5);
+  } else if (signal['signal_type'] === 'early_market') {
+    suggestedStake = calcStake(bankrollState.bankroll, stakeCap, 5);
   } else {
     // cross_market_inter etc — uses expected_edge_pct from metadata
     const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
