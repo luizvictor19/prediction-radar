@@ -1,10 +1,10 @@
 import 'dotenv/config';
-import { Bot, Context } from 'grammy';
+import { Bot, Context, InlineKeyboard } from 'grammy';
 import { conversations, createConversation, type ConversationFlavor, type Conversation } from '@grammyjs/conversations';
 import { authMiddleware } from './auth.js';
 import { signalsHandler } from './handlers/signals.js';
 import { trackConversation } from './handlers/track.js';
-import { positionsHandler, closePositionConversation } from './handlers/positions.js';
+import { positionsHandler, closePositionConversation, closeSingleLegConversation } from './handlers/positions.js';
 import { statusHandler } from './handlers/status.js';
 import { cashConversation } from './handlers/cash.js';
 import { configHandler } from './handlers/config_cmd.js';
@@ -71,6 +71,13 @@ bot.use(createConversation(
     await customTrackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
   },
   'customTrackConversation',
+));
+
+bot.use(createConversation(
+  async (conversation, ctx, legId: unknown) => {
+    await closeSingleLegConversation(conversation as BotConversation, ctx as BotContext, legId as string);
+  },
+  'close_single_leg',
 ));
 
 bot.use(authMiddleware());
@@ -154,6 +161,45 @@ bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
   const positionId = ctx.match[1];
   await ctx.answerCallbackQuery();
   await ctx.conversation.enter('close_position', positionId);
+});
+
+bot.callbackQuery(/^close_leg_select:(.+)$/, async (ctx) => {
+  const betId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+
+  const { data: legs, error } = await supabase
+    .from('my_bet_legs')
+    .select('id, outcome, stake_usd, events(title)')
+    .eq('bet_id', betId)
+    .is('closed_at', null)
+    .order('created_at', { ascending: true });
+
+  if (error || !legs || legs.length === 0) {
+    await ctx.reply('Nenhuma leg aberta nesta bet.');
+    return;
+  }
+
+  const kbd = new InlineKeyboard();
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]!;
+    const title = (leg.events as unknown as { title: string } | null)?.title ?? leg.outcome;
+    const label = `${i + 1}. ${title.slice(0, 50)} ($${(leg.stake_usd as number).toFixed(2)})`;
+    kbd.text(label, `close_single_leg:${leg.id}`).row();
+  }
+  kbd.text('Cancelar', 'close_leg_cancel');
+
+  await ctx.reply('Qual leg fechar?', { reply_markup: kbd });
+});
+
+bot.callbackQuery(/^close_single_leg:(.+)$/, async (ctx) => {
+  const legId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('close_single_leg', legId);
+});
+
+bot.callbackQuery(/^close_leg_cancel$/, async (ctx) => {
+  await ctx.answerCallbackQuery('Cancelado.');
+  await ctx.editMessageText('Operação cancelada.');
 });
 
 bot.callbackQuery(/^track_custom:(.+)$/, async (ctx) => {

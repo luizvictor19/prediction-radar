@@ -501,3 +501,125 @@ export async function closePositionConversation(
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }
+
+export async function closeSingleLegConversation(
+  conversation: BotConversation,
+  ctx: BotContext,
+  legId: string,
+): Promise<void> {
+  try {
+    const { data: legData, error: legErr } = await supabase
+      .from('my_bet_legs')
+      .select('id, bet_id, event_id, outcome, entry_price, stake_usd, shares, events(title)')
+      .eq('id', legId)
+      .is('closed_at', null)
+      .single();
+
+    if (legErr || !legData) {
+      await logEvent({
+        component: 'telegram_bot',
+        status: 'error',
+        message: `close single leg query failed: ${legErr?.message}`,
+      });
+      await ctx.reply('Erro ao buscar leg ou leg já fechada.');
+      return;
+    }
+
+    const leg = legData as unknown as OpenLeg & { bet_id: string };
+    const nowIso = new Date().toISOString();
+    const shares = legShares(leg);
+    const label = legLabel(leg);
+
+    const RESULT_KBD = new InlineKeyboard()
+      .text('Win', 'res:win')
+      .text('Loss', 'res:loss')
+      .text('Anulado', 'res:void');
+
+    await ctx.reply(
+      `Fechando leg: ${label}\n` +
+      `Stake: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price}, ${shares.toFixed(1)} shares\n\n` +
+      `Valor total recebido em USD (ex: 4.32) ou "resolved" se resolveu:`,
+    );
+
+    const inputCtx = await conversation.waitFor('message:text');
+    const inputRaw = inputCtx.message.text.trim();
+
+    let saleValue: number | null = null;
+    let closingPrice: number | null = null;
+    let resolutionPrice: number | null = null;
+
+    if (inputRaw.toLowerCase() !== 'resolved') {
+      saleValue = parseFloat(inputRaw);
+      const maxSale = shares * 1.001;
+      if (isNaN(saleValue) || saleValue <= 0 || saleValue > maxSale) {
+        await ctx.reply(`Valor inválido. Deve ser positivo em USD (máx. $${maxSale.toFixed(2)}). Operação cancelada.`);
+        return;
+      }
+      closingPrice = saleValue / shares;
+    }
+
+    await ctx.reply('Resultado?', { reply_markup: RESULT_KBD });
+    const resCtx = await conversation.waitFor('callback_query:data');
+    await resCtx.answerCallbackQuery();
+    const result = resCtx.callbackQuery.data.replace('res:', '');
+
+    if (result === 'win') resolutionPrice = saleValue === null ? 1.0 : null;
+    if (result === 'loss') resolutionPrice = saleValue === null ? 0.0 : null;
+
+    let pnlUsd: number;
+    if (saleValue !== null) {
+      pnlUsd = saleValue - leg.stake_usd;
+    } else if (result === 'win') {
+      pnlUsd = (1.0 - leg.entry_price) * shares;
+    } else if (result === 'loss') {
+      pnlUsd = -leg.stake_usd;
+    } else {
+      pnlUsd = 0;
+    }
+
+    await supabase.from('my_bet_legs').update({
+      closing_price: closingPrice,
+      resolution_price: resolutionPrice,
+      result,
+      pnl_usd: pnlUsd,
+      closed_at: nowIso,
+    }).eq('id', leg.id);
+
+    if (saleValue !== null) {
+      await adjustCash(saleValue);
+    } else if (result !== 'void') {
+      await adjustCash(shares * (resolutionPrice ?? 0));
+    }
+
+    await maybeMarkEventClosedManual(leg.event_id ?? null);
+
+    const { count: openLegsInBet } = await supabase
+      .from('my_bet_legs')
+      .select('id', { count: 'exact', head: true })
+      .eq('bet_id', leg.bet_id)
+      .is('closed_at', null);
+
+    if (openLegsInBet === 0) {
+      await supabase.from('my_bets').update({ closed_at: nowIso }).eq('id', leg.bet_id);
+    }
+
+    const sign = pnlUsd >= 0 ? '+' : '';
+    let replyMsg = `✅ Leg fechada: ${label}\nPnL: ${sign}$${pnlUsd.toFixed(2)}`;
+    if (saleValue !== null) {
+      replyMsg = `✅ Leg fechada: ${label}\nRecebido: $${saleValue.toFixed(2)}\nPnL: ${sign}$${pnlUsd.toFixed(2)}`;
+    }
+    if (openLegsInBet === 0) {
+      replyMsg += `\n\nTodas as legs dessa bet foram fechadas — bet marcada como fechada.`;
+    } else {
+      replyMsg += `\n\nOutras ${openLegsInBet} legs continuam abertas nessa bet.`;
+    }
+    await ctx.reply(replyMsg);
+  } catch (err) {
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `closeSingleLegConversation error: ${String(err)}`,
+    });
+    await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
+  }
+}
