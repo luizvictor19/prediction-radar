@@ -5,7 +5,7 @@ import { getSystemConfig } from '../lib/config.js';
 import { getBankrollState } from '../lib/bankroll.js';
 import { logEvent } from '../lib/logger.js';
 import { formatSignal, getStakeCap } from './format.js';
-import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard } from './keyboards.js';
+import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard, crossMarketInterKeyboard } from './keyboards.js';
 import { sendLongMessage } from './message-utils.js';
 import type { SignalRow } from './format.js';
 import type { CrossMarketInterSignalMetadata } from '../types/index.js';
@@ -159,6 +159,8 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
           keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
         } else if (signal.signal_type === 'hype_reality_gap') {
           keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+        } else if (signal.signal_type === 'cross_market_inter') {
+          keyboard = crossMarketInterKeyboard(signal.id, polymarketUrl);
         } else {
           keyboard = signalKeyboard(signal.id, polymarketUrl);
         }

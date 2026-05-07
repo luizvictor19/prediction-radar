@@ -11,6 +11,7 @@ import { configHandler } from './handlers/config_cmd.js';
 import { helpHandler } from './handlers/help.js';
 import { registerHandler, registerConversation } from './handlers/register.js';
 import { editHandler, editConversation } from './handlers/edit.js';
+import { customTrackConversation } from './handlers/track-custom.js';
 import { startNotifyLoop } from './notify.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
@@ -63,6 +64,13 @@ bot.use(createConversation(
     await cashConversation(conversation as BotConversation, ctx as BotContext);
   },
   'cashConversation',
+));
+
+bot.use(createConversation(
+  async (conversation, ctx, signalId: unknown) => {
+    await customTrackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
+  },
+  'customTrackConversation',
 ));
 
 bot.use(authMiddleware());
@@ -146,6 +154,12 @@ bot.callbackQuery(/^close:(.+)$/, async (ctx) => {
   const positionId = ctx.match[1];
   await ctx.answerCallbackQuery();
   await ctx.conversation.enter('close_position', positionId);
+});
+
+bot.callbackQuery(/^track_custom:(.+)$/, async (ctx) => {
+  const signalId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  await ctx.conversation.enter('customTrackConversation', signalId);
 });
 
 bot.callbackQuery(/^analyze_ai:(.+)$/, async (ctx) => {

@@ -29,6 +29,15 @@ export function signalKeyboard(signalId: string, polymarketUrl: string): InlineK
     .text('🧠 Analisar', `analyze_ai:${signalId}`);
 }
 
+export function crossMarketInterKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .url('Ver no Polymarket ↗', polymarketUrl).row()
+    .text('Track basket', `track:${signalId}`).row()
+    .text('✏️ Tese própria', `track_custom:${signalId}`).row()
+    .text('🧠 Analisar', `analyze_ai:${signalId}`).row()
+    .text('Dismiss', `dismiss:${signalId}`);
+}
+
 export function calendarDrivenKeyboard(
   signalId: string,
   polymarketUrl: string,
