@@ -19,7 +19,7 @@ const DEFAULTS: SystemConfig = {
   cross_market_dedup_window_minutes: 30,
   inter_market_min_members: 3,
   inter_market_min_total_volume_24h: 10000,
-  snapshot_retention_days: 7,
+  snapshot_retention_days: 1,
   system_logs_retention_days: 30,
   min_expected_edge_pct: 1.5,
   notify_min_edge_pct: 2.0,

@@ -28,6 +28,9 @@ async function main(): Promise<void> {
     void runRetentionJob().catch(err => console.error('[cron retention]', err));
   });
 
+  // Run once at startup so cleanup happens immediately after deploy
+  void runRetentionJob().catch(err => console.error('[retention] Initial run failed:', err));
+
   console.log('[main] Cron jobs scheduled. Running.');
 
   // Fire initial collectAll AFTER crons are scheduled — fire-and-forget
