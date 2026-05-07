@@ -96,6 +96,37 @@ export async function runStaleSignalsCleanup(): Promise<void> {
     if (isStale) signalsToDismiss.push(s.id);
   }
 
+  // === LOG TEMPORÁRIO PRA DEBUG ===
+  await logEvent({
+    component: 'cleanup_stale_signals',
+    status: 'success',
+    message: `DEBUG: events_to_check=${eventIdsToCheck.size}, live_events=${liveEventIds.size}, recent_snaps_returned=${recentSnaps?.length ?? 0}, will_dismiss=${signalsToDismiss.length}`,
+  });
+
+  const dismissReasonSummary: Record<string, number> = {};
+  for (const s of rows) {
+    if (!signalsToDismiss.includes(s.id)) continue;
+
+    let reason: string;
+    if (s.event_id) {
+      reason = `single_event_not_live(type=${s.signal_type})`;
+    } else {
+      const members = (s.metadata as { members?: MemberRef[] })?.members ?? [];
+      const missingMembers = members.filter(m => !liveEventIds.has(m.event_id));
+      reason = `members_stale(type=${s.signal_type}, missing=${missingMembers.length}/${members.length})`;
+    }
+    dismissReasonSummary[reason] = (dismissReasonSummary[reason] ?? 0) + 1;
+  }
+
+  if (Object.keys(dismissReasonSummary).length > 0) {
+    await logEvent({
+      component: 'cleanup_stale_signals',
+      status: 'success',
+      message: `DEBUG dismiss_reasons: ${JSON.stringify(dismissReasonSummary)}`,
+    });
+  }
+  // === FIM LOG TEMPORÁRIO ===
+
   if (signalsToDismiss.length > 0) {
     const { error: updateErr } = await supabase
       .from('detected_signals')
