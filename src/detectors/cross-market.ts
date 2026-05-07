@@ -25,10 +25,10 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
 
   const {
     cross_market_log_threshold: logThreshold,
-    cross_market_dedup_window_minutes: dedupWindowMinutes,
     min_expected_edge_pct: minEdgePct,
     log_expected_edge_pct: logEdgePct,
   } = config;
+  const dedupWindowMinutes = config.cross_market_dedup_window_minutes ?? 60;
 
   const { data: events, error: fetchError } = await supabase
     .from('events')

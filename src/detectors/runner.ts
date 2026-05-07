@@ -1,4 +1,4 @@
-// import { runCrossMarketIntraDetector } from './cross-market.js';  // disabled: bug "Invalid time value"
+import { runCrossMarketIntraDetector } from './cross-market.js';
 import { runCrossMarketInterDetector } from './cross-market-inter.js';
 import { runCalendarDrivenDetector } from './calendar-driven.js';
 import { runHypeRealityGapDetector } from './hype-reality-gap.js';
@@ -12,7 +12,7 @@ type DetectorFn = () => Promise<void>;
 let isRunning = false;
 
 const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
-  // { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },  // disabled: bug "Invalid time value"
+  { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },
   { name: 'cross_market_inter', fn: runCrossMarketInterDetector },
   { name: 'calendar_driven', fn: runCalendarDrivenDetector },
   { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
@@ -28,6 +28,7 @@ async function dismissStaleSignals(): Promise<void> {
     .select('id, signal_type, metadata')
     .in('signal_type', [
       'cross_market_inter',
+      'cross_market_intra',
       'calendar_driven',
       'hype_reality_gap',
       'early_market',

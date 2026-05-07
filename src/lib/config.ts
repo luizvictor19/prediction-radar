@@ -55,7 +55,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     return DEFAULTS;
   }
 
-  cachedConfig = data as SystemConfig;
+  cachedConfig = { ...DEFAULTS, ...data } as SystemConfig;
   cacheExpiresAt = now + CACHE_TTL_MS;
   return cachedConfig;
 }
