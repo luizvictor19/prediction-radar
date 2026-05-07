@@ -72,6 +72,28 @@ export function formatEndDate(endDateIso: string): string {
   return `${ddU}/${mmU}/${yyyyU} ${hhU}:${minU} UTC (${ddB}/${mmB}/${yyyyB} ${hhB}:${minB} BRT)`;
 }
 
+export function formatTimeSinceOpen(startDateIso: string): string {
+  const diffMs = Date.now() - new Date(startDateIso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+
+  if (mins < 1) return 'agora há pouco';
+  if (mins < 60) return `${mins}min`;
+
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+
+  if (hours < 24) {
+    if (remainingMins === 0) return `${hours}h`;
+    return `${hours}h ${remainingMins}min`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  if (remainingHours === 0) return `${days}d`;
+  return `${days}d ${remainingHours}h`;
+}
+
 export function calcMinBankroll(
   legs: number,
   cap: number,

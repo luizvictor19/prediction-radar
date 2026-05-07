@@ -1,5 +1,5 @@
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution, formatEndDate } from '../lib/format-helpers.js';
+import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution, formatEndDate, formatTimeSinceOpen } from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -348,7 +348,7 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePc
   const stake = calcStake(bankroll, maxStakePct, 5);
 
   let text = `🆕 *Early Market* — ${signal.events?.title ?? 'Mercado'}\n`;
-  text += `Aberto há ${hoursSinceOpen.toFixed(1)}h (${formatEndDate(startDate)})\n\n`;
+  text += `Aberto há ${formatTimeSinceOpen(startDate)} · ${formatEndDate(startDate)}\n\n`;
 
   text += `📊 ${primaryOutcome}: ${formatPricePct(currentPrice)} | ${secondaryOutcome}: ${formatPricePct(1 - currentPrice)}\n`;
   text += `📊 Volume 24h: ${formatVolume(volume24h)}\n`;
@@ -361,7 +361,7 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePc
   }
 
   text += `💡 *O que detectou*\n`;
-  text += `   Mercado abriu há ${hoursSinceOpen.toFixed(1)}h e já mostra sinais de reprecificação:\n`;
+  text += `   Mercado abriu há ${formatTimeSinceOpen(startDate)} e já mostra sinais de reprecificação:\n`;
   text += `   - Preço já moveu ${(Math.abs(currentPrice - 0.5) * 100).toFixed(0)}pp do default 50%\n`;
   text += `   - Spread apertado (<5pp): liquidez profissional entrou\n`;
   text += `   - Volume acumulado em poucas horas: ${formatVolume(volume24h)}\n\n`;
