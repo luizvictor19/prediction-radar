@@ -10,8 +10,7 @@ const HELP_TEXT = `📡 *Sinais*
 
 ⚙️ *Sistema*
 /status — Resumo geral (bankroll, bets, sinais)
-/topup — Adicionar cash ao bankroll
-/withdraw — Retirar cash do bankroll
+/cash — Atualizar saldo de cash (menu interativo)
 /config — Mostrar configuração atual
 /help — Esta mensagem`;
 

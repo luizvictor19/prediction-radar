@@ -12,7 +12,7 @@ export async function configHandler(ctx: BotContext): Promise<void> {
       `Stake máximo (cross-market): \`${(config.cross_market_max_stake_pct * 100).toFixed(1)}%\`\n` +
       `Edge mínimo (listagem): \`${config.min_expected_edge_pct.toFixed(1)}%\`\n` +
       `Edge mínimo (notificação): \`${config.notify_min_edge_pct.toFixed(1)}%\`\n\n` +
-      `Use /topup <valor> e /withdraw <valor> para gerenciar saldo.`;
+      `Use /cash para atualizar saldo.`;
 
     await ctx.reply(text, { parse_mode: 'Markdown' });
   } catch (err) {
