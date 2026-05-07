@@ -65,67 +65,43 @@ export async function runStaleSignalsCleanup(): Promise<void> {
     return;
   }
 
-  const { data: recentSnaps, error: snapErr } = await supabase
-    .from('polymarket_snapshots')
-    .select('event_id')
-    .in('event_id', Array.from(eventIdsToCheck))
-    .gte('captured_at', stalenessThreshold);
+  // Verificar cada event individualmente em batches paralelos.
+  // Query única com .in() trunca em 1000 rows (Supabase default) — com 66+
+  // events e ~40 snaps/h cada, ultrapassa o limite e liveEventIds fica incompleto.
+  const eventIdsArr = Array.from(eventIdsToCheck);
+  const liveEventIds = new Set<string>();
+  const BATCH_SIZE = 100;
 
-  if (snapErr) {
-    await logEvent({
-      component: 'cleanup_stale_signals',
-      status: 'error',
-      message: `Failed to fetch recent snapshots: ${snapErr.message}`,
-    });
-    return;
+  for (let i = 0; i < eventIdsArr.length; i += BATCH_SIZE) {
+    const batch = eventIdsArr.slice(i, i + BATCH_SIZE);
+    const checks = await Promise.all(
+      batch.map(async (eventId) => {
+        const { data } = await supabase
+          .from('polymarket_snapshots')
+          .select('event_id')
+          .eq('event_id', eventId)
+          .gte('captured_at', stalenessThreshold)
+          .limit(1)
+          .maybeSingle();
+        return data ? eventId : null;
+      })
+    );
+    for (const eventId of checks) {
+      if (eventId) liveEventIds.add(eventId);
+    }
   }
-
-  const liveEventIds = new Set((recentSnaps ?? []).map((s) => s.event_id as string));
 
   const signalsToDismiss: string[] = [];
   for (const s of rows) {
     let isStale = false;
-
     if (s.event_id) {
       isStale = !liveEventIds.has(s.event_id);
     } else {
       const members = (s.metadata as { members?: MemberRef[] })?.members ?? [];
       isStale = members.some((m) => !liveEventIds.has(m.event_id));
     }
-
     if (isStale) signalsToDismiss.push(s.id);
   }
-
-  // === LOG TEMPORÁRIO PRA DEBUG ===
-  await logEvent({
-    component: 'cleanup_stale_signals',
-    status: 'success',
-    message: `DEBUG: events_to_check=${eventIdsToCheck.size}, live_events=${liveEventIds.size}, recent_snaps_returned=${recentSnaps?.length ?? 0}, will_dismiss=${signalsToDismiss.length}`,
-  });
-
-  const dismissReasonSummary: Record<string, number> = {};
-  for (const s of rows) {
-    if (!signalsToDismiss.includes(s.id)) continue;
-
-    let reason: string;
-    if (s.event_id) {
-      reason = `single_event_not_live(type=${s.signal_type})`;
-    } else {
-      const members = (s.metadata as { members?: MemberRef[] })?.members ?? [];
-      const missingMembers = members.filter(m => !liveEventIds.has(m.event_id));
-      reason = `members_stale(type=${s.signal_type}, missing=${missingMembers.length}/${members.length})`;
-    }
-    dismissReasonSummary[reason] = (dismissReasonSummary[reason] ?? 0) + 1;
-  }
-
-  if (Object.keys(dismissReasonSummary).length > 0) {
-    await logEvent({
-      component: 'cleanup_stale_signals',
-      status: 'success',
-      message: `DEBUG dismiss_reasons: ${JSON.stringify(dismissReasonSummary)}`,
-    });
-  }
-  // === FIM LOG TEMPORÁRIO ===
 
   if (signalsToDismiss.length > 0) {
     const { error: updateErr } = await supabase
