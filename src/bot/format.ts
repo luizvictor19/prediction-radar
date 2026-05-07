@@ -345,11 +345,11 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
   text += `Disparou: ${triggers.join(' + ')}\n\n`;
 
   if (momentum?.triggered) {
-    const direction = momentum.to > momentum.from ? '↑' : '↓';
-    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (${formatPricePct(momentum.from)} → ${formatPricePct(momentum.to)})\n`;
+    const direction = momentum.to > momentum.from ? 'subiu' : 'caiu';
+    text += `*Momentum:* preço ${direction} ${momentum.price_change_pct.toFixed(1)}% em 1h (de ${formatPricePct(momentum.from)} para ${formatPricePct(momentum.to)})\n`;
   }
   if (liquidity?.triggered) {
-    text += `*Liquidity:* volume 1h $${(liquidity.current_volume_1h / 1000).toFixed(1)}k vs baseline $${(liquidity.baseline_hourly / 1000).toFixed(1)}k/h (${liquidity.volume_ratio.toFixed(1)}x normal, preço estável)\n`;
+    text += `*Liquidity:* ${formatVolume(liquidity.current_volume_1h)} em 1h (${liquidity.volume_ratio.toFixed(1)}x mais que baseline de ${formatVolume(liquidity.baseline_hourly)}/h)\n`;
   }
 
   text += `\nAtual: ${formatPricePct(currentPrice)} | ${formatPricePct(1 - currentPrice)}\n\n`;
