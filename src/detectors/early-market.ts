@@ -9,6 +9,9 @@ const FILTERS = {
   min_price_distance_from_default: 0.10,
   max_spread: 0.05,
   min_liquidity: 5000,
+  // Cauda extrema: mercado já calibrou, sem oportunidade
+  min_price_for_signal: 0.05,
+  max_price_for_signal: 0.95,
 };
 
 export async function detectEarlyMarkets(): Promise<void> {
@@ -54,6 +57,7 @@ export async function detectEarlyMarkets(): Promise<void> {
 
     if (volume24h < FILTERS.min_volume_24h) { skippedFilters++; continue; }
     if (Math.abs(currentPrice - 0.5) < FILTERS.min_price_distance_from_default) { skippedFilters++; continue; }
+    if (currentPrice < FILTERS.min_price_for_signal || currentPrice > FILTERS.max_price_for_signal) { skippedFilters++; continue; }
     if (spread >= FILTERS.max_spread) { skippedFilters++; continue; }
     if (liquidity < FILTERS.min_liquidity) { skippedFilters++; continue; }
 
