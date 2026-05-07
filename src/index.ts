@@ -21,7 +21,8 @@ async function main(): Promise<void> {
     void collectOpenLegMarkets().catch(err => console.error('[cron open_legs]', err));
   });
 
-  cron.schedule('*/5 * * * *', () => {
+  // Ciclo leva ~5-7min; 15min dá folga e o lock interno previne overlap
+  cron.schedule('*/15 * * * *', () => {
     void runAllDetectors().catch(err => console.error('[cron detectors]', err));
   });
 
