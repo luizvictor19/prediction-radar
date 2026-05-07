@@ -8,7 +8,7 @@ export interface SignalRow {
   suggested_outcome: string | null;
   confidence_score?: number | null;
   metadata: Record<string, unknown> | null;
-  events?: { title: string; polymarket_id: string; outcomes?: any; sports_market_type?: string | null; line?: number | null } | null;
+  events?: { title: string; polymarket_id: string; outcomes?: any; sports_market_type?: string | null; line?: number | null; end_date?: string | null } | null;
 }
 
 export interface PositionRow {
@@ -344,6 +344,12 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
   const stake = calcStake(bankroll, maxStakePct, 5);
 
   let text = `🌪 *Hype/Reality Gap* — ${signal.events?.title ?? 'Mercado'}\n`;
+
+  const endDate = signal.events?.end_date;
+  if (endDate) {
+    text += `Encerra ${formatEndDate(endDate)} · ${formatTimeUntilResolution(endDate)}\n`;
+  }
+
   text += `Disparou: ${triggers.join(' + ')}\n\n`;
 
   if (momentum?.triggered) {
