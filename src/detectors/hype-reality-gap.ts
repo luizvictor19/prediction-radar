@@ -8,7 +8,6 @@ const MOMENTUM_ABS_MIN = 0.03;
 const LIQUIDITY_RATIO_THRESHOLD = 5;
 const PRICE_STABLE_PCT = 3;
 const SIGNAL_TTL_MS = 30 * 60 * 1000;
-const DEDUP_WINDOW_MIN = 15;
 
 interface MomentumData {
   triggered: boolean;
@@ -35,6 +34,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
   let skippedNoData = 0;
   let skippedTailMarkets = 0;
   let deduped = 0;
+  let cooldownDismissed = 0;
 
   try {
     const { data: events, error: eventsErr } = await supabase
@@ -114,23 +114,44 @@ export async function runHypeRealityGapDetector(): Promise<void> {
 
       if (!momentum.triggered && !liquidity.triggered) continue;
 
-      const dedupCutoff = new Date(Date.now() - DEDUP_WINDOW_MIN * 60 * 1000).toISOString();
-      const { data: recentSignal } = await supabase
+      // Cooldown de 1h após dismiss: se sinal desse event foi descartado nos últimos 60min, não cria novo
+      const dismissCooldownIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recentDismiss } = await supabase
+        .from('detected_signals')
+        .select('id')
+        .eq('event_id', event.id)
+        .eq('signal_type', 'hype_reality_gap')
+        .eq('dismissed', true)
+        .gte('user_dismissed_at', dismissCooldownIso)
+        .order('user_dismissed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentDismiss) {
+        cooldownDismissed++;
+        continue;
+      }
+
+      // Dedup: existe sinal ativo (não dismissed, não acted_on, não expirado) nesse event?
+      const nowIso = new Date().toISOString();
+      const { data: activeSignal } = await supabase
         .from('detected_signals')
         .select('id, metadata')
         .eq('event_id', event.id)
         .eq('signal_type', 'hype_reality_gap')
         .eq('dismissed', false)
         .eq('acted_on', false)
-        .gte('created_at', dedupCutoff)
+        .gt('expires_at', nowIso)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       const triggerTypes: string[] = [];
       if (momentum.triggered) triggerTypes.push('momentum');
       if (liquidity.triggered) triggerTypes.push('liquidity');
 
-      if (recentSignal) {
-        const existingMeta = (recentSignal.metadata as Record<string, unknown>) ?? {};
+      if (activeSignal) {
+        const existingMeta = (activeSignal.metadata as Record<string, unknown>) ?? {};
         const detectionCount = ((existingMeta['detection_count'] as number) ?? 1) + 1;
 
         const secondaryOutcome = outcomes[1] ?? 'No';
@@ -149,8 +170,9 @@ export async function runHypeRealityGapDetector(): Promise<void> {
               detection_count: detectionCount,
               last_seen_at: new Date().toISOString(),
             },
+            expires_at: new Date(Date.now() + SIGNAL_TTL_MS).toISOString(),
           })
-          .eq('id', recentSignal.id);
+          .eq('id', activeSignal.id);
 
         deduped++;
         continue;
@@ -192,7 +214,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
     await logEvent({
       component: 'hype_reality_gap_detector',
       status: 'success',
-      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
+      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${cooldownDismissed} cooldown_dismiss, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
     });
   } catch (err) {
     await logEvent({

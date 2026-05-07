@@ -156,7 +156,14 @@ async function singleLegTrack(
     return;
   }
 
-  await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
+  await supabase
+    .from('detected_signals')
+    .update({
+      acted_on: true,
+      user_acted_at: new Date().toISOString(),
+      user_action_type: 'tracked',
+    })
+    .eq('id', signalId);
   await adjustCash(-stakeUsd);
 
   await ctx.reply(
@@ -316,7 +323,14 @@ async function basketTrack(
     return;
   }
 
-  await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalId);
+  await supabase
+    .from('detected_signals')
+    .update({
+      acted_on: true,
+      user_acted_at: new Date().toISOString(),
+      user_action_type: 'tracked',
+    })
+    .eq('id', signalId);
   await adjustCash(-actualTotal);
 
   await ctx.reply(

@@ -93,7 +93,14 @@ bot.callbackQuery(/^edit_leg:(.+)$/, async (ctx) => {
 bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
   try {
-    await supabase.from('detected_signals').update({ dismissed: true }).eq('id', signalId);
+    await supabase
+      .from('detected_signals')
+      .update({
+        dismissed: true,
+        user_dismissed_at: new Date().toISOString(),
+        user_action_type: 'dismissed',
+      })
+      .eq('id', signalId);
     const original = ctx.callbackQuery.message?.text ?? '';
     await ctx.editMessageText('❌ DISMISSED\n\n' + original, { parse_mode: 'Markdown' });
     await ctx.answerCallbackQuery('Sinal dispensado.');
