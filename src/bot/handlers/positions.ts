@@ -63,7 +63,12 @@ function legShares(leg: OpenLeg): number {
   return leg.shares ?? (leg.stake_usd / leg.entry_price);
 }
 
+const ELIMINATED_THRESHOLD = 0.01;
+
 function currentValueLine(shares: number, stake: number, midPrice: number, indent: string): string {
+  if (midPrice < ELIMINATED_THRESHOLD) {
+    return `${indent}📊 Atual: ~$0.00 (mercado eliminado)\n`;
+  }
   const curr = shares * midPrice;
   const diff = curr - stake;
   const pct = (diff / stake) * 100;
@@ -105,13 +110,14 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       }
       const { data: snap } = await supabase
         .from('polymarket_snapshots')
-        .select('mid_price')
+        .select('mid_price, best_bid, best_ask')
         .eq('event_id', leg.event_id)
         .eq('outcome', leg.outcome)
         .order('captured_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      midPrices.set(leg.id, snap?.mid_price ?? null);
+      const fallbackPrice = snap?.mid_price ?? snap?.best_bid ?? snap?.best_ask ?? null;
+      midPrices.set(leg.id, fallbackPrice);
     }
 
     // Group by bet_id preserving creation order within each group
@@ -165,7 +171,8 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
           text += `   • ${evtTitle}: $${leg.stake_usd.toFixed(2)} @ ${leg.entry_price} — ${shares.toFixed(1)} shares · paga $${shares.toFixed(2)}\n`;
           if (midPrice !== null) {
             text += currentValueLine(shares, leg.stake_usd, midPrice, '     ');
-            basketCurrTotal += shares * midPrice;
+            const effectiveValue = midPrice < ELIMINATED_THRESHOLD ? 0 : shares * midPrice;
+            basketCurrTotal += effectiveValue;
             basketStakeWithSnap += leg.stake_usd;
           }
         }
@@ -198,7 +205,8 @@ export async function positionsHandler(ctx: BotContext): Promise<void> {
       const midPrice = midPrices.get(leg.id) ?? null;
       if (midPrice !== null) {
         const shares = leg.shares ?? (leg.stake_usd / leg.entry_price);
-        totalCurrAll += shares * midPrice;
+        const effectiveValue = midPrice < ELIMINATED_THRESHOLD ? 0 : shares * midPrice;
+        totalCurrAll += effectiveValue;
         stakeWithSnap += leg.stake_usd;
       }
     }
