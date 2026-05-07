@@ -39,6 +39,12 @@ async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; 
     const startDate = (market as any).startDate as string | undefined;
     if (!startDate) return { upserted: false, snapshots: 0 };
 
+    const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
+    const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
+
+    if (volume24h < 1000 && liquidity < 2000) return { upserted: false, snapshots: 0 };
+    if (market.bestBid === 0 && market.bestAsk === 1) return { upserted: false, snapshots: 0 };
+
     const outcomes = JSON.parse(market.outcomes) as string[];
     const outcomePrices = JSON.parse(market.outcomePrices) as string[];
 
@@ -79,7 +85,6 @@ async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; 
     const midPrimary = (bestBid + bestAsk) / 2;
     const midSecondary = 1 - midPrimary;
     const spread = market.spread ?? null;
-    const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
 
     const rows = [
       {
