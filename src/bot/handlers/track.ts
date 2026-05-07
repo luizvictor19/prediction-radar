@@ -46,7 +46,11 @@ async function singleLegTrack(
   if (signal['signal_type'] === 'calendar_driven') {
     const confidence = (signal['confidence_score'] as number) ?? 0.5;
     suggestedStake = calcCalendarDrivenStake(bankrollState.bankroll, stakeCap, confidence);
+  } else if (signal['signal_type'] === 'hype_reality_gap') {
+    // Same fixed edge=5 used by formatHypeRealityGapSignal in the alert
+    suggestedStake = calcStake(bankrollState.bankroll, stakeCap, 5);
   } else {
+    // cross_market_inter etc — uses expected_edge_pct from metadata
     const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
     const edgePct = meta.expected_edge_pct ?? 0;
     suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
