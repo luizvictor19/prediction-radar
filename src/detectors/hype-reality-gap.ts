@@ -70,7 +70,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         continue;
       }
 
-      if (currentSnap.mid_price < 0.05 || currentSnap.mid_price > 0.95) {
+      if (currentSnap.mid_price < 0.15 || currentSnap.mid_price > 0.85) {
         skippedTailMarkets++;
         continue;
       }
