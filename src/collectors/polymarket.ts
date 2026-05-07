@@ -70,7 +70,10 @@ export async function collectAll(): Promise<void> {
     if (markets.length === 0) break;
 
     for (const market of markets) {
-      seenPolymarketIds.add(market.id);
+      // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
+      if (!market.closed) {
+        seenPolymarketIds.add(market.id);
+      }
 
       if (!passesBaseFilters(market)) continue;
 
