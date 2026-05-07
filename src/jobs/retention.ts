@@ -2,33 +2,32 @@ import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 
+const RETENTION_HOURS = 24;
+
 export async function runRetentionJob(): Promise<void> {
-  const start = Date.now();
-  const config = await getSystemConfig();
+  const startedAt = Date.now();
 
-  const { snapshot_retention_days, system_logs_retention_days } = config;
+  // Snapshots: delegate to SQL function to avoid client .in() limits
+  const { data, error: rpcError } = await supabase.rpc('run_snapshot_retention', {
+    retention_hours: RETENTION_HOURS,
+  });
 
-  const snapshotCutoff = new Date(
-    Date.now() - snapshot_retention_days * 24 * 60 * 60 * 1000
-  ).toISOString();
-  const logCutoff = new Date(
-    Date.now() - system_logs_retention_days * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  const { count: snapshotCount, error: snapshotError } = await supabase
-    .from('polymarket_snapshots')
-    .delete({ count: 'exact' })
-    .lt('captured_at', snapshotCutoff);
-
-  if (snapshotError) {
+  if (rpcError) {
     await logEvent({
       component: 'retention_job',
       status: 'error',
-      message: `Failed to delete snapshots: ${snapshotError.message}`,
-      metadata: { error: snapshotError.message },
+      message: `RPC failed: ${rpcError.message}`,
     });
     return;
   }
+
+  const result = data as { old_deleted: number; finalized_deleted: number };
+
+  // Logs: client delete is fine (no UUID list, just timestamp filter)
+  const config = await getSystemConfig();
+  const logCutoff = new Date(
+    Date.now() - config.system_logs_retention_days * 24 * 60 * 60 * 1000,
+  ).toISOString();
 
   const { count: logCount, error: logError } = await supabase
     .from('system_logs')
@@ -41,48 +40,20 @@ export async function runRetentionJob(): Promise<void> {
       component: 'retention_job',
       status: 'error',
       message: `Failed to delete logs: ${logError.message}`,
-      metadata: { error: logError.message },
     });
     return;
   }
 
-  // Delete snapshots from finalized events regardless of age
-  let finalizedSnapshotCount = 0;
-  const { data: finalizedEvents } = await supabase
-    .from('events')
-    .select('id')
-    .in('status', ['resolved', 'closed_manual', 'inactive']);
-
-  if (finalizedEvents && finalizedEvents.length > 0) {
-    const finalizedIds = finalizedEvents.map(e => e.id);
-    const { count, error: finalErr } = await supabase
-      .from('polymarket_snapshots')
-      .delete({ count: 'exact' })
-      .in('event_id', finalizedIds);
-
-    if (finalErr) {
-      await logEvent({
-        component: 'retention_job',
-        status: 'error',
-        message: `Failed to delete finalized event snapshots: ${finalErr.message}`,
-        metadata: { error: finalErr.message },
-      });
-    } else {
-      finalizedSnapshotCount = count ?? 0;
-    }
-  }
-
+  const durationMs = Date.now() - startedAt;
   await logEvent({
     component: 'retention_job',
     status: 'success',
-    message: `Deleted ${snapshotCount ?? 0} old snapshots, ${finalizedSnapshotCount} from finalized events, ${logCount ?? 0} logs`,
+    message: `Deleted ${result.old_deleted ?? 0} old (>${RETENTION_HOURS}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms`,
     metadata: {
-      snapshots_deleted: snapshotCount ?? 0,
-      finalized_snapshots_deleted: finalizedSnapshotCount,
+      old_deleted: result.old_deleted ?? 0,
+      finalized_deleted: result.finalized_deleted ?? 0,
       logs_deleted: logCount ?? 0,
-      snapshot_retention_days,
-      system_logs_retention_days,
-      duration_ms: Date.now() - start,
+      duration_ms: durationMs,
     },
   });
 }
