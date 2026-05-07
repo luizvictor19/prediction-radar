@@ -9,6 +9,27 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const config = await getSystemConfig();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    const { data: openLegEvents } = await supabase
+      .from('my_bet_legs')
+      .select('event_id')
+      .is('closed_at', null);
+
+    const eventIdsWithOpenLegs = (openLegEvents ?? [])
+      .map(l => l.event_id as string | null)
+      .filter(Boolean) as string[];
+
+    let activeCountQuery = supabase
+      .from('detected_signals')
+      .select('signal_type', { count: 'exact', head: true })
+      .eq('dismissed', false)
+      .eq('acted_on', false)
+      .gt('expires_at', new Date().toISOString())
+      .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`);
+
+    if (eventIdsWithOpenLegs.length > 0) {
+      activeCountQuery = activeCountQuery.not('event_id', 'in', `(${eventIdsWithOpenLegs.join(',')})`);
+    }
+
     const [state, closedLegs, closedBetsMeta, lastDetector, activeRaw, recentAlerts] = await Promise.all([
       getBankrollState(),
       supabase
@@ -29,13 +50,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from('detected_signals')
-        .select('signal_type', { count: 'exact', head: true })
-        .eq('dismissed', false)
-        .eq('acted_on', false)
-        .gt('expires_at', new Date().toISOString())
-        .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`),
+      activeCountQuery,
       supabase
         .from('detected_signals')
         .select('id', { count: 'exact', head: true })

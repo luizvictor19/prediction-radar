@@ -53,7 +53,16 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
     const chatId = config.telegram_chat_id;
     if (!chatId) return;
 
-    const { data, error } = await supabase
+    const { data: openLegEvents } = await supabase
+      .from('my_bet_legs')
+      .select('event_id')
+      .is('closed_at', null);
+
+    const eventIdsWithOpenLegs = (openLegEvents ?? [])
+      .map(l => l.event_id as string | null)
+      .filter(Boolean) as string[];
+
+    let signalsQuery = supabase
       .from('detected_signals')
       .select('*, events(title, polymarket_id, outcomes, sports_market_type, line)')
       .eq('alerted', false)
@@ -61,6 +70,12 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .eq('acted_on', false)
       .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
       .order('created_at', { ascending: false });
+
+    if (eventIdsWithOpenLegs.length > 0) {
+      signalsQuery = signalsQuery.not('event_id', 'in', `(${eventIdsWithOpenLegs.join(',')})`);
+    }
+
+    const { data, error } = await signalsQuery;
 
     if (error) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `notify query failed: ${error.message}` });

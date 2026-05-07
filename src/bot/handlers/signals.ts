@@ -100,11 +100,26 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const config = await getSystemConfig();
 
-    const { data, error } = await supabase
+    const { data: openLegEvents } = await supabase
+      .from('my_bet_legs')
+      .select('event_id')
+      .is('closed_at', null);
+
+    const eventIdsWithOpenLegs = (openLegEvents ?? [])
+      .map(l => l.event_id as string | null)
+      .filter(Boolean) as string[];
+
+    let signalsQuery = supabase
       .from('detected_signals')
       .select('*, events(title, polymarket_id, outcomes, sports_market_type, line)')
       .eq('dismissed', false)
       .eq('acted_on', false);
+
+    if (eventIdsWithOpenLegs.length > 0) {
+      signalsQuery = signalsQuery.not('event_id', 'in', `(${eventIdsWithOpenLegs.join(',')})`);
+    }
+
+    const { data, error } = await signalsQuery;
 
     if (error) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${error.message}` });
