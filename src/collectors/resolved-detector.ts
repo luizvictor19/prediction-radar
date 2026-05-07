@@ -175,22 +175,52 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const cutoffFuture30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: candidates, error: candErr } = await supabase
+  // Etapa 1: events com leg aberta (prioritários — sempre incluir, sem limit)
+  const { data: openLegEvents } = await supabase
+    .from('my_bet_legs')
+    .select('event_id')
+    .is('closed_at', null);
+
+  const openLegEventIds = (openLegEvents ?? [])
+    .map(l => l.event_id as string | null)
+    .filter(Boolean) as string[];
+
+  const { data: priorityCandidates } = openLegEventIds.length > 0
+    ? await supabase
+        .from('events')
+        .select('id, polymarket_id, title, end_date, status')
+        .in('id', openLegEventIds)
+        .in('status', ['active', 'closed_manual'])
+        .gte('end_date', cutoff90d)
+        .lte('end_date', cutoffFuture30d)
+    : { data: [] as { id: string; polymarket_id: string; title: string; end_date: string | null; status: string }[] };
+
+  // Etapa 2: outros candidates (limit 500, ordenados por end_date asc)
+  const priorityIds = new Set((priorityCandidates ?? []).map(p => p.id));
+
+  const { data: normalCandidates, error: candErr } = await supabase
     .from('events')
     .select('id, polymarket_id, title, end_date, status')
     .in('status', ['active', 'closed_manual'])
     .gte('end_date', cutoff90d)
     .lte('end_date', cutoffFuture30d)
+    .order('end_date', { ascending: true })
     .limit(500);
 
-  if (candErr || !candidates) {
+  if (candErr) {
     await logEvent({
       component: 'resolved_detector',
       status: 'error',
-      message: `query candidates failed: ${candErr?.message}`,
+      message: `query candidates failed: ${candErr.message}`,
     });
     return;
   }
+
+  // Merge: prioritários + normais (sem duplicar)
+  const candidates = [
+    ...(priorityCandidates ?? []),
+    ...(normalCandidates ?? []).filter(c => !priorityIds.has(c.id)),
+  ];
 
   const missing = candidates.filter(c => !seenPolymarketIds.has(c.polymarket_id));
 
@@ -203,14 +233,7 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
     return;
   }
 
-  const { data: openLegEvents } = await supabase
-    .from('my_bet_legs')
-    .select('event_id')
-    .is('closed_at', null);
-
-  const priorityEventIds = new Set(
-    (openLegEvents ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
-  );
+  const priorityEventIds = priorityIds;
 
   const priorityMissing = missing.filter(e => priorityEventIds.has(e.id));
   const normalMissing = missing.filter(e => !priorityEventIds.has(e.id));
