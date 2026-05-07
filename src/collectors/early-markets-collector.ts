@@ -135,7 +135,15 @@ async function _collect(): Promise<void> {
 
       const inWindow = batch.filter(m => {
         const startDate = (m as any).startDate as string | undefined;
-        return startDate && startDate >= cutoffIso && m.active && !m.closed;
+        if (!startDate || startDate < cutoffIso) return false;
+        if (!m.active || m.closed) return false;
+
+        const volume24h = Number(m.volume24hr ?? m.volume24hrClob ?? 0);
+        const liquidity = Number(m.liquidityNum ?? m.liquidity ?? 0);
+        if (volume24h < 1000 && liquidity < 2000) return false;
+        if (m.bestBid === 0 && m.bestAsk === 1) return false;
+
+        return true;
       });
 
       allMarkets = allMarkets.concat(inWindow);
