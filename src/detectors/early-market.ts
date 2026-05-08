@@ -22,7 +22,8 @@ export async function detectEarlyMarkets(): Promise<void> {
     .from('events')
     .select('id, polymarket_id, title, start_date, end_date, outcomes, volume_24h, liquidity, polymarket_category')
     .eq('is_new_market', true)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .gt('end_date', new Date().toISOString());
 
   if (evtErr || !events) {
     await logEvent({
