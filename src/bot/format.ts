@@ -350,7 +350,14 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePc
   const stake = calcStake(bankroll, maxStakePct, 5);
 
   let text = `🆕 *Early Market* — ${signal.events?.title ?? 'Mercado'}\n`;
-  text += `Aberto há ${formatTimeSinceOpen(startDate)} · ${formatEndDate(startDate)}\n\n`;
+  text += `Aberto há ${formatTimeSinceOpen(startDate)} · ${formatEndDate(startDate)}\n`;
+
+  const endDate = signal.events?.end_date;
+  if (endDate) {
+    text += `Encerra ${formatEndDate(endDate)} · ${formatTimeUntilResolution(endDate)}\n`;
+  }
+
+  text += `\n`;
 
   text += `📊 ${primaryOutcome}: ${formatPricePct(currentPrice)} | ${secondaryOutcome}: ${formatPricePct(1 - currentPrice)}\n`;
   text += `📊 Volume 24h: ${formatVolume(volume24h)}\n`;
