@@ -3,7 +3,7 @@ import { logEvent } from '../lib/logger.js';
 import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
-const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_MS = 25_000;
 const CYCLE_TIMEOUT_MS = 120_000;
 const CHUNK_SIZE = 20;
 const NEW_MARKET_WINDOW_HOURS = 24;
@@ -121,6 +121,8 @@ async function _collect(): Promise<void> {
 
   let allMarkets: GammaMarket[] = [];
   let offset = 0;
+  let paginationFailed = false;
+  let paginationError: string | null = null;
 
   while (true) {
     const controller = new AbortController();
@@ -129,7 +131,11 @@ async function _collect(): Promise<void> {
     try {
       const url = `${GAMMA_URL}/markets?ascending=false&order=startDate&limit=500&offset=${offset}`;
       const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) break;
+      if (!res.ok) {
+        paginationFailed = true;
+        paginationError = `HTTP ${res.status} at offset ${offset}`;
+        break;
+      }
 
       const batch = (await res.json()) as GammaMarket[];
       if (batch.length === 0) break;
@@ -156,6 +162,10 @@ async function _collect(): Promise<void> {
 
       offset += batch.length;
       if (batch.length < 500) break;
+    } catch (err) {
+      paginationFailed = true;
+      paginationError = `${String(err)} at offset ${offset}`;
+      break;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -182,15 +192,21 @@ async function _collect(): Promise<void> {
     .lt('start_date', cutoffIso);
 
   const durationMs = Date.now() - startedAt;
+  const status = paginationFailed ? 'partial' : 'success';
+  const messagePrefix = paginationFailed
+    ? `Pagination aborted (${paginationError}), processed what was collected: `
+    : '';
   await logEvent({
     component: 'early_markets_collector',
-    status: 'success',
-    message: `Found ${allMarkets.length} new markets (<24h), upserted ${upserted}, ${snapshotsInserted} snapshots in ${durationMs}ms`,
+    status,
+    message: `${messagePrefix}Found ${allMarkets.length} new markets (<24h), upserted ${upserted}, ${snapshotsInserted} snapshots in ${durationMs}ms`,
     metadata: {
       total_found: allMarkets.length,
       upserted,
       snapshots: snapshotsInserted,
       duration_ms: durationMs,
+      pagination_failed: paginationFailed,
+      pagination_error: paginationError,
     },
   });
 }
