@@ -2,9 +2,12 @@ import { InlineKeyboard } from 'grammy';
 import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
-import { adjustCash } from '../../lib/bankroll.js';
-import { relativeTime } from '../format.js';
+import { adjustCash, getBankrollState } from '../../lib/bankroll.js';
+import { relativeTime, formatSignal, getStakeCap } from '../format.js';
+import type { SignalRow } from '../format.js';
 import { positionKeyboard, basketKeyboard } from '../keyboards.js';
+import { getSystemConfig } from '../../lib/config.js';
+import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 
 type LegRow = {
   id: string;
@@ -506,6 +509,104 @@ export async function closePositionConversation(
     }
   } catch (err) {
     await logEvent({ component: 'telegram_bot', status: 'error', message: `closePositionConversation error: ${String(err)}` });
+    await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
+  }
+}
+
+export async function viewOriginSignalHandler(
+  ctx: BotContext,
+  betId: string,
+): Promise<void> {
+  try {
+    const { data: betData, error: betErr } = await supabase
+      .from('my_bets')
+      .select('signal_id, thesis')
+      .eq('id', betId)
+      .single();
+
+    if (betErr || !betData) {
+      await ctx.reply('Bet não encontrada.');
+      return;
+    }
+
+    if (!betData.signal_id) {
+      await ctx.reply(
+        '🔔 *Sem alerta de origem*\n' +
+        '\n' +
+        'Esse bet foi registrado manualmente sem signal vinculado ' +
+        '(via /register sem alerta ativo no momento, ou bet anterior à ' +
+        'feature de tracking).' +
+        (betData.thesis ? `\n\n_Tese registrada:_ ${betData.thesis as string}` : ''),
+        { parse_mode: 'Markdown' },
+      );
+      return;
+    }
+
+    const { data: signalData, error: signalErr } = await supabase
+      .from('detected_signals')
+      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line, end_date)')
+      .eq('id', betData.signal_id as string)
+      .single();
+
+    if (signalErr || !signalData) {
+      await ctx.reply(
+        '🔔 *Sinal de origem não encontrado*\n' +
+        '\n' +
+        'O signal vinculado a esse bet não está mais no banco ' +
+        '(foi limpo por retention ou removido).',
+        { parse_mode: 'Markdown' },
+      );
+      return;
+    }
+
+    const signal = signalData as SignalRow;
+
+    let earliestEnd: string | null = null;
+    if (signal.signal_type === 'cross_market_inter') {
+      const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+      const memberIds = members.map(m => m.polymarket_id).filter((id): id is string => Boolean(id));
+      if (memberIds.length > 0) {
+        const { data: memberEvents } = await supabase
+          .from('events')
+          .select('end_date')
+          .in('polymarket_id', memberIds);
+        const ends = (memberEvents ?? [])
+          .map(e => e.end_date as string | null)
+          .filter((d): d is string => Boolean(d))
+          .sort();
+        earliestEnd = ends[0] ?? null;
+      }
+    }
+
+    const [config, bankrollState] = await Promise.all([
+      getSystemConfig(),
+      getBankrollState(),
+    ]);
+    const bankroll = bankrollState.bankroll;
+    const stakeCap = getStakeCap(config, signal.signal_type);
+
+    const text = formatSignal(signal, bankroll, stakeCap, earliestEnd);
+
+    const sigAny = signal as any;
+    const statusBadges: string[] = [];
+    if (sigAny.acted_on) statusBadges.push('✅ TRACKED (este bet)');
+    if (sigAny.dismissed && sigAny.user_dismissed_at) statusBadges.push('❌ DISMISS MANUAL');
+    else if (sigAny.dismissed) statusBadges.push('⏳ DISMISS AUTO');
+    if (sigAny.alerted) statusBadges.push('📨 ALERTADO');
+
+    const statusLine = statusBadges.length > 0
+      ? `\n\n_${statusBadges.join(' · ')}_`
+      : '';
+
+    const note = `\n\n_⚠️ Estado atual do signal — preços, edge e stake sugerido podem ter mudado desde o track._`;
+
+    await ctx.reply(text + statusLine + note, { parse_mode: 'Markdown' });
+  } catch (err) {
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `viewOriginSignalHandler error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

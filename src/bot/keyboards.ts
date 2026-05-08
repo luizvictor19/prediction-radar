@@ -81,13 +81,18 @@ export function hypeRealityGapKeyboard(
 }
 
 export function positionKeyboard(positionId: string): InlineKeyboard {
-  return new InlineKeyboard().text('Fechar posição', `close:${positionId}`);
+  return new InlineKeyboard()
+    .text('Fechar posição', `close:${positionId}`)
+    .row()
+    .text('🔔 Sinal de origem', `view_origin:${positionId}`);
 }
 
 export function basketKeyboard(betId: string): InlineKeyboard {
   return new InlineKeyboard()
     .text('Fechar tudo', `close:${betId}`)
-    .text('Fechar leg específica', `close_leg_select:${betId}`);
+    .text('Fechar leg específica', `close_leg_select:${betId}`)
+    .row()
+    .text('🔔 Sinal de origem', `view_origin:${betId}`);
 }
 
 export function confirmKeyboard(action: string): InlineKeyboard {

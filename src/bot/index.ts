@@ -4,7 +4,7 @@ import { conversations, createConversation, type ConversationFlavor, type Conver
 import { authMiddleware } from './auth.js';
 import { signalsHandler } from './handlers/signals.js';
 import { trackConversation } from './handlers/track.js';
-import { positionsHandler, closePositionConversation, closeSingleLegConversation } from './handlers/positions.js';
+import { positionsHandler, closePositionConversation, closeSingleLegConversation, viewOriginSignalHandler } from './handlers/positions.js';
 import { statusHandler } from './handlers/status.js';
 import { cashConversation } from './handlers/cash.js';
 import { configHandler } from './handlers/config_cmd.js';
@@ -206,6 +206,13 @@ bot.callbackQuery(/^track_custom:(.+)$/, async (ctx) => {
   const signalId = ctx.match[1];
   await ctx.answerCallbackQuery();
   await ctx.conversation.enter('customTrackConversation', signalId);
+});
+
+bot.callbackQuery(/^view_origin:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const betId = ctx.match[1];
+  if (!betId) return;
+  await viewOriginSignalHandler(ctx, betId);
 });
 
 bot.callbackQuery(/^analyze_ai:(.+)$/, async (ctx) => {
