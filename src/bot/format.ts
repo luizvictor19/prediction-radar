@@ -325,6 +325,8 @@ export function formatCalendarDrivenSignal(
     `\n` +
     `⚙️ Como operar\n` +
     `   Stake sugerido: $${stake.toFixed(2)} (${(cap * 100).toFixed(0)}% × confiança ${confidence.toFixed(2)} × bankroll $${bankroll})\n` +
+    `      → ${label0} @ ${price0.toFixed(3)} = ${shares0.toFixed(1)} shares\n` +
+    `      → ${label1} @ ${price1.toFixed(3)} = ${shares1.toFixed(1)} shares\n` +
     `   ${viabilityLine}` +
     ageLine
   );
@@ -371,7 +373,12 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePc
   text += `2. Reação exagerada → vai voltar pro patamar inicial\n`;
   text += `3. Mercado estabilizando → consenso emergente\n\n`;
 
-  text += `Stake sugerido: $${stake.toFixed(2)}`;
+  const sharesPrimary = currentPrice > 0 ? stake / currentPrice : 0;
+  const sharesSecondary = (1 - currentPrice) > 0 ? stake / (1 - currentPrice) : 0;
+
+  text += `Stake sugerido: $${stake.toFixed(2)}\n`;
+  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${sharesPrimary.toFixed(1)} shares\n`;
+  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${sharesSecondary.toFixed(1)} shares`;
 
   return text + ageLine;
 }
@@ -411,7 +418,12 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
   text += `1. Notícia real legítima → preço novo é correto\n`;
   text += `2. Hype puro → vai voltar pro patamar anterior\n`;
   text += `3. Manipulação coordenada → vai voltar mais devagar\n\n`;
-  text += `Stake sugerido: $${stake.toFixed(2)}`;
+  const sharesPrimary = currentPrice > 0 ? stake / currentPrice : 0;
+  const sharesSecondary = (1 - currentPrice) > 0 ? stake / (1 - currentPrice) : 0;
+
+  text += `Stake sugerido: $${stake.toFixed(2)}\n`;
+  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${sharesPrimary.toFixed(1)} shares\n`;
+  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${sharesSecondary.toFixed(1)} shares`;
 
   return text + ageLine;
 }
