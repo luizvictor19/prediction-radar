@@ -62,7 +62,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .map(l => l.event_id as string | null)
       .filter(Boolean) as string[];
 
-    let signalsQuery = supabase
+    const signalsQuery = supabase
       .from('detected_signals')
       .select('*, events(title, polymarket_id, outcomes, sports_market_type, line)')
       .eq('alerted', false)
@@ -70,10 +70,6 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
       .eq('acted_on', false)
       .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,signal_type.eq.early_market,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
       .order('created_at', { ascending: false });
-
-    if (eventIdsWithOpenLegs.length > 0) {
-      signalsQuery = signalsQuery.not('event_id', 'in', `(${eventIdsWithOpenLegs.join(',')})`);
-    }
 
     const { data, error } = await signalsQuery;
 
@@ -84,10 +80,19 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
     const rawSignals = (data ?? []) as SignalRow[];
 
+    // Filtro: ocultar sinais cujo event_id está em legs abertas.
+    // IMPORTANTE: sinais com event_id=null (ex: cross_market_inter) SEMPRE
+    // passam — eles não pertencem a nenhum event específico.
+    const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
+    const notInOpenLeg = rawSignals.filter(s => {
+      if (s.event_id === null) return true;
+      return !openLegEventIdSet.has(s.event_id);
+    });
+
     // = detector freshness window
     const FRESH_WINDOW_MS = 15 * 60 * 1000;
     const notifyNow = Date.now();
-    const signals = rawSignals.filter(s => {
+    const signals = notInOpenLeg.filter(s => {
       const lastSeen = (s.metadata as any)?.last_seen_at;
       if (!lastSeen) return false;
       return notifyNow - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;

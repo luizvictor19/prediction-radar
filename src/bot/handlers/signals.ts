@@ -109,15 +109,11 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       .map(l => l.event_id as string | null)
       .filter(Boolean) as string[];
 
-    let signalsQuery = supabase
+    const signalsQuery = supabase
       .from('detected_signals')
       .select('*, events(title, polymarket_id, outcomes, sports_market_type, line, end_date)')
       .eq('dismissed', false)
       .eq('acted_on', false);
-
-    if (eventIdsWithOpenLegs.length > 0) {
-      signalsQuery = signalsQuery.not('event_id', 'in', `(${eventIdsWithOpenLegs.join(',')})`);
-    }
 
     const { data, error } = await signalsQuery;
 
@@ -127,7 +123,16 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    const edgeFiltered = (data ?? []).filter((s: SignalRow) => {
+    // Filtro: ocultar sinais cujo event_id está em legs abertas.
+    // IMPORTANTE: sinais com event_id=null (ex: cross_market_inter) SEMPRE
+    // passam — eles não pertencem a nenhum event específico.
+    const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
+    const notInOpenLeg = (data ?? []).filter((s: SignalRow) => {
+      if (s.event_id === null) return true;
+      return !openLegEventIdSet.has(s.event_id);
+    });
+
+    const edgeFiltered = notInOpenLeg.filter((s: SignalRow) => {
       if (s.signal_type === 'calendar_driven') return true;
       if (s.signal_type === 'hype_reality_gap') return true;
       if (s.signal_type === 'early_market') return true;
