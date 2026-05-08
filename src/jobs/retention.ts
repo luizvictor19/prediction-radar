@@ -2,14 +2,14 @@ import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 
-const RETENTION_HOURS = 24;
-
 export async function runRetentionJob(): Promise<void> {
   const startedAt = Date.now();
+  const config = await getSystemConfig();
+  const retentionHours = config.snapshot_retention_days * 24;
 
   // Snapshots: delegate to SQL function to avoid client .in() limits
   const { data, error: rpcError } = await supabase.rpc('run_snapshot_retention', {
-    retention_hours: RETENTION_HOURS,
+    retention_hours: retentionHours,
   });
 
   if (rpcError) {
@@ -24,7 +24,6 @@ export async function runRetentionJob(): Promise<void> {
   const result = data as { old_deleted: number; finalized_deleted: number };
 
   // Logs: client delete is fine (no UUID list, just timestamp filter)
-  const config = await getSystemConfig();
   const logCutoff = new Date(
     Date.now() - config.system_logs_retention_days * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -48,7 +47,7 @@ export async function runRetentionJob(): Promise<void> {
   await logEvent({
     component: 'retention_job',
     status: 'success',
-    message: `Deleted ${result.old_deleted ?? 0} old (>${RETENTION_HOURS}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms`,
+    message: `Deleted ${result.old_deleted ?? 0} old (>${retentionHours}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms`,
     metadata: {
       old_deleted: result.old_deleted ?? 0,
       finalized_deleted: result.finalized_deleted ?? 0,
