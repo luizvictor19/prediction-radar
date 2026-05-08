@@ -123,13 +123,19 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       return;
     }
 
-    // Filtro: ocultar sinais cujo event_id está em legs abertas.
-    // IMPORTANTE: sinais com event_id=null (ex: cross_market_inter) SEMPRE
-    // passam — eles não pertencem a nenhum event específico.
+    // Filtro: ocultar sinais cujo event_id (ou algum membro de basket)
+    // está em legs abertas.
+    // Mesma lógica do notify.ts (ver comentário lá).
     const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
     const notInOpenLeg = (data ?? []).filter((s: SignalRow) => {
-      if (s.event_id === null) return true;
-      return !openLegEventIdSet.has(s.event_id);
+      if (s.event_id !== null) {
+        return !openLegEventIdSet.has(s.event_id);
+      }
+      const members = (s.metadata as any)?.members as Array<{ event_id?: string }> | undefined;
+      if (Array.isArray(members) && members.length > 0) {
+        return !members.some(m => m.event_id && openLegEventIdSet.has(m.event_id));
+      }
+      return true;
     });
 
     const edgeFiltered = notInOpenLeg.filter((s: SignalRow) => {

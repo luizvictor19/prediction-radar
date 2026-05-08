@@ -80,13 +80,22 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
     const rawSignals = (data ?? []) as SignalRow[];
 
-    // Filtro: ocultar sinais cujo event_id está em legs abertas.
-    // IMPORTANTE: sinais com event_id=null (ex: cross_market_inter) SEMPRE
-    // passam — eles não pertencem a nenhum event específico.
+    // Filtro: ocultar sinais cujo event_id (ou algum membro de basket)
+    // está em legs abertas.
+    // - event_id populado: oculta se event_id ∈ legs_abertas
+    // - event_id null + members[]: oculta se algum membro ∈ legs_abertas
+    //   (caso típico de cross_market_inter direction='over')
+    // - event_id null sem members[]: passa (default permissivo)
     const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
     const notInOpenLeg = rawSignals.filter(s => {
-      if (s.event_id === null) return true;
-      return !openLegEventIdSet.has(s.event_id);
+      if (s.event_id !== null) {
+        return !openLegEventIdSet.has(s.event_id);
+      }
+      const members = (s.metadata as any)?.members as Array<{ event_id?: string }> | undefined;
+      if (Array.isArray(members) && members.length > 0) {
+        return !members.some(m => m.event_id && openLegEventIdSet.has(m.event_id));
+      }
+      return true;
     });
 
     // = detector freshness window
