@@ -25,7 +25,10 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   const start = Date.now();
   const config = await getSystemConfig();
 
-  const { collector_min_volume_24h: minVolume } = config;
+  const {
+    collector_min_volume_24h: minVolume,
+    signal_cooldown_minutes: cooldownMinutes,
+  } = config;
 
   const now = new Date();
   const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -85,6 +88,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let skippedHighVolatility = 0;
   let skippedMalformedOutcomes = 0;
   let skippedExtremePrice = 0;
+  let skippedCooldown = 0;
 
   const PRICE_EXTREME_LOW = 0.05;
   const PRICE_EXTREME_HIGH = 0.95;
@@ -93,6 +97,34 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
   for (const event of liveRows) {
     marketsEvaluated++;
+
+    // Cooldown pós-dismiss manual: pula events com sinal calendar_driven
+    // dismissado manualmente nos últimos cooldownMinutes.
+    // IMPORTANTE: só dismiss manual (user_dismissed_at IS NOT NULL).
+    // Auto-dismiss pelo runner não bloqueia recriação.
+    const cooldownThreshold = new Date(now.getTime() - cooldownMinutes * 60 * 1000).toISOString();
+    const { data: recentDismiss, error: cooldownErr } = await supabase
+      .from('detected_signals')
+      .select('id, user_dismissed_at')
+      .eq('signal_type', 'calendar_driven')
+      .eq('event_id', event.id)
+      .not('user_dismissed_at', 'is', null)
+      .gte('user_dismissed_at', cooldownThreshold)
+      .limit(1)
+      .maybeSingle();
+
+    if (cooldownErr) {
+      await logEvent({
+        component: 'calendar_driven_detector',
+        status: 'error',
+        message: `Cooldown query failed for event ${event.id}: ${cooldownErr.message}`,
+        metadata: { event_id: event.id, error: cooldownErr.message },
+      });
+      // Em caso de erro, segue (fail-open) — melhor processar que pular silenciosamente
+    } else if (recentDismiss) {
+      skippedCooldown++;
+      continue;
+    }
 
     const yesSideName = event.outcomes?.values?.[0];
     if (!yesSideName) {
@@ -275,7 +307,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   await logEvent({
     component: 'calendar_driven_detector',
     status: 'success',
-    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ${skippedExtremePrice} skipped_extreme_price`,
+    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ${skippedExtremePrice} skipped_extreme_price, ${skippedCooldown} skipped_cooldown`,
     metadata: {
       markets_evaluated: marketsEvaluated,
       flagged: flaggedCount,
@@ -285,6 +317,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       skipped_malformed_outcomes: skippedMalformedOutcomes,
       skipped_stale: skippedStale,
       skipped_extreme_price: skippedExtremePrice,
+      skipped_cooldown: skippedCooldown,
       duration_ms: Date.now() - start,
     },
   });
