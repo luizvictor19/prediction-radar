@@ -27,6 +27,7 @@ ARQUIVOS INCLUÍDOS:
                                     hypeRealityGapKeyboard, positionKeyboard, basketKeyboard
   src/bot/message-utils.ts        — splitTextIntoChunks, sendLongMessage, replyLongMessage
   src/bot/index.ts                — entry point bot, commands, callbacks registrados
+  src/bot/lib/signal-queries.ts   — fetchActiveSignals() e fetchOpenLegEventIds() — query compartilhada (refactor part 1/2, commit 54bf324)
   src/bot/handlers/signals.ts     — /signals command handler (suporta filtro de texto: /signals bitcoin)
   src/bot/notify.ts               — notify loop (polling a cada 60s, marca alerted=true)
   src/bot/handlers/track.ts       — fluxo conversacional de track
@@ -461,13 +462,31 @@ FILE: src/bot/handlers/track-custom.ts   (NOVO)
 //   adjustCash(-totalStake)
 
 ================================================================================
+FILE: src/bot/lib/signal-queries.ts   (NOVO — refactor part 1/2, commit 54bf324)
+================================================================================
+// fetchActiveSignals(supabase, options): busca sinais ativos com filtros centralizados
+//   options.minEdgePct         — edge mínimo (tipos isentos passam sem checar)
+//   options.excludeAlerted     — true = só alerted=false (notify); false = todos (/signals)
+//   options.openLegEventIds    — event_ids com leg aberta; sinais desses events são ocultados
+//   options.freshWindowMinutes — default 15
+//   options.edgeExemptTypes    — default ['calendar_driven','hype_reality_gap','early_market']
+//
+//   Filtros em ordem:
+//   1. DB: dismissed=false, acted_on=false, [alerted=false se excludeAlerted]
+//   2. Memória: edge mínimo com isenção por tipo
+//   3. Memória: freshness (last_seen_at >= now - freshWindowMinutes)
+//   4. Memória: ocultar leg aberta (event_id direto OU members[] para cross_market_inter null)
+//
+//   SELECT inclui end_date — obrigatório para formatters que mostram "Resolve em..."
+//
+// fetchOpenLegEventIds(supabase): retorna string[] de event_ids com my_bet_legs.closed_at IS NULL
+
+================================================================================
 FILE: src/bot/handlers/signals.ts
 ================================================================================
 // signalsHandler(ctx):
-//   FILTRO DE OCULTAR: sinais de events com leg aberta do usuário são ocultados
-//   FILTRO DE TEXTO: /signals bitcoin → filtra por title.includes(filter)
-//   EDGE FILTER: hype_reality_gap, early_market e calendar_driven passam sem edge mínimo
-//   FRESHNESS: only last_seen_at <= 15min atrás
+//   USA fetchActiveSignals(excludeAlerted=false, minEdgePct=config.min_expected_edge_pct)
+//   FILTRO DE TEXTO: /signals bitcoin → filtra por title.includes(filter) (pós-query)
 //   ORDER: calendar_driven primeiro (por end_date asc), depois outros por edge desc
 //   KEYBOARDS:
 //     calendar_driven     → calendarDrivenKeyboard
@@ -508,9 +527,9 @@ FILE: src/bot/handlers/positions.ts
 FILE: src/bot/notify.ts
 ================================================================================
 // startNotifyLoop(bot): setInterval 60s → runNotifyCheck
-// runNotifyCheck: alerted=false + dismissed=false + acted_on=false
-//   + edge >= notify_min_edge_pct OU signal_type IN (calendar_driven, hype_reality_gap, early_market)
-//   + freshness <= 15min
+// runNotifyCheck:
+//   USA fetchActiveSignals(excludeAlerted=true, minEdgePct=config.notify_min_edge_pct)
+//   Filtros centralizados em signal-queries.ts (freshness 15min, edge isento, leg aberta)
 //   Prefix: "🔔 Novo sinal:"
 //   Teclado conforme signal_type (mesma lógica de /signals)
 
