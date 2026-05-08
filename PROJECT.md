@@ -1,6 +1,6 @@
 # Prediction Radar — Sistema Pessoal
 
-> v6 — atualizado pós-sessão de cash/bankroll dinâmico, fixes do collector (snapshots de 2 outcomes), suporte a sports_market_type/line (spread, totals, map_handicap), refactor de bets pra modelo unificado (my_bets + my_bet_legs), 1ª trade real operada, comando /topup e /withdraw, /bankroll removido, fees zeradas (refletindo realidade observada). Próxima fase: validar com volume real (20-50 trades) antes de Fase 5 (IA).
+> v7 — atualizado pós-sessão de bugs do auto-resolver, cleanup truncation, fix de cauda no early_market, padronização de formato de data, refactor de hardcodes pra config-driven, open_legs collector de 30s pra 10s, validações reais em produção (Bitcoin May 7, Aston Villa, Forest, Braga). Sistema agora rodando sólido. Próxima fase: validar com volume real (30+ trades) antes de Fase 5 (IA).
 
 ## Contexto e propósito
 
@@ -18,16 +18,11 @@ Sistema **pessoal e privado** pra detectar oportunidades em prediction markets d
 
 **Domínio com vantagem informacional:** AI/LLM e Big Tech (acompanho LMSYS Arena, releases, benchmarks). Mas não é filtro de descarte.
 
-**Objetivo de longo prazo:** gerar histórico documentado de operações com edge mensurável que possa eventualmente virar:
-- Sistema vendável (código + metodologia)
-- Base pra SaaS futuro (se regulação BR mudar)
-- Track record pra captação de capital ou consultoria
-
 **Princípio operacional:** o sistema NÃO toma decisões — apenas detecta sinais e organiza informação. Decisão final é minha.
 
 ## Realidade regulatória (Brasil, 2026)
 
-CMN baniu prediction markets via Resolução 5.298 (vigente em 4 de maio de 2026). Polymarket bloqueado pela Anatel. Operação pessoal continua viável via VPN + USDC/Polygon, mas:
+CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela Anatel. Operação pessoal continua viável via VPN + USDC/Polygon, mas:
 - Sistema é puramente pessoal, sem distribuição
 - Sem comercialização enquanto regulação BR for desfavorável
 - Tracking fiscal cuidadoso
@@ -36,154 +31,180 @@ CMN baniu prediction markets via Resolução 5.298 (vigente em 4 de maio de 2026
 ## Salvaguardas inegociáveis
 
 1. **Tracking obrigatório de TODA operação** — antes de executar, registro com tese articulada (1-3 frases) + categoria + domain_confidence (1-10).
-2. **Bankroll inicial cash $86.19** (após depósito real no Polymarket). Não escalar até CLV positivo após 50+ operações.
+2. **Bankroll atual:** cash $47.08 + portfolio ~$253 = bankroll ~$300. Não escalar até CLV positivo após 30+ operações.
 3. **Cap de 3% do bankroll por operação** pra single-leg. Cap de 10% pra cross-market arb.
 4. **Drawdown stop:** 20% do bankroll em 30 dias = pausa de 7 dias.
 5. **Detector NÃO é alterado retrospectivamente** pra explicar operação ruim.
 6. **Edge líquido após fees é critério, não desvio bruto.**
 
-## Princípios estratégicos
-
-### Onde edge pode aparecer
-
-- **Edge informacional**: você sabe algo sobre o domínio que o mercado precificou errado. Forte em AI/Tech.
-- **Edge estatístico**: padrão matemático que o mercado não corrigiu. Independente de domínio.
-- **Cenário ouro**: ambos alinhados.
-
-### Por que detector + decisão manual
-
-Detector puro pode flagar ineficiência que **não é explorável**. Operador puro perde sinais que escapam à atenção. Combinação é robusta.
-
-### Por que monitorar todas categorias
-
-Em mai/2026, **fees são zero em todas categorias na prática** (Polymarket Internacional). Apenas 15-minute crypto markets cobram fee. Sistema atualizado pra refletir isso (v6).
-
-### Realidade aprendida (v4-v6)
-
-**Cross-market inter no Polymarket maduro raramente tem edge operável.** Maioria dos baskets tem edge < 1.5%.
-
-**`direction='under'` em torneios é falso positivo sistemático.** Mercado precifica cláusula "Other/cancelado" implicitamente.
-
-**Foco principal pra bankroll $86 cash inicial:** detectores calendar_driven (sinal de atenção, sem direção), value betting onde tenho domínio fundamental.
-
-**Bug do collector (v6):** descoberto que collector salvava só 1 outcome por evento por ciclo. Corrigido — agora salva os 2 (primeiro com bestBid/bestAsk reais da Gamma, segundo derivado por complemento).
-
-**Suporte a sports_market_type:** spread (Arsenal -1.5), totals (Over/Under 2.5), map_handicap (esports). Display enriquecido com sufixo (-X)/(+X).
-
 ## Stack técnica
 
 - **Backend único**: Node.js + TypeScript (ESM, sem build step, executa via tsx)
-- **Banco**: Supabase (Postgres) — Free tier
-- **Hospedagem**: Railway — **2 services no mesmo repo** (start = coletor+detectores; bot = Telegram)
-- **APIs**: Polymarket Gamma API
-- **Análise**: Claude API (claude-sonnet-4-5) — Fase 5 (postergada)
+- **Banco**: Supabase (Postgres) — Pro plan + Micro compute (8GB)
+- **Hospedagem**: Railway — **2 services no mesmo repo** (`prediction-radar` = coletores+detectores; `telegram-bot` = bot)
+- **APIs**: Polymarket Gamma API + CLOB
+- **Análise**: Claude API (postergada pra Fase 5)
 - **Interface**: Telegram bot (grammy + @grammyjs/conversations)
 - **Dashboard**: Next.js + Tailwind + shadcn/ui — Fase 6
 - **VPN**: Mullvad ou ProtonVPN
 
-## Estratégia de coleta — Gamma API only
-
-A Gamma API retorna em uma única chamada paginada todos os dados que os detectores básicos precisam: `bestBid`, `bestAsk`, `spread`, `lastTradePrice`, `volume24hr`, `volumeNum`, `liquidityNum`, `outcomes`, `outcomePrices`, `negRiskMarketID`, `series`, `eventMetadata`, `feeType`, `events[0].slug`, `sportsMarketType`, `line`.
-
-**Filtros aplicados pelo collector:**
-- `active === true` e `closed === false`
-- `liquidity > $20k` (sempre, exceto markets protegidos)
-- `volume24hr > $10k` **só pra markets isolados** (não-negRisk)
-- Resolução entre 7 e 90 dias
-- `feeType` populado
-- Categoria não está em `system_config.excluded_categories`
-- **Markets com bets abertas SÃO PROTEGIDOS** — passam direto sem filtro de volume/liquidity (v6)
-
-**Snapshots:** 2 por evento por ciclo — primeiro outcome com `bestBid`/`bestAsk` reais da Gamma, segundo derivado por complemento.
-
-## Estado atual do sistema (v6)
+## Estado atual do sistema (v7)
 
 ### Tabelas
-- `events` — markets do Polymarket, com sports_market_type e line
+- `events` — markets do Polymarket, com `sports_market_type`, `line`, `is_new_market`, `start_date`, `resolved_at`
 - `polymarket_snapshots` — preços ao longo do tempo, ambos outcomes
-- `detected_signals` — sinais com flags alerted, acted_on, dismissed
+- `detected_signals` — sinais com flags `alerted`, `acted_on`, `dismissed`, `user_dismissed_at`, `user_action_type`
 - `my_bets` — guarda-chuva da decisão (signal_id, event_id nullable, thesis_type)
 - `my_bet_legs` — detalhes operacionais (1 bet = 1+ legs)
-- `system_config` — cash_usd (substitui bankroll_usd), thresholds, etc
-- `system_logs` — debug
+- `system_config` — cash_usd, thresholds, e agora 4 novos campos configuráveis (`signal_ttl_minutes`, `signal_cooldown_minutes`, `stale_cleanup_threshold_hours`, `dismiss_stale_cutoff_minutes`)
+- `system_logs` — debug com retention de 30 dias
+- `ai_analyses` — infra IA pronta (vazia, Fase 5)
 
-### Detectores ativos no runner
+### Detectores ativos (6)
 1. **calendar_driven** — sinal de atenção (mercado calmo + perto de resolver)
 2. **cross_market_inter** — basket multi-outcome com soma ≠ 1.0
-3. **cross_market_intra** — versão dentro do mesmo neg_risk_market
-4. **hype_reality_gap** — STUB
+3. **cross_market_intra** — versão dentro do mesmo neg_risk_market (raramente flagged em produção)
+4. **hype_reality_gap** — momentum + liquidity, com filtro de cauda
+5. **early_market** — mercados recém-abertos (<24h) com smart money calibrando, filtro de cauda 5%-95%
+6. **cleanup_stale_signals** — manutenção interna
+
+### Coletores ativos
+- **collector geral** (3min) — todos os markets ativos do Polymarket (~46k → ~1300 persistidos)
+- **open_legs_collector** (10s) — preços frescos das legs abertas
+- **early_markets_collector** (5min) — mercados recém-abertos
+- **resolved_detector** (no fim do collector geral) — auto-fecha legs quando UMA resolve
 
 ### Comandos do bot
-- `/signals` — sinais ativos
-- `/positions` — bets abertas com "to win" exibido
-- `/status` — bankroll dinâmico (cash + portfolio), bets fechadas, último detector com BRT
-- `/topup <valor>` — adiciona ao cash
-- `/withdraw <valor>` — retira do cash
+- `/signals [filtro]` — sinais ativos
+- `/positions` — bets abertas com "to win", valor atual, mercado eliminado mostra ~$0.00
+- `/status` — bankroll dinâmico, bets fechadas, último detector com BRT
+- `/cash` — interativo (substitui /topup e /withdraw)
 - `/config` — thresholds atuais
+- `/register` — bet manual
+- `/edit` — editar leg aberta
 - `/help` — ajuda
-- `/register` — registrar bet manual (single-leg ou basket)
-- `/edit` — editar preço/stake/outcome/notes de leg aberta
 
-### Display calendar_driven
-- Título enriquecido pra spreads (`(-1.5)/(+1.5)`)
-- Encerramento UTC + BRT
-- Trade-off com prefixo: 👑 favorito / 🐺 azarão / 🪙 🎲 equilibrado
-- Botões dinâmicos: ✅❌ (Yes/No), ⬆️⬇️ (Up/Down, Over/Under), 👑🐺 (favorito/azarão), 🪙🎲 (equilibrado)
-- Lado oposto explicitado
+### Botões em /positions
+- **Single leg:** "Fechar posição"
+- **Basket:** "Fechar tudo" + "Fechar leg específica" (NOVO)
 
-### Cash/Bankroll dinâmico (v6)
+### Botões em /signals
+- **calendar_driven:** Track Yes / Track No / 🧠 Analisar / Dismiss
+- **cross_market_inter:** Track basket / ✏️ Tese própria / 🧠 Analisar / Dismiss
+- **hype_reality_gap, early_market:** Track Yes / Track No / 🧠 Analisar / Dismiss
+
+### Auto-resolver (validado em produção)
+
+Detecta quando event sai do feed do Polymarket OU events com leg aberta, fetcha API direto, fecha legs se UMA confirmou resolução. Valida em 3 cenários:
+- ✅ Win com payout (Bitcoin May 7 = +$10.44)
+- ✅ Loss sem payout (Forest UEFA = -$5.22)
+- ✅ Win com payout (Braga UEFA = +$0.40)
+
+Ajusta cash automaticamente, marca event como `resolved`, leg como `closed_at` preenchido.
+
+### Cash/Bankroll dinâmico
 - `cash_usd` persistido em system_config (decremento/incremento automático)
 - `portfolio_value_usd` calculado on-the-fly (snapshots × shares)
 - `bankroll = cash + portfolio_value` calculado on-the-fly
-- Sem cron, sem cache
 
-### Outcome normalizer (v6)
-- Helper `normalizeOutcome` em src/lib/outcome-normalizer.ts
-- Match case-insensitive contra `events.outcomes.values`
-- Aplicado em /register e /edit
+### Schema usa numeric (precisão exata)
+- Banco em `numeric(10,2)` pra dinheiro, `numeric(5,4)` pra preços
+- Float em memória mas banco coage pra numeric ao salvar
+- Sem acúmulo de erro de centavos
 
-### Track usa to_win (v6)
-- Em vez de "preço de entrada", usuário informa "to win"
-- Sistema calcula `shares = to_win` e `entry_price = stake / to_win`
+## Configuração system_config atual
+
+```
+cash_usd                              $47.08
+max_stake_pct                         0.030 (3%)
+cross_market_max_stake_pct            0.10 (10%)
+kelly_fraction                        0.25
+min_confidence_alert                  0.75
+drawdown_stop_pct                     0.20
+cross_market_log_threshold            0.03
+cross_market_high_confidence_threshold 0.08
+cross_market_dedup_window_minutes     60
+inter_market_min_members              3
+inter_market_min_total_volume_24h     10000
+snapshot_retention_days               1
+system_logs_retention_days            30
+min_expected_edge_pct                 1.5
+notify_min_edge_pct                   2.5
+log_expected_edge_pct                 0.5
+collector_min_volume_24h              10000
+collector_min_liquidity               20000
+
+# Configuráveis novos (v7)
+signal_ttl_minutes                    30
+signal_cooldown_minutes               60
+stale_cleanup_threshold_hours         1
+dismiss_stale_cutoff_minutes          15
+```
+
+Cache de 60s. Mudanças refletem em ~1min sem deploy.
+
+## Resumo da sessão anterior (8/maio)
+
+### Bugs corrigidos
+1. **Auto-resolver — closed=true em seenPolymarketIds**: collector geral marcava markets fechados como "vistos", auto-resolver ignorava. Fix: só marca como visto markets com `closed=false`.
+2. **Auto-resolver — limit 500 sem priorização**: events com leg aberta podiam ficar fora dos 500 candidatos. Fix: busca em 2 etapas, prioritários sempre incluídos.
+3. **Cleanup truncation — Supabase limita 1000 rows**: query buscava todos snapshots da última 1h, batia limit, dispensava 70% dos signals erroneamente. Fix: verificação por event individual em batches paralelos.
+4. **Filtro de cauda no early_market**: detector gerava sinais pra mercados em cauda extrema. Fix: filtro 5%-95%.
+5. **Cross_market_intra — Invalid time value**: campo `cross_market_dedup_window_minutes` ausente em system_config. Fix: migration + fallback.
+
+### Features novas
+- Botão "Fechar leg específica" em basket
+- Mercado eliminado mostra "~$0.00 (mercado eliminado)" no /positions
+- Padronização do formato de data no early_market (`Aberto há 8h 19min · UTC (BRT)`)
+
+### Refactors
+- Retention usa `snapshot_retention_days` do banco (era hardcoded 24h)
+- Defaults sincronizados com banco
+- 4 hardcodes (TTL, cooldown, thresholds) viraram configuráveis no banco
+- Open_legs_collector de 30s pra 10s (preços mais frescos)
+- Limpeza histórica do banco (DELETE em signals dismissed > 7 dias)
+
+### Estado operacional pós-sessão
+- Spam de notificações duplicadas: parou
+- Detectores: 6 ativos, ratio dispensados 0% (era 70%)
+- Auto-resolver: validado em produção em 3 cenários
+- Sistema reconciliado com Polymarket (gap $0.55 = arredondamento)
 
 ## Roadmap
 
-### Item 3 — Fix do coletor pra detectar resolved markets ⏳ PENDENTE
-- Detectar quando event sai do feed `closed=false`
-- Marcar `status='resolved'`, popular `resolved_outcome` e `resolved_at`
-- Atualizar my_bets.closing_price/pnl_usd/clv automaticamente
+### 🚀 Em standby — refactor futuro
+- **Migrar valores monetários pra inteiros em centavos**: padrão da indústria, imunidade total a imprecisão. Mas refactor pesado (~20-30 arquivos). Hoje sistema usa numeric, está protegido. Aplicar quando volume crescer ou tiver tempo livre.
 
-### Fase 2.5 — Resolution Anchor Detector ⏳ PENDENTE
+### 🧪 Pendentes — esperando acontecer
+- Acompanhar early_market detector ao longo de dias (validar qualidade dos sinais)
 
-### Fase 3 — Hype/Reality Gap Detector ⏳ PENDENTE
-Stub criado em `src/detectors/hype-reality-gap.ts`.
+### 📋 Pendentes — depende de operar
+- **Operar volume real**: 30+ trades pra baseline estatística com variedade de signal_types
 
-### Fase 5 — Claude API Integration ⏳ PENDENTE
-Análise fundamentalista IA. Decidido pausar até validar baseline com 50+ trades reais.
+### 🔧 Pequenos itens cosméticos
+- Comando `/report` agregado (PnL/win-rate por categoria, signal_type, CLV) — vale só com 30+ trades
+- Investigar `daily_report_hour` (campo no banco mas possivelmente sem uso no código)
 
-### Fase 6 — Dashboard Web ⏳ PENDENTE
-Next.js + Tailwind + shadcn/ui.
-
-### Backlog menor
-- Auto-update bankroll com PnL em /close
-- Sync entre cash interno e saldo real do Polymarket
-- Comando de relatório agregado (PnL por categoria, win rate, CLV)
-- Filtragem inteligente IA (filtra sinais sem edge histórico)
+### ⏳ Futuro próximo
+- **Camada IA real (Fase 5)** — implementar callback "Analisar com IA" usando `buildSignalContext`. Fundações em `src/lib/signal-context.ts` prontas.
+- **Sync Polymarket pra yields** — Polymarket paga ~4% APR sobre cash, sistema não conta hoje
+- **cash_ledger** — auditoria de cada ajuste de cash
+- **Dashboard web (Fase 6)** — Next.js + Tailwind + shadcn/ui
 
 ## Decisão honesta — semana 8
 
 Avaliar:
-1. CLV agregado em 60-100 operações é positivo?
+1. CLV agregado em 30-50 operações é positivo?
 2. Em qual categoria do Polymarket tenho melhor performance?
 3. Os detectores ajudam ou geram ruído?
-4. Estou sustentando 2-3h de estudo diário?
+4. Estou sustentando estudo + análise diária?
 5. Estou registrando 100% das operações?
 
 ## Próximo passo recomendado
 
-**Operar volume real.** Sistema fechado funcionalmente. Validação real precisa de **dados próprios**.
+**Operar volume real.** Sistema sólido após sessão de fixes. Próximo ganho está em dados próprios.
 
-20-50 trades nas próximas semanas. Mede:
+30+ trades nas próximas semanas, com variedade de signal_types (não só Bitcoin/UEFA). Mede:
 - Win rate por categoria
 - PnL agregado por signal_type
 - CLV — entry vs preço de fechamento
