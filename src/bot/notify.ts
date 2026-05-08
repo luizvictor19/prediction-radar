@@ -64,7 +64,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
 
     const signalsQuery = supabase
       .from('detected_signals')
-      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line)')
+      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line, end_date)')
       .eq('alerted', false)
       .eq('dismissed', false)
       .eq('acted_on', false)
