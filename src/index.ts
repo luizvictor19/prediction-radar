@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   void collectOpenLegMarkets().catch(err =>
     console.error('[main] Initial open_legs failed:', err),
   );
-  cron.schedule('*/30 * * * * *', () => {
+  cron.schedule('*/10 * * * * *', () => {
     void collectOpenLegMarkets().catch(err => console.error('[cron open_legs]', err));
   });
 
