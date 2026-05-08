@@ -9,6 +9,7 @@ import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard, crossMa
 import { sendLongMessage } from './message-utils.js';
 import type { SignalRow } from './format.js';
 import type { CrossMarketInterSignalMetadata } from '../types/index.js';
+import { fetchActiveSignals, fetchOpenLegEventIds } from './lib/signal-queries.js';
 
 async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
   if ((signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap' || signal.signal_type === 'early_market') && signal.event_id) {
@@ -53,59 +54,18 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
     const chatId = config.telegram_chat_id;
     if (!chatId) return;
 
-    const { data: openLegEvents } = await supabase
-      .from('my_bet_legs')
-      .select('event_id')
-      .is('closed_at', null);
-
-    const eventIdsWithOpenLegs = (openLegEvents ?? [])
-      .map(l => l.event_id as string | null)
-      .filter(Boolean) as string[];
-
-    const signalsQuery = supabase
-      .from('detected_signals')
-      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line, end_date)')
-      .eq('alerted', false)
-      .eq('dismissed', false)
-      .eq('acted_on', false)
-      .or(`signal_type.eq.calendar_driven,signal_type.eq.hype_reality_gap,signal_type.eq.early_market,metadata->>expected_edge_pct.gte.${config.notify_min_edge_pct}`)
-      .order('created_at', { ascending: false });
-
-    const { data, error } = await signalsQuery;
-
-    if (error) {
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `notify query failed: ${error.message}` });
+    let signals: SignalRow[];
+    try {
+      const eventIdsWithOpenLegs = await fetchOpenLegEventIds(supabase);
+      signals = await fetchActiveSignals(supabase, {
+        minEdgePct: config.notify_min_edge_pct,
+        excludeAlerted: true,
+        openLegEventIds: eventIdsWithOpenLegs,
+      });
+    } catch (err) {
+      await logEvent({ component: 'telegram_bot', status: 'error', message: `notify query failed: ${String(err)}` });
       return;
     }
-
-    const rawSignals = (data ?? []) as SignalRow[];
-
-    // Filtro: ocultar sinais cujo event_id (ou algum membro de basket)
-    // está em legs abertas.
-    // - event_id populado: oculta se event_id ∈ legs_abertas
-    // - event_id null + members[]: oculta se algum membro ∈ legs_abertas
-    //   (caso típico de cross_market_inter direction='over')
-    // - event_id null sem members[]: passa (default permissivo)
-    const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
-    const notInOpenLeg = rawSignals.filter(s => {
-      if (s.event_id !== null) {
-        return !openLegEventIdSet.has(s.event_id);
-      }
-      const members = (s.metadata as any)?.members as Array<{ event_id?: string }> | undefined;
-      if (Array.isArray(members) && members.length > 0) {
-        return !members.some(m => m.event_id && openLegEventIdSet.has(m.event_id));
-      }
-      return true;
-    });
-
-    // = detector freshness window
-    const FRESH_WINDOW_MS = 15 * 60 * 1000;
-    const notifyNow = Date.now();
-    const signals = notInOpenLeg.filter(s => {
-      const lastSeen = (s.metadata as any)?.last_seen_at;
-      if (!lastSeen) return false;
-      return notifyNow - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
-    });
 
     // = calendar_driven extreme price threshold
     const PRICE_EXTREME_LOW = 0.05;

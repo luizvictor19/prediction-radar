@@ -8,6 +8,7 @@ import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard, crossMa
 import { replyLongMessage } from '../message-utils.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
+import { fetchActiveSignals, fetchOpenLegEventIds } from '../lib/signal-queries.js';
 
 interface SlugEntry { event_group_slug?: string; slug?: string }
 
@@ -100,61 +101,19 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     const config = await getSystemConfig();
 
-    const { data: openLegEvents } = await supabase
-      .from('my_bet_legs')
-      .select('event_id')
-      .is('closed_at', null);
-
-    const eventIdsWithOpenLegs = (openLegEvents ?? [])
-      .map(l => l.event_id as string | null)
-      .filter(Boolean) as string[];
-
-    const signalsQuery = supabase
-      .from('detected_signals')
-      .select('*, events(title, polymarket_id, outcomes, sports_market_type, line, end_date)')
-      .eq('dismissed', false)
-      .eq('acted_on', false);
-
-    const { data, error } = await signalsQuery;
-
-    if (error) {
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${error.message}` });
+    let signals: SignalRow[];
+    try {
+      const eventIdsWithOpenLegs = await fetchOpenLegEventIds(supabase);
+      signals = await fetchActiveSignals(supabase, {
+        minEdgePct: config.min_expected_edge_pct,
+        excludeAlerted: false,
+        openLegEventIds: eventIdsWithOpenLegs,
+      });
+    } catch (err) {
+      await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${String(err)}` });
       await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
       return;
     }
-
-    // Filtro: ocultar sinais cujo event_id (ou algum membro de basket)
-    // está em legs abertas.
-    // Mesma lógica do notify.ts (ver comentário lá).
-    const openLegEventIdSet = new Set(eventIdsWithOpenLegs);
-    const notInOpenLeg = (data ?? []).filter((s: SignalRow) => {
-      if (s.event_id !== null) {
-        return !openLegEventIdSet.has(s.event_id);
-      }
-      const members = (s.metadata as any)?.members as Array<{ event_id?: string }> | undefined;
-      if (Array.isArray(members) && members.length > 0) {
-        return !members.some(m => m.event_id && openLegEventIdSet.has(m.event_id));
-      }
-      return true;
-    });
-
-    const edgeFiltered = notInOpenLeg.filter((s: SignalRow) => {
-      if (s.signal_type === 'calendar_driven') return true;
-      if (s.signal_type === 'hype_reality_gap') return true;
-      if (s.signal_type === 'early_market') return true;
-      const raw = (s.metadata as any)?.expected_edge_pct;
-      const edge = typeof raw === 'number' ? raw : parseFloat(raw ?? '');
-      return !isNaN(edge) && edge >= config.min_expected_edge_pct;
-    });
-
-    // = detector freshness window
-    const FRESH_WINDOW_MS = 15 * 60 * 1000;
-    const now = Date.now();
-    const signals = edgeFiltered.filter((s: SignalRow) => {
-      const lastSeen = (s.metadata as any)?.last_seen_at;
-      if (!lastSeen) return false;
-      return now - new Date(lastSeen).getTime() <= FRESH_WINDOW_MS;
-    });
 
     const filtered = filter
       ? signals.filter((s: SignalRow) => (s.events?.title ?? '').toLowerCase().includes(filter))
