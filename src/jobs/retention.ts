@@ -7,21 +7,57 @@ export async function runRetentionJob(): Promise<void> {
   const config = await getSystemConfig();
   const retentionHours = config.snapshot_retention_days * 24;
 
-  // Snapshots: delegate to SQL function to avoid client .in() limits
-  const { data, error: rpcError } = await supabase.rpc('run_snapshot_retention', {
-    retention_hours: retentionHours,
-  });
+  const BATCH_SIZE = 5000;
+  const MAX_BATCHES = 200; // safety cap: 1M rows máximo por job
 
-  if (rpcError) {
-    await logEvent({
-      component: 'retention_job',
-      status: 'error',
-      message: `RPC failed: ${rpcError.message}`,
+  let oldDeleted = 0;
+  let finalizedDeleted = 0;
+
+  // Deleta snapshots antigos em batches
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const { data, error } = await supabase.rpc('run_snapshot_retention_batch', {
+      delete_type: 'old',
+      retention_hours: retentionHours,
+      batch_size: BATCH_SIZE,
     });
-    return;
+
+    if (error) {
+      await logEvent({
+        component: 'retention_job',
+        status: 'error',
+        message: `Batch 'old' failed at iteration ${i}: ${error.message}`,
+      });
+      return;
+    }
+
+    const deleted = (data as number) ?? 0;
+    oldDeleted += deleted;
+    if (deleted < BATCH_SIZE) break;
   }
 
-  const result = data as { old_deleted: number; finalized_deleted: number };
+  // Deleta snapshots de events finalizados em batches
+  for (let i = 0; i < MAX_BATCHES; i++) {
+    const { data, error } = await supabase.rpc('run_snapshot_retention_batch', {
+      delete_type: 'finalized',
+      retention_hours: retentionHours,
+      batch_size: BATCH_SIZE,
+    });
+
+    if (error) {
+      await logEvent({
+        component: 'retention_job',
+        status: 'error',
+        message: `Batch 'finalized' failed at iteration ${i}: ${error.message}`,
+      });
+      return;
+    }
+
+    const deleted = (data as number) ?? 0;
+    finalizedDeleted += deleted;
+    if (deleted < BATCH_SIZE) break;
+  }
+
+  const result = { old_deleted: oldDeleted, finalized_deleted: finalizedDeleted };
 
   // Logs: client delete is fine (no UUID list, just timestamp filter)
   const logCutoff = new Date(
