@@ -96,6 +96,10 @@ export interface SystemConfig {
   excluded_categories: string[];
   collector_min_volume_24h: number;
   collector_min_liquidity: number;
+  signal_ttl_minutes: number;
+  signal_cooldown_minutes: number;
+  stale_cleanup_threshold_hours: number;
+  dismiss_stale_cutoff_minutes: number;
   updated_at: string;
 }
 

@@ -1,8 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
-
-const SIGNAL_TTL_MS = 30 * 60 * 1000;
-const COOLDOWN_AFTER_DISMISS_MS = 60 * 60 * 1000;
+import { getSystemConfig } from '../lib/config.js';
 
 const FILTERS = {
   min_volume_24h: 3000,
@@ -16,6 +14,9 @@ const FILTERS = {
 
 export async function detectEarlyMarkets(): Promise<void> {
   const startedAt = Date.now();
+  const config = await getSystemConfig();
+  const SIGNAL_TTL_MS = config.signal_ttl_minutes * 60 * 1000;
+  const COOLDOWN_AFTER_DISMISS_MS = config.signal_cooldown_minutes * 60 * 1000;
 
   const { data: events, error: evtErr } = await supabase
     .from('events')

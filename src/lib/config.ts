@@ -27,6 +27,10 @@ const DEFAULTS: SystemConfig = {
   excluded_categories: [],
   collector_min_volume_24h: 10000,
   collector_min_liquidity: 20000,
+  signal_ttl_minutes: 30,
+  signal_cooldown_minutes: 60,
+  stale_cleanup_threshold_hours: 1,
+  dismiss_stale_cutoff_minutes: 15,
   updated_at: new Date().toISOString(),
 };
 

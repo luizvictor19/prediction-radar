@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
-
-const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
+import { getSystemConfig } from '../lib/config.js';
 
 interface SignalRow {
   id: string;
@@ -16,6 +15,8 @@ interface MemberRef {
 
 export async function runStaleSignalsCleanup(): Promise<void> {
   const start = Date.now();
+  const config = await getSystemConfig();
+  const STALE_THRESHOLD_MS = config.stale_cleanup_threshold_hours * 60 * 60 * 1000;
   const stalenessThreshold = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString();
 
   const { data: signals, error: sigErr } = await supabase

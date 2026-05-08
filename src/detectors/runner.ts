@@ -6,6 +6,7 @@ import { detectEarlyMarkets } from './early-market.js';
 import { runStaleSignalsCleanup } from '../jobs/cleanup-stale-signals.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { getSystemConfig } from '../lib/config.js';
 
 type DetectorFn = () => Promise<void>;
 
@@ -21,7 +22,8 @@ const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
 ];
 
 async function dismissStaleSignals(): Promise<void> {
-  const cutoffMs = Date.now() - 15 * 60 * 1000;
+  const config = await getSystemConfig();
+  const cutoffMs = Date.now() - config.dismiss_stale_cutoff_minutes * 60 * 1000;
 
   const { data: candidates, error: selErr } = await supabase
     .from('detected_signals')
