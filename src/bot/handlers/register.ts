@@ -3,6 +3,7 @@ import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
 import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
+import { adjustCash } from '../../lib/bankroll.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
 
@@ -303,13 +304,17 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     });
   }
 
-  // j. Resposta
+  // j. Decrementar cash
+  await adjustCash(-stakeUsd);
+
+  // k. Resposta
+  const cashLine = `\nCash decrementado: -$${stakeUsd.toFixed(2)}`;
   if (signalIdMatch) {
-    await ctx.reply('✅ Bet registrada e vinculada ao sinal.');
+    await ctx.reply(`✅ Bet registrada e vinculada ao sinal.${cashLine}`);
   } else if (eventIdMatch) {
-    await ctx.reply('✅ Bet registrada e vinculada ao evento.');
+    await ctx.reply(`✅ Bet registrada e vinculada ao evento.${cashLine}`);
   } else {
-    await ctx.reply('✅ Bet registrada manualmente.');
+    await ctx.reply(`✅ Bet registrada manualmente.${cashLine}`);
   }
 }
 
@@ -424,8 +429,11 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     return;
   }
 
-  // h. Resposta
-  await ctx.reply(`✅ Basket registrada com ${n} legs.`);
+  // h. Decrementar cash pelo total da basket
+  await adjustCash(-totalStake);
+
+  // i. Resposta
+  await ctx.reply(`✅ Basket registrada com ${n} legs.\nCash decrementado: -$${totalStake.toFixed(2)}`);
 }
 
 export async function registerConversation(
