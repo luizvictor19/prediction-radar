@@ -364,13 +364,23 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     legInputs.push({ outcome, stake_usd: stakeUsd, entry_price: entryPrice, shares: stakeUsd / entryPrice });
   }
 
-  // e. Tese
+  // e. Confiança (na tese da basket como um todo)
+  await ctx.reply('Confiança na tese da basket 1-10 (ou skip):');
+  const confCtx = await conversation.waitFor('message:text');
+  const confRaw = confCtx.message.text.trim();
+  let confidenceSelf: number | null = null;
+  if (confRaw !== 'skip') {
+    const parsed = parseInt(confRaw, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
+  }
+
+  // f. Tese
   await ctx.reply('Tese curta (ou skip):');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
   const thesis = thesisRaw === 'skip' ? basketTitle : thesisRaw;
 
-  // f. Resumo + confirmação
+  // g. Resumo + confirmação
   const totalStake = legInputs.reduce((s, l) => s + l.stake_usd, 0);
   let summary = `*Confirmar basket (${n} legs)?*\n${basketTitle}\n`;
   for (let i = 0; i < legInputs.length; i++) {
@@ -379,6 +389,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
   }
   summary += `Stake total: \`$${totalStake.toFixed(2)}\`\n`;
   summary += `Categoria: \`${catLabel(category)}\`\n`;
+  if (confidenceSelf !== null) summary += `Confiança: \`${confidenceSelf}/10\`\n`;
   if (thesisRaw !== 'skip') summary += `Tese: ${thesis}\n`;
 
   const confirmed = await waitConfirm(conversation, ctx, summary);
@@ -387,7 +398,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     return;
   }
 
-  // g. Inserir
+  // h. Inserir
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
@@ -395,7 +406,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
       event_id: null,
       thesis,
       thesis_type: 'manual',
-      confidence_self: null,
+      confidence_self: confidenceSelf,
       domain_confidence: null,
       polymarket_category: category,
       notes: null,
@@ -429,10 +440,10 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     return;
   }
 
-  // h. Decrementar cash pelo total da basket
+  // i. Decrementar cash pelo total da basket
   await adjustCash(-totalStake);
 
-  // i. Resposta
+  // j. Resposta
   await ctx.reply(`✅ Basket registrada com ${n} legs.\nCash decrementado: -$${totalStake.toFixed(2)}`);
 }
 
