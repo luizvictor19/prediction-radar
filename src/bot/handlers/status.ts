@@ -83,7 +83,9 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     const text =
       `*Status*\n` +
-      `Bankroll: \`$${state.bankroll.toFixed(2)}\` (cash \`$${state.cash.toFixed(2)}\` + portfolio \`$${state.portfolio_value.toFixed(2)}\`)\n` +
+      `Bankroll: \`$${state.bankroll.toFixed(2)}\`\n` +
+      `  Cash: \`$${state.cash.toFixed(2)}\`\n` +
+      `  Posições abertas: \`$${state.portfolio_value.toFixed(2)}\`\n` +
       `Bets abertas: \`${state.legs_count}\` (stake \`$${state.stake_committed.toFixed(2)}\`, valor atual \`$${state.portfolio_value.toFixed(2)}\`)\n` +
       `Bets fechadas (7d): \`${closedBetCount}\` | Win rate \`${winRate}%\` | PnL \`${pnlSign}$${pnlTotal.toFixed(2)}\`\n` +
       `Último detector: \`${lastRun}\`\n` +
