@@ -135,7 +135,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       `Não-realizado atual: \`${sign(naoRealizado)}$${naoRealizado.toFixed(2)}\`\n` +
       `*Total (realizado + não-realizado): ${sign(totalCombinado)}$${totalCombinado.toFixed(2)}*\n` +
       `\n` +
-      `Bets abertas: \`${state.legs_count}\`\n` +
+      `Bets abertas: \`${state.legs_count}\` | Bets fechadas: \`${closedBetsAll}\`\n` +
       `Último detector: \`${lastRun}\`\n` +
       `Sinais ativos: \`${activeSignals}\`\n` +
       `Alertas 24h: \`${recentAlerts.count ?? 0}\``;
