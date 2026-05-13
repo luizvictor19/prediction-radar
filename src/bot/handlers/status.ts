@@ -9,6 +9,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const config = await getSystemConfig();
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const freshCutoff = new Date(
       Date.now() - config.dismiss_stale_cutoff_minutes * 60 * 1000,
@@ -32,9 +33,11 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       state,
       legs24h,
       legs7d,
+      legs30dRows,
       legsAllTime,
       closedBets24hMeta,
       closedBetsMeta,
+      closedBets30dMeta,
       closedBetsAllTimeMeta,
       lastDetector,
       activeRaw,
@@ -54,6 +57,11 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       supabase
         .from('my_bet_legs')
         .select('result, pnl_usd')
+        .not('closed_at', 'is', null)
+        .gte('closed_at', thirtyDaysAgo),
+      supabase
+        .from('my_bet_legs')
+        .select('result, pnl_usd')
         .not('closed_at', 'is', null),
       supabase
         .from('my_bets')
@@ -65,6 +73,11 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .select('id', { count: 'exact', head: true })
         .not('closed_at', 'is', null)
         .gte('closed_at', sevenDaysAgo),
+      supabase
+        .from('my_bets')
+        .select('id', { count: 'exact', head: true })
+        .not('closed_at', 'is', null)
+        .gte('closed_at', thirtyDaysAgo),
       supabase
         .from('my_bets')
         .select('id', { count: 'exact', head: true })
@@ -97,10 +110,12 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     const m24h = calcMetrics(legs24h.data ?? []);
     const m7d = calcMetrics(legs7d.data ?? []);
+    const m30d = calcMetrics(legs30dRows.data ?? []);
     const mAll = calcMetrics(legsAllTime.data ?? []);
 
     const closedBets24h = closedBets24hMeta.count ?? 0;
     const closedBets7d = closedBetsMeta.count ?? 0;
+    const closedBets30d = closedBets30dMeta.count ?? 0;
     const closedBetsAll = closedBetsAllTimeMeta.count ?? 0;
 
     function sign(n: number): string {
@@ -130,6 +145,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       `*Performance realizada*\n` +
       `  24h:      \`${sign(m24h.pnl)}$${m24h.pnl.toFixed(2)}\` | \`${closedBets24h}\` fechadas | \`${m24h.winRate}%\` wr\n` +
       `  7 dias:   \`${sign(m7d.pnl)}$${m7d.pnl.toFixed(2)}\` | \`${closedBets7d}\` fechadas | \`${m7d.winRate}%\` wr\n` +
+      `  30 dias:  \`${sign(m30d.pnl)}$${m30d.pnl.toFixed(2)}\` | \`${closedBets30d}\` fechadas | \`${m30d.winRate}%\` wr\n` +
       `  All-time: \`${sign(mAll.pnl)}$${mAll.pnl.toFixed(2)}\` | \`${closedBetsAll}\` fechadas | \`${mAll.winRate}%\` wr\n` +
       `\n` +
       `Não-realizado atual: \`${sign(naoRealizado)}$${naoRealizado.toFixed(2)}\`\n` +
