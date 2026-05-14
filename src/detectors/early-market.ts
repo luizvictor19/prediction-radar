@@ -10,6 +10,7 @@ const FILTERS = {
   // Cauda extrema: mercado já calibrou, sem oportunidade
   min_price_for_signal: 0.05,
   max_price_for_signal: 0.95,
+  max_snapshot_age_minutes: 30,
 };
 
 export async function detectEarlyMarkets(): Promise<void> {
@@ -36,6 +37,7 @@ export async function detectEarlyMarkets(): Promise<void> {
 
   let evaluated = 0;
   let flagged = 0;
+  let skippedStaleSnapshot = 0;
   let skippedFilters = 0;
   let skippedDedup = 0;
 
@@ -51,6 +53,12 @@ export async function detectEarlyMarkets(): Promise<void> {
       .maybeSingle();
 
     if (!snapshot || snapshot.mid_price == null) continue;
+
+    const snapshotAgeMs = Date.now() - new Date(snapshot.captured_at).getTime();
+    if (snapshotAgeMs > FILTERS.max_snapshot_age_minutes * 60 * 1000) {
+      skippedStaleSnapshot++;
+      continue;
+    }
 
     const currentPrice = snapshot.mid_price;
     const spread = snapshot.spread ?? 1;
@@ -149,8 +157,8 @@ export async function detectEarlyMarkets(): Promise<void> {
   await logEvent({
     component: 'early_market_detector',
     status: 'success',
-    message: `Evaluated ${evaluated} new markets, ${flagged} flagged, ${skippedFilters} skipped filters, ${skippedDedup} deduped in ${durationMs}ms`,
-    metadata: { evaluated, flagged, skipped_filters: skippedFilters, skipped_dedup: skippedDedup, duration_ms: durationMs },
+    message: `Evaluated ${evaluated} new markets, ${flagged} flagged, ${skippedStaleSnapshot} stale snapshot, ${skippedFilters} skipped filters, ${skippedDedup} deduped in ${durationMs}ms`,
+    metadata: { evaluated, flagged, skipped_stale_snapshot: skippedStaleSnapshot, skipped_filters: skippedFilters, skipped_dedup: skippedDedup, duration_ms: durationMs },
   });
 }
 

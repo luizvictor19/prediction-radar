@@ -33,6 +33,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
   let flaggedBoth = 0;
   let skippedNoData = 0;
   let skippedTailMarkets = 0;
+  let skippedStaleSnapshot = 0;
   let deduped = 0;
   let cooldownDismissed = 0;
 
@@ -72,6 +73,12 @@ export async function runHypeRealityGapDetector(): Promise<void> {
 
       if (currentSnap.mid_price < 0.15 || currentSnap.mid_price > 0.85) {
         skippedTailMarkets++;
+        continue;
+      }
+
+      const snapshotAgeMs = Date.now() - new Date(currentSnap.captured_at).getTime();
+      if (snapshotAgeMs > 30 * 60 * 1000) {
+        skippedStaleSnapshot++;
         continue;
       }
 
@@ -214,7 +221,7 @@ export async function runHypeRealityGapDetector(): Promise<void> {
     await logEvent({
       component: 'hype_reality_gap_detector',
       status: 'success',
-      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${cooldownDismissed} cooldown_dismiss, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
+      message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${cooldownDismissed} cooldown_dismiss, ${skippedStaleSnapshot} stale snapshot, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
     });
   } catch (err) {
     await logEvent({
