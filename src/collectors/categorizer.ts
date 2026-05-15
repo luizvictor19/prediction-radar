@@ -121,7 +121,7 @@ export function categorizeMarket(market: GammaMarket): {
   _stats[category]++;
 
   if (category === 'other') {
-    console.warn(`[categorizer] Discarded (other): "${market.question.slice(0, 80)}"`);
+    // Silenced — generates 10k+ logs per run. Aggregate counts logged by logCategorizerStats().
     return { category, sub_category: null };
   }
 
