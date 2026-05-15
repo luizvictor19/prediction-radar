@@ -108,6 +108,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
         minEdgePct: config.min_expected_edge_pct,
         excludeAlerted: false,
         openLegEventIds: eventIdsWithOpenLegs,
+        freshWindowMinutes: config.dismiss_stale_cutoff_minutes,
       });
     } catch (err) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${String(err)}` });

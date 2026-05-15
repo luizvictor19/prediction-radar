@@ -61,6 +61,7 @@ async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
         minEdgePct: config.notify_min_edge_pct,
         excludeAlerted: true,
         openLegEventIds: eventIdsWithOpenLegs,
+        freshWindowMinutes: config.dismiss_stale_cutoff_minutes,
       });
     } catch (err) {
       await logEvent({ component: 'telegram_bot', status: 'error', message: `notify query failed: ${String(err)}` });
