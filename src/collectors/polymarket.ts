@@ -8,6 +8,9 @@ import { detectResolvedMarkets } from './resolved-detector.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MAX_DAYS_TO_RESOLUTION = 90;
+// Polymarket Gamma API has a hard limit of 100 markets per page,
+// even when limit > 100 is requested. Confirmed empirically 2026-05-14.
+const PAGE_SIZE = 100;
 
 function isWithinResolutionWindow(endDate: string): boolean {
   const end = new Date(endDate);
@@ -55,6 +58,7 @@ export async function collectAll(): Promise<void> {
   const seenPolymarketIds = new Set<string>();
 
   let offset = 0;
+  let pageCount = 0;
   let scanned = 0;
   let upserted = 0;
   let snapshots = 0;
@@ -66,7 +70,9 @@ export async function collectAll(): Promise<void> {
   let protectedIncluded = 0;
 
   while (true) {
-    const markets = await fetchActiveMarkets({ limit: 500, offset });
+    const markets = await fetchActiveMarkets({ limit: PAGE_SIZE, offset });
+    pageCount++;
+
     if (markets.length === 0) break;
 
     for (const market of markets) {
@@ -169,7 +175,14 @@ export async function collectAll(): Promise<void> {
     scanned += markets.length;
     offset += markets.length;
 
-    if (markets.length < 500) break;
+    if (pageCount % 5 === 0) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (pageCount >= 100) {
+      console.warn('[collector] Reached pagination safety cap of 100 pages');
+      break;
+    }
   }
 
   const durationMs = Date.now() - startMs;
@@ -178,9 +191,10 @@ export async function collectAll(): Promise<void> {
   await logEvent({
     component: 'collector',
     status,
-    message: `Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots`,
+    message: `Scanned ${scanned} (${pageCount} pages), upserted ${upserted} events, ${snapshots} snapshots`,
     metadata: {
       scanned,
+      pages: pageCount,
       upserted_events: upserted,
       upserted_snapshots: snapshots,
       duration_ms: durationMs,
