@@ -12,12 +12,6 @@ const MAX_DAYS_TO_RESOLUTION = 90;
 // even when limit > 100 is requested. Confirmed empirically 2026-05-14.
 const PAGE_SIZE = 100;
 
-const SORT_STRATEGIES: Array<{ name: string; order: string; ascending: boolean }> = [
-  { name: 'volume24hr_desc', order: 'volume24hr', ascending: false },
-  { name: 'endDate_asc', order: 'endDate', ascending: true },
-  { name: 'liquidity_desc', order: 'liquidity', ascending: false },
-];
-
 function isWithinResolutionWindow(endDate: string): boolean {
   const end = new Date(endDate);
   const now = new Date();
@@ -47,61 +41,54 @@ export async function collectAll(): Promise<void> {
   isRunning = true;
 
   try {
-  console.log('[collector] Starting collection pass...');
-  const startMs = Date.now();
+    console.log('[collector] Starting collection pass...');
+    const startMs = Date.now();
 
-  const config = await getSystemConfig();
-  const minVolume24h = config.collector_min_volume_24h ?? 10000;
-  const minLiquidity = config.collector_min_liquidity ?? 20000;
-  const excludedCategories = config.excluded_categories ?? [];
+    const config = await getSystemConfig();
+    const minVolume24h = config.collector_min_volume_24h ?? 10000;
+    const minLiquidity = config.collector_min_liquidity ?? 20000;
+    const excludedCategories = config.excluded_categories ?? [];
 
-  const { data: openLegs } = await supabase
-    .from('my_bet_legs')
-    .select('event_id')
-    .is('closed_at', null);
+    const { data: openLegs } = await supabase
+      .from('my_bet_legs')
+      .select('event_id')
+      .is('closed_at', null);
 
-  const protectedEventIds = new Set(
-    (openLegs ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
-  );
+    const protectedEventIds = new Set(
+      (openLegs ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
+    );
 
-  const { data: protectedEvents } = await supabase
-    .from('events')
-    .select('polymarket_id')
-    .in('id', [...protectedEventIds]);
+    const { data: protectedEvents } = await supabase
+      .from('events')
+      .select('polymarket_id')
+      .in('id', [...protectedEventIds]);
 
-  const protectedPolymarketIds = new Set(
-    (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
-  );
+    const protectedPolymarketIds = new Set(
+      (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
+    );
 
-  const seenPolymarketIds = new Set<string>();
-  const processedPolymarketIds = new Set<string>();
+    const seenPolymarketIds = new Set<string>();
 
-  let totalScanned = 0;
-  let totalUpserted = 0;
-  let totalSnapshots = 0;
-  let totalPages = 0;
-  let totalErrors = 0;
-  let skippedLowVolumeIsolated = 0;
-  let includedNegRiskLowVolume = 0;
-  let skippedLiquidity = 0;
-  let skippedExcluded = 0;
-  let protectedIncluded = 0;
-  let skippedDeduped = 0;
-
-  for (const strategy of SORT_STRATEGIES) {
-    console.log(`[collector] Starting pass: ${strategy.name}`);
     let offset = 0;
-    let pagesThisStrategy = 0;
+    let pageCount = 0;
+    let scanned = 0;
+    let upserted = 0;
+    let snapshots = 0;
+    let errorsCount = 0;
+    let skippedLowVolumeIsolated = 0;
+    let includedNegRiskLowVolume = 0;
+    let skippedLiquidity = 0;
+    let skippedExcluded = 0;
+    let protectedIncluded = 0;
 
     while (true) {
       const markets = await fetchActiveMarkets({
         limit: PAGE_SIZE,
         offset,
-        order: strategy.order,
-        ascending: strategy.ascending,
+        order: 'volume24hr',
+        ascending: false,
       });
-      pagesThisStrategy++;
-      totalPages++;
+      pageCount++;
 
       if (markets.length === 0) break;
 
@@ -109,12 +96,6 @@ export async function collectAll(): Promise<void> {
         // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
         if (!market.closed) {
           seenPolymarketIds.add(market.id);
-        }
-
-        // Skip if already processed in a previous sort strategy
-        if (processedPolymarketIds.has(market.id)) {
-          skippedDeduped++;
-          continue;
         }
 
         if (!passesBaseFilters(market)) continue;
@@ -144,9 +125,6 @@ export async function collectAll(): Promise<void> {
           continue;
         }
 
-        // Mark as processed before upsert so other sort strategies skip it
-        processedPolymarketIds.add(market.id);
-
         const { category, sub_category } = categorizeMarket(market);
         const event = { ...gammaToEvent(market, category), sub_category };
 
@@ -158,11 +136,11 @@ export async function collectAll(): Promise<void> {
 
         if (upsertErr || !eventRow) {
           console.error(`[collector] Upsert failed for ${market.id}:`, upsertErr?.message);
-          totalErrors++;
+          errorsCount++;
           continue;
         }
 
-        totalUpserted++;
+        upserted++;
 
         const outcomes = eventRow.outcomes as { values?: string[] } | null;
         const outcomeNames = outcomes?.values ?? ['Yes', 'No'];
@@ -204,57 +182,52 @@ export async function collectAll(): Promise<void> {
 
         if (snapErr) {
           console.error(`[collector] Snapshot failed for ${market.id}:`, snapErr.message);
-          totalErrors++;
+          errorsCount++;
         } else {
-          totalSnapshots += 2;
+          snapshots += 2;
         }
       }
 
-      totalScanned += markets.length;
+      scanned += markets.length;
       offset += markets.length;
 
-      if (totalPages % 5 === 0) {
+      if (pageCount % 5 === 0) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      if (pagesThisStrategy >= 1000) {
-        console.warn(`[collector] Reached pagination cap for ${strategy.name}`);
+      if (pageCount >= 1000) {
+        console.warn('[collector] Reached pagination safety cap');
         break;
       }
     }
 
-    console.log(`[collector] Completed ${strategy.name}: ${pagesThisStrategy} pages`);
-  }
+    const durationMs = Date.now() - startMs;
+    const status = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
 
-  const durationMs = Date.now() - startMs;
-  const status = totalErrors === 0 ? 'success' : totalUpserted > 0 ? 'partial' : 'error';
+    await logEvent({
+      component: 'collector',
+      status,
+      message: `Scanned ${scanned} (${pageCount} pages, sorted by volume), upserted ${upserted} events, ${snapshots} snapshots`,
+      metadata: {
+        scanned,
+        pages: pageCount,
+        upserted_events: upserted,
+        upserted_snapshots: snapshots,
+        duration_ms: durationMs,
+        errors_count: errorsCount,
+        skipped_low_volume_isolated: skippedLowVolumeIsolated,
+        included_neg_risk_low_volume: includedNegRiskLowVolume,
+        skipped_low_liquidity: skippedLiquidity,
+        skipped_excluded_category: skippedExcluded,
+        protected_included: protectedIncluded,
+      },
+    });
 
-  await logEvent({
-    component: 'collector',
-    status,
-    message: `Scanned ${totalScanned} (${totalPages} pages, ${SORT_STRATEGIES.length} sorts), upserted ${totalUpserted} events, ${totalSnapshots} snapshots, ${skippedDeduped} deduped`,
-    metadata: {
-      scanned: totalScanned,
-      pages: totalPages,
-      sorts: SORT_STRATEGIES.length,
-      upserted_events: totalUpserted,
-      upserted_snapshots: totalSnapshots,
-      skipped_deduped: skippedDeduped,
-      duration_ms: durationMs,
-      errors_count: totalErrors,
-      skipped_low_volume_isolated: skippedLowVolumeIsolated,
-      included_neg_risk_low_volume: includedNegRiskLowVolume,
-      skipped_low_liquidity: skippedLiquidity,
-      skipped_excluded_category: skippedExcluded,
-      protected_included: protectedIncluded,
-    },
-  });
+    await detectResolvedMarkets(seenPolymarketIds);
 
-  await detectResolvedMarkets(seenPolymarketIds);
+    await logCategorizerStats();
 
-  await logCategorizerStats();
-
-  console.log(`[collector] Done. Scanned ${totalScanned} across ${SORT_STRATEGIES.length} sorts, upserted ${totalUpserted} events, ${totalSnapshots} snapshots.`);
+    console.log(`[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`);
   } finally {
     isRunning = false;
   }
