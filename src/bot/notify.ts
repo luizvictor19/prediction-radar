@@ -10,6 +10,7 @@ import { sendLongMessage } from './message-utils.js';
 import type { SignalRow } from './format.js';
 import type { CrossMarketInterSignalMetadata } from '../types/index.js';
 import { fetchActiveSignals, fetchOpenLegEventIds } from './lib/signal-queries.js';
+import { isNotifyPaused, getRemainingPauseMs } from './lib/notify-pause.js';
 
 async function resolvePolymarketUrl(signal: SignalRow): Promise<string> {
   if ((signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap' || signal.signal_type === 'early_market') && signal.event_id) {
@@ -48,6 +49,11 @@ export function startNotifyLoop(bot: Bot<BotContext>): void {
 }
 
 async function runNotifyCheck(bot: Bot<BotContext>): Promise<void> {
+  if (isNotifyPaused()) {
+    console.log(`[notify] Paused for ${Math.round(getRemainingPauseMs() / 1000)}s more, skipping tick`);
+    return;
+  }
+
   try {
     const [config, bankrollState] = await Promise.all([getSystemConfig(), getBankrollState()]);
     const bankroll = bankrollState.bankroll;

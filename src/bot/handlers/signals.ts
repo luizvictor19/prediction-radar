@@ -9,6 +9,7 @@ import { replyLongMessage } from '../message-utils.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 import { fetchActiveSignals, fetchOpenLegEventIds } from '../lib/signal-queries.js';
+import { pauseNotify } from '../lib/notify-pause.js';
 
 interface SlugEntry { event_group_slug?: string; slug?: string }
 
@@ -95,6 +96,8 @@ function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, SlugEntry>):
 }
 
 export async function signalsHandler(ctx: BotContext): Promise<void> {
+  pauseNotify(60 * 1000);
+
   try {
     const filterRaw = (ctx.match as string | undefined ?? '').trim();
     const filter = filterRaw.length > 0 ? filterRaw.toLowerCase() : null;
