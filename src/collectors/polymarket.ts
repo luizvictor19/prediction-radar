@@ -179,8 +179,10 @@ export async function collectAll(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    if (pageCount >= 100) {
-      console.warn('[collector] Reached pagination safety cap of 100 pages');
+    // Safety cap: never paginate more than 1000 pages (100k markets).
+    // Polymarket has ~50-60k active markets normally; 1000 pages gives safe margin.
+    if (pageCount >= 1000) {
+      console.warn('[collector] Reached pagination safety cap of 1000 pages');
       break;
     }
   }
