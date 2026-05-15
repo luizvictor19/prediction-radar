@@ -32,7 +32,21 @@ function passesBaseFilters(market: GammaMarket): boolean {
   return true;
 }
 
+let isRunning = false;
+
 export async function collectAll(): Promise<void> {
+  if (isRunning) {
+    console.log('[collector] Previous run still in progress, skipping this tick');
+    await logEvent({
+      component: 'collector',
+      status: 'partial',
+      message: 'Skipped: previous run still in progress',
+    });
+    return;
+  }
+  isRunning = true;
+
+  try {
   console.log('[collector] Starting collection pass...');
   const startMs = Date.now();
 
@@ -241,4 +255,7 @@ export async function collectAll(): Promise<void> {
   await logCategorizerStats();
 
   console.log(`[collector] Done. Scanned ${totalScanned} across ${SORT_STRATEGIES.length} sorts, upserted ${totalUpserted} events, ${totalSnapshots} snapshots.`);
+  } finally {
+    isRunning = false;
+  }
 }
