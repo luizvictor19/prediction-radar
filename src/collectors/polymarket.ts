@@ -68,7 +68,6 @@ export async function collectAll(): Promise<void> {
     );
 
     const seenPolymarketIds = new Set<string>();
-    const seenInThisRun = new Set<string>();
 
     let offset = 0;
     let pageCount = 0;
@@ -92,15 +91,6 @@ export async function collectAll(): Promise<void> {
       pageCount++;
 
       if (markets.length === 0) break;
-
-      // Detect API loop: if all markets in this page were already processed,
-      // API is returning duplicates (offset exceeded real limit).
-      const newMarketsInPage = markets.filter(m => !seenInThisRun.has(m.id));
-      if (newMarketsInPage.length === 0) {
-        console.warn(`[collector] All ${markets.length} markets in page already seen at offset ${offset}, stopping pagination`);
-        break;
-      }
-      markets.forEach(m => seenInThisRun.add(m.id));
 
       for (const market of markets) {
         // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
@@ -205,8 +195,8 @@ export async function collectAll(): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      if (pageCount >= 1000) {
-        console.warn('[collector] Reached pagination safety cap');
+      if (pageCount >= 100) {
+        console.warn('[collector] Reached safety cap of 100 pages (10k markets)');
         break;
       }
     }
