@@ -1,0 +1,367 @@
+# Panorama dos processos automáticos — Prediction Radar
+
+## Conceitos rápidos
+
+**Snapshot** — foto do preço de um mercado num instante (Yes, No, volume, liquidez). Sistema tira fotos a cada poucos minutos.
+
+**Signal (sinal)** — quando um detector encontra oportunidade, cria um signal. É a notificação que aparece no Telegram.
+
+**TTL (Time To Live)** — quanto tempo um signal vive antes de expirar. Tipo prazo de validade.
+
+**Cooldown** — período de espera após um signal ser dispensado, durante o qual o detector NÃO cria outro signal pro mesmo mercado.
+
+**Cron** — agendamento automático. "A cada X minutos, faz Y."
+
+---
+
+## Os "fotógrafos" (collectors)
+
+### Open legs collector — a cada 10s
+- Coleta preços APENAS dos mercados onde tu tem leg aberta
+- Garante que /positions e /status sempre mostram preço fresquíssimo
+- Configurado em: src/index.ts (cron `*/10 * * * * *`)
+- Código: src/collectors/open-legs-collector.ts
+- Tempo médio: 750-900ms por ciclo
+- Logs: component='open_legs_collector'
+- Lock isRunning previne overlap, timeout 25s
+
+### Collector geral — a cada 3min
+- Busca todos os ~46k mercados ativos do Polymarket
+- Filtra os relevantes (volume>10k, liquidez>20k) e salva no banco
+- Alimenta tabela polymarket_snapshots que serve os detectores
+- No fim, dispara o auto-resolver
+- Configurado em: src/index.ts (cron `*/3 * * * *`)
+- Código: src/collectors/polymarket.ts (collectAll)
+- Tempo médio: 10-11min (ciclos sobrepostos com proteção)
+- Logs: component='collector'
+
+### Early markets collector — a cada 5min
+- Busca mercados recém-abertos (<24h) no Polymarket
+- Persiste em events com is_new_market=true
+- Alimenta especificamente o detector early_market
+- Configurado em: src/index.ts (cron `*/5 * * * *`)
+- Código: src/collectors/early-markets-collector.ts
+- Tempo médio: 5-10s
+- Logs: component='early_markets_collector'
+
+---
+
+## Os "detectores" (rodam dentro do detector_runner)
+
+### Detector runner — a cada 15min
+- Chefe que coordena 6 detectores em sequência
+- Lock isRunning previne overlap entre ciclos
+- Configurado em: src/index.ts (cron `*/15 * * * *`)
+- Código: src/detectors/runner.ts
+- Tempo médio: 7min por ciclo
+- Logs: component='detector_runner'
+
+### Os 6 detectores executados:
+
+**1. cross_market_intra**
+- Procura: arbitragem em mercados multi-outcome (raríssimo no Polymarket)
+- Cooldown: cross_market_dedup_window_minutes (60min, no banco)
+- Resultado típico: 0 sinais (Polymarket raramente oferece esse tipo)
+- Logs: component='cross_market_detector'
+
+**2. cross_market_inter**
+- Procura: baskets — vários mercados relacionados com soma de preços ≠ 1.0
+- Ex: "Aston Villa wins UEFA?" + "Freiburg wins?" + ... — soma deveria ser 100%
+- Cooldown: 60min
+- Logs: component='cross_market_inter_detector'
+
+**3. calendar_driven**
+- Procura: mercados próximos da resolução com preço estável
+- Lógica de dedup própria
+- Logs: component='calendar_driven_detector'
+
+**4. hype_reality_gap**
+- Procura: movimento brusco de preço + aumento de volume
+- TTL signal: signal_ttl_minutes (30min, configurável no banco)
+- Cooldown: 1h
+- Logs: component='hype_reality_gap_detector'
+
+**5. early_market**
+- Procura: mercados recém-abertos com smart money calibrando
+- TTL signal: signal_ttl_minutes (30min, configurável)
+- Cooldown: signal_cooldown_minutes (60min, configurável)
+- Filtros: cauda 5%-95%, spread<5pp, vol>3k, liq>5k
+- Logs: component='early_market_detector'
+
+**6. cleanup_stale_signals**
+- Não detecta — limpa
+- Dispensa signals onde event não recebe snapshot há tempo definido
+- Threshold: stale_cleanup_threshold_hours (1h, configurável)
+- Logs: component='cleanup_stale_signals'
+
+---
+
+## Os "guardiões" automáticos
+
+### Auto-resolver (resolved_detector) — a cada 3min (no fim do collector geral)
+- Quando mercado resolve no Polymarket, fecha tua leg automaticamente
+- Atualiza cash, registra PnL, marca event como resolved
+- Validado em produção (Bitcoin May 7, Forest, Braga)
+- Limites hardcoded:
+  - MAX_PER_CYCLE = 50
+  - FETCH_TIMEOUT_MS = 8000
+  - RESOLVED_DETECTOR_TIMEOUT_MS = 60000
+- Código: src/collectors/resolved-detector.ts
+- Logs: component='resolved_detector'
+
+### dismissStaleSignals — a cada 15min (fim do detector_runner)
+- Dispensa signals com metadata.last_seen_at velho
+- Cutoff: dismiss_stale_cutoff_minutes (15min, configurável)
+- Configurado em: src/detectors/runner.ts (função dismissStaleSignals)
+- Logs: component='detector_runner' mensagem "Dismissed N stale"
+
+### Notify loop (Telegram) — verifica a cada 10s
+- Envia signals com alerted=false pro Telegram
+- Filtra por notify_min_edge_pct (2.5% no banco)
+- Configurado em: src/bot/notify.ts (startNotifyLoop)
+- Marca alerted=true após enviar
+
+### Retention job — 1x por dia às 03:00 UTC + no startup
+- Deleta snapshots > snapshot_retention_days (1 dia)
+- Deleta logs > system_logs_retention_days (30 dias)
+- Snapshots de events finalizados: deletados imediatamente via SQL function
+- Configurado em: src/index.ts (cron `0 3 * * *`)
+- Código: src/jobs/retention.ts
+- Logs: component='retention_job'
+
+---
+
+## Cadeia de dependências (causa → efeito)
+
+### Quando tu opera uma posição
+```
+1. Tu clica Track no Telegram
+   ↓
+2. Conversation pede stake
+   ↓
+3. INSERT em my_bets + my_bet_legs
+   ↓
+4. UPDATE cash (subtrai stake)
+   ↓
+5. /positions mostra a leg nova imediatamente
+   ↓
+6. Open_legs_collector passa a coletar snapshots dessa leg a cada 10s
+   ↓
+7. Auto-resolver passa a "priorizar" esse event (sempre incluído nos candidatos)
+```
+
+### Quando uma leg resolve
+```
+1. Polymarket: mercado vira closed=true + UMA proposed
+   ↓
+2. ~24-48h depois: UMA confirma, status vira "resolved"
+   ↓
+3. Próximo ciclo do collector geral (3min):
+   - Mercado retornado pela API com closed=true
+   - NÃO entra em seenPolymarketIds
+   ↓
+4. Auto-resolver roda no fim do collector:
+   - Vê event no banco como "active" mas sumido do feed
+   - É priorizado (tem leg aberta)
+   - Fetcha API direto: closed=true, umaResolutionStatus=resolved
+   ↓
+5. Auto-resolver fecha leg:
+   - UPDATE my_bet_legs (result, pnl_usd, closed_at)
+   - UPDATE events (status=resolved, resolved_outcome)
+   - adjustCash (+payout se win, +0 se loss)
+   ↓
+6. /positions não mostra mais essa leg
+   ↓
+7. /status reflete novo cash + portfolio
+```
+
+### Quando um signal é gerado
+```
+1. Cron do runner dispara (a cada 15min)
+   ↓
+2. Lock isRunning ativa
+   ↓
+3. Detectores rodam em sequência:
+   - Busca dados em events + polymarket_snapshots
+   - Aplica critérios (volume, spread, edge, etc)
+   - Pra cada match: verifica se signal anterior existe
+     - Se ativo: ATUALIZA expires_at + last_seen_at
+     - Se dispensado dentro do cooldown: PULA
+     - Se não: INSERT novo signal
+   ↓
+4. dismissStaleSignals roda no fim
+   ↓
+5. Notify loop (a cada 10s) envia signals com alerted=false:
+   - Filtra por notify_min_edge_pct
+   - Envia mensagem no Telegram
+   - Marca alerted=true
+   ↓
+6. Tu vê notificação, decide track/dismiss
+```
+
+### Quando tu dispensa um signal
+```
+1. Tu clica Dismiss no Telegram
+   ↓
+2. UPDATE detected_signals:
+   - dismissed=true
+   - user_dismissed_at=NOW()
+   - user_action_type='dismissed'
+   ↓
+3. Mensagem no Telegram editada pra "❌ DISMISSED"
+   ↓
+4. Próximo ciclo do detector vê signal dispensado:
+   - Verifica recentDismiss (cooldown 60min)
+   - Se dentro do cooldown: PULA
+   - Se fora: pode criar novo signal
+```
+
+---
+
+## Pontos de falha cascata
+
+**Open legs collector quebra:**
+- Preço atual no /positions fica velho
+- /status mostra valores defasados
+- Operações continuam funcionando
+
+**Collector geral quebra:**
+- Detectores ficam sem dados novos
+- Signals param de aparecer
+- Auto-resolver não é mais chamado
+- Sistema "congela" no estado atual
+
+**Auto-resolver quebra:**
+- Legs continuam abertas mesmo após resolver no Polymarket
+- Cash não é atualizado
+- Tu precisa fechar manualmente via /close
+
+**Detector runner quebra:**
+- Nenhum signal novo
+- Mas legs e cash continuam funcionando
+
+**Notify loop quebra:**
+- Signals criados mas não enviados pro Telegram
+- Tu pode ver via /signals manualmente
+
+**Retention quebra:**
+- Banco enche aos poucos
+- Sistema fica lento em semanas
+- Pode dar timeout em queries grandes
+
+---
+
+## Tempos típicos
+
+```
+Tu fecha posição via Telegram
+└─ Resposta imediata (1-2s)
+
+Tu cria nova leg
+└─ Aparece em /positions imediatamente
+
+Mercado resolve no Polymarket
+└─ Auto-resolver pega em até 3-5min
+└─ /positions atualizado em até 3-5min
+
+Mercado novo aparece no Polymarket
+└─ Coletor pega em 3-5min
+└─ Detector early_market avalia em 15min
+└─ Notificação no Telegram em ~20min total
+
+Preço mexe no Polymarket
+└─ Snapshot atualizado em até 10s (se tu tem leg) ou 3min
+└─ /positions reflete
+
+Tu muda config no banco
+└─ Reflete em código em até 60s (cache)
+```
+
+---
+
+## Configs no banco (alteráveis sem deploy)
+
+```sql
+SELECT * FROM system_config WHERE id = 1;
+```
+
+Principais campos:
+
+```
+max_stake_pct                 (3% do bankroll por trade)
+cross_market_max_stake_pct    (10% pra basket)
+min_confidence_alert          (0.75)
+notify_min_edge_pct           (2.5%)
+collector_min_volume_24h      (10k filtro do collector)
+collector_min_liquidity       (20k filtro)
+signal_ttl_minutes            (30min)
+signal_cooldown_minutes       (60min)
+dismiss_stale_cutoff_minutes  (15min)
+stale_cleanup_threshold_hours (1h)
+snapshot_retention_days       (1)
+system_logs_retention_days    (30)
+```
+
+Pra mudar:
+```sql
+UPDATE system_config SET <campo> = <valor> WHERE id = 1;
+```
+
+Cache de 60s, mudanças refletem em ~1min sem deploy.
+
+---
+
+## Crons em código (precisam deploy pra mudar)
+
+Tudo em src/index.ts:
+
+```typescript
+cron.schedule('*/3 * * * *', () => collectAll());           // collector geral
+cron.schedule('*/10 * * * * *', () => collectOpenLegs());   // open_legs (10s)
+cron.schedule('*/5 * * * *', () => collectEarlyMarkets());  // early_markets
+cron.schedule('*/15 * * * *', () => runAllDetectors());     // detector_runner
+cron.schedule('0 3 * * *', () => runRetentionJob());        // retention diário 03:00 UTC
+```
+
+Sintaxe do cron: `min hour day month dow`.
+
+---
+
+## Hardcodes no código (precisam deploy)
+
+- MAX_PER_CYCLE = 50 (resolved-detector.ts)
+- FETCH_TIMEOUT_MS = 8000 (resolved-detector.ts)
+- ELIMINATED_THRESHOLD = 0.01 (positions.ts) — mostra "mercado eliminado"
+- CACHE_TTL_MS = 60000 (config.ts)
+- Filtros do early_market (min_volume_24h: 3000, etc) — em early-market.ts
+
+São detalhes operacionais que raramente precisam ajustar.
+
+---
+
+## Dashboard rápido de saúde
+
+```sql
+-- Atividade dos últimos 30min
+SELECT 
+  component,
+  count(*) as execs,
+  to_char(max(created_at), 'HH24:MI:SS') as ultima
+FROM system_logs
+WHERE created_at > NOW() - INTERVAL '30 minutes'
+GROUP BY component
+ORDER BY ultima DESC;
+```
+
+Se todos os componentes esperados aparecem com `success`, sistema saudável.
+
+```sql
+-- Verifica se há erros recentes
+SELECT to_char(created_at, 'HH24:MI:SS') as quando, component, message
+FROM system_logs
+WHERE status = 'error'
+  AND created_at > NOW() - INTERVAL '1 hour'
+ORDER BY created_at DESC LIMIT 10;
+```
+
+Esperado: 0 linhas (sem erros).
