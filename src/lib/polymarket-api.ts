@@ -12,9 +12,17 @@ async function get<T>(url: string): Promise<T> {
 export async function fetchActiveMarkets(params: {
   limit?: number;
   offset?: number;
+  order?: string;
+  ascending?: boolean;
 }): Promise<GammaMarket[]> {
-  const { limit = 500, offset = 0 } = params;
-  const url = `${GAMMA_URL}/markets?active=true&closed=false&limit=${limit}&offset=${offset}`;
+  const { limit = 500, offset = 0, order, ascending } = params;
+  let url = `${GAMMA_URL}/markets?active=true&closed=false&limit=${limit}&offset=${offset}`;
+  if (order) {
+    url += `&order=${encodeURIComponent(order)}`;
+    if (ascending !== undefined) {
+      url += `&ascending=${ascending}`;
+    }
+  }
   return get<GammaMarket[]>(url);
 }
 
