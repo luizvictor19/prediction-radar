@@ -232,7 +232,11 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const cutoffFuture30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Etapa 1: events com leg aberta (prioritários — sempre incluir, sem limit)
+  // Etapa 1: events com leg aberta (prioritários — sempre incluir, sem filtro de end_date)
+  // Justificativa: se temos posição aberta, sempre vale checar resolução.
+  // Polymarket pode retornar end_date errado (visto em market groups com
+  // múltiplas sub-resoluções) e filtrar por isso esconde events que precisam
+  // ser checados.
   const { data: openLegEvents } = await supabase
     .from('my_bet_legs')
     .select('event_id')
@@ -248,8 +252,6 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
         .select('id, polymarket_id, title, end_date, status')
         .in('id', openLegEventIds)
         .in('status', ['active', 'closed_manual'])
-        .gte('end_date', cutoff90d)
-        .lte('end_date', cutoffFuture30d)
     : { data: [] as { id: string; polymarket_id: string; title: string; end_date: string | null; status: string }[] };
 
   // Etapa 2: outros candidates (limit 500, ordenados por end_date asc)
