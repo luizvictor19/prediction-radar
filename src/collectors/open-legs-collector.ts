@@ -85,10 +85,12 @@ async function _collect(): Promise<void> {
       if (outcomes.length < 2) return;
 
       const { bestBid, bestAsk, spread } = market;
-      if (bestBid == null || bestAsk == null) return;
 
-      const midPrimary = (bestBid + bestAsk) / 2;
-      const midSecondary = 1 - midPrimary;
+      // Calculate mid only when both sides are present. Save snapshot regardless,
+      // so we don't lose visibility on markets approaching resolution (one side
+      // often loses liquidity right before resolving).
+      const midPrimary = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
+      const midSecondary = midPrimary != null ? 1 - midPrimary : null;
       const capturedAt = new Date().toISOString();
       const volume24h = market.volume24hr ?? null;
 
@@ -106,8 +108,8 @@ async function _collect(): Promise<void> {
         {
           event_id: evt.id,
           outcome: outcomes[1],
-          best_bid: 1 - bestAsk,
-          best_ask: 1 - bestBid,
+          best_bid: bestAsk != null ? 1 - bestAsk : null,
+          best_ask: bestBid != null ? 1 - bestBid : null,
           mid_price: midSecondary,
           spread,
           volume_24h: volume24h,

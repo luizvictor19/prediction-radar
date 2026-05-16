@@ -30,6 +30,63 @@ function parseResolution(market: GammaMarket): ResolutionResult {
   return { kind: 'win', winnerOutcome: outcomes[winnerIdx]! };
 }
 
+/**
+ * Detect resolution via sustained extreme price in DB snapshots.
+ *
+ * Necessary because Polymarket returns closed=false for markets that are part
+ * of a group with multiple sub-resolutions. The price already reflects the
+ * outcome but the individual market never becomes closed.
+ */
+async function detectResolutionByPrice(eventId: string): Promise<ResolutionResult> {
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+  const { data: snapshots } = await supabase
+    .from('polymarket_snapshots')
+    .select('outcome, best_bid, best_ask, captured_at')
+    .eq('event_id', eventId)
+    .gte('captured_at', sixHoursAgo)
+    .order('captured_at', { ascending: false });
+
+  if (!snapshots || snapshots.length < 6) {
+    return { kind: 'unresolved' };
+  }
+
+  const byOutcome = new Map<string, Array<{ best_bid: number | null; best_ask: number | null }>>();
+  for (const s of snapshots) {
+    const arr = byOutcome.get(s.outcome) ?? [];
+    arr.push({ best_bid: s.best_bid, best_ask: s.best_ask });
+    byOutcome.set(s.outcome, arr);
+  }
+
+  if (byOutcome.size !== 2) return { kind: 'unresolved' };
+
+  const outcomes = Array.from(byOutcome.keys());
+
+  for (const candidateWinner of outcomes) {
+    const winnerSnaps = byOutcome.get(candidateWinner)!;
+    const loser = outcomes.find(o => o !== candidateWinner)!;
+    const loserSnaps = byOutcome.get(loser)!;
+
+    if (winnerSnaps.length < 3 || loserSnaps.length < 3) continue;
+
+    const winnerExtreme = winnerSnaps.every(s => {
+      const bid = s.best_bid;
+      return bid != null && bid >= 0.99;
+    });
+
+    const loserExtreme = loserSnaps.every(s => {
+      const ask = s.best_ask;
+      return ask != null && ask <= 0.01;
+    });
+
+    if (winnerExtreme && loserExtreme) {
+      return { kind: 'win', winnerOutcome: candidateWinner };
+    }
+  }
+
+  return { kind: 'unresolved' };
+}
+
 async function fetchMarketWithTimeout(polymarketId: string): Promise<GammaMarket | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -259,6 +316,59 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
       }
 
       if (!market.closed) {
+        // For events with open legs, also check if resolved via sustained extreme price.
+        // Necessary because market groups with multi-resolutions never have closed=true
+        // on individual sub-markets until the entire group resolves.
+        const isPriority = priorityEventIds.has(event.id);
+
+        if (isPriority) {
+          const priceResolution = await detectResolutionByPrice(event.id);
+          if (priceResolution.kind === 'win') {
+            const resolvedAt = new Date().toISOString();
+            const updateData: Record<string, unknown> = {
+              status: 'resolved',
+              resolved_at: resolvedAt,
+              resolved_outcome: priceResolution.winnerOutcome,
+            };
+
+            const { data: updated, error: updErr } = await supabase
+              .from('events')
+              .update(updateData)
+              .eq('id', event.id)
+              .in('status', ['active', 'closed_manual'])
+              .select('id')
+              .maybeSingle();
+
+            if (updErr || !updated) {
+              if (updErr) {
+                await logEvent({
+                  component: 'resolved_detector',
+                  status: 'error',
+                  message: `event update failed for ${event.id}: ${updErr.message}`,
+                });
+              }
+              continue;
+            }
+
+            const { closed, payout_total } = await closeLegsForResolvedEvent(
+              event.id,
+              priceResolution,
+              resolvedAt,
+            );
+
+            resolvedCount++;
+            totalLegsClosed += closed;
+            totalPayout += payout_total;
+
+            await logEvent({
+              component: 'resolved_detector',
+              status: 'success',
+              message: `event ${event.id} (${event.title.slice(0, 60)}) detected as resolved by sustained extreme price: ${priceResolution.winnerOutcome}, closed ${closed} leg(s), payout $${payout_total.toFixed(2)}`,
+            });
+            continue;
+          }
+        }
+
         await logEvent({
           component: 'resolved_detector',
           status: 'partial',
