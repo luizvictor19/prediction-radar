@@ -42,8 +42,8 @@ async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; 
     const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
     const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
 
-    if (volume24h < 500) return { upserted: false, snapshots: 0 };
-    if (liquidity < 2000) return { upserted: false, snapshots: 0 };
+    // Markets recém-criados ainda sem volume; apenas filtra liquidez mínima.
+    if (liquidity < 500) return { upserted: false, snapshots: 0 };
 
     const outcomes = JSON.parse(market.outcomes) as string[];
     const outcomePrices = JSON.parse(market.outcomePrices) as string[];
@@ -144,10 +144,10 @@ async function _collect(): Promise<void> {
         if (!startDate || startDate < cutoffIso) return false;
         if (!m.active || m.closed) return false;
 
-        const volume24h = Number(m.volume24hr ?? m.volume24hrClob ?? 0);
         const liquidity = Number(m.liquidityNum ?? m.liquidity ?? 0);
-        if (volume24h < 500) return false;
-        if (liquidity < 2000) return false;
+        // Markets recém-criados não têm volume24hr ainda (precisa acumular).
+        // Apenas filtra por liquidity mínima (precisa ter orderbook funcional).
+        if (liquidity < 500) return false;
 
         return true;
       });
