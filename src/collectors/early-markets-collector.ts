@@ -44,7 +44,6 @@ async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; 
 
     if (volume24h < 500) return { upserted: false, snapshots: 0 };
     if (liquidity < 2000) return { upserted: false, snapshots: 0 };
-    if (market.bestBid === 0 && market.bestAsk === 1) return { upserted: false, snapshots: 0 };
 
     const outcomes = JSON.parse(market.outcomes) as string[];
     const outcomePrices = JSON.parse(market.outcomePrices) as string[];
@@ -149,7 +148,6 @@ async function _collect(): Promise<void> {
         const liquidity = Number(m.liquidityNum ?? m.liquidity ?? 0);
         if (volume24h < 500) return false;
         if (liquidity < 2000) return false;
-        if (m.bestBid === 0 && m.bestAsk === 1) return false;
 
         return true;
       });
