@@ -279,21 +279,28 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
     ...(normalCandidates ?? []).filter(c => !priorityIds.has(c.id)),
   ];
 
-  const missing = candidates.filter(c => !seenPolymarketIds.has(c.polymarket_id));
+  const priorityEventIds = priorityIds;
 
-  if (missing.length === 0) {
+  // Priority events (with open legs): always check, regardless of whether they
+  // appeared in the feed. Polymarket may keep resolved markets in feed briefly,
+  // so "missing" isn't a reliable signal for events we have positions in.
+  const priorityToCheck = candidates.filter(e => priorityEventIds.has(e.id));
+
+  // Non-priority events: only check those that disappeared from the feed
+  const normalMissing = candidates.filter(e =>
+    !priorityEventIds.has(e.id) && !seenPolymarketIds.has(e.polymarket_id)
+  );
+
+  if (priorityToCheck.length === 0 && normalMissing.length === 0) {
     await logEvent({
       component: 'resolved_detector',
       status: 'success',
-      message: `no missing events to check (${candidates.length} active)`,
+      message: `no events to check (${candidates.length} active)`,
     });
     return;
   }
 
-  const priorityEventIds = priorityIds;
-
-  const priorityMissing = missing.filter(e => priorityEventIds.has(e.id));
-  const normalMissing = missing.filter(e => !priorityEventIds.has(e.id));
+  const priorityMissing = priorityToCheck;
 
   const normalToProcess = normalMissing.slice(0, MAX_PER_CYCLE);
   const skippedDueToLimit = normalMissing.length - normalToProcess.length;
@@ -437,6 +444,6 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
   await logEvent({
     component: 'resolved_detector',
     status: 'success',
-    message: `checked ${toProcess.length}/${missing.length} missing events (${priorityMissing.length} priority, ${normalToProcess.length} normal): ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
+    message: `checked ${toProcess.length} events (${priorityMissing.length} priority, ${normalToProcess.length} normal): ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
   });
 }
