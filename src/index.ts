@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   void collectEarlyMarkets().catch(err =>
     console.error('[early-markets] Initial run failed:', err),
   );
-  cron.schedule('*/5 * * * *', () => {
+  cron.schedule('*/10 * * * *', () => {
     void collectEarlyMarkets().catch(err => console.error('[cron early-markets]', err));
   });
 

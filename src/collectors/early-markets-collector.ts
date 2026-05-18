@@ -4,7 +4,7 @@ import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT_MS = 25_000;
-const CYCLE_TIMEOUT_MS = 120_000;
+const CYCLE_TIMEOUT_MS = 300_000;
 const CHUNK_SIZE = 20;
 const NEW_MARKET_WINDOW_HOURS = 24;
 let isRunning = false;
@@ -22,7 +22,7 @@ export async function collectEarlyMarkets(): Promise<void> {
 
   const cyclePromise = _collect();
   const timeoutPromise = new Promise<void>((_, reject) =>
-    setTimeout(() => reject(new Error('cycle timeout 120s')), CYCLE_TIMEOUT_MS),
+    setTimeout(() => reject(new Error('cycle timeout 300s')), CYCLE_TIMEOUT_MS),
   );
 
   try {
