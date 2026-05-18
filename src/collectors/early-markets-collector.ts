@@ -123,7 +123,17 @@ async function _collect(): Promise<void> {
   let paginationFailed = false;
   let paginationError: string | null = null;
 
+  const MAX_PAGES = 150;
+  let pageCount = 0;
+
   while (true) {
+    pageCount++;
+    if (pageCount > MAX_PAGES) {
+      paginationFailed = true;
+      paginationError = `Hit max pages cap (${MAX_PAGES})`;
+      break;
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -159,7 +169,7 @@ async function _collect(): Promise<void> {
       if (!lastStartDate || lastStartDate < cutoffIso) break;
 
       offset += batch.length;
-      if (batch.length < 500) break;
+      if (batch.length < 100) break;
     } catch (err) {
       paginationFailed = true;
       paginationError = `${String(err)} at offset ${offset}`;
