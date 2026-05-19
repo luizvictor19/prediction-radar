@@ -19,21 +19,37 @@ export async function detectEarlyMarkets(): Promise<void> {
   const SIGNAL_TTL_MS = config.signal_ttl_minutes * 60 * 1000;
   const COOLDOWN_AFTER_DISMISS_MS = config.signal_cooldown_minutes * 60 * 1000;
 
-  const { data: events, error: evtErr } = await supabase
-    .from('events')
-    .select('id, polymarket_id, title, start_date, end_date, outcomes, volume_24h, liquidity, polymarket_category')
-    .eq('is_new_market', true)
-    .eq('status', 'active')
-    .gt('end_date', new Date().toISOString())
-    .limit(10000);
+  // Pagina manualmente porque Supabase tem cap interno de 1000 por query
+  // (PostgREST db-max-rows config). .limit() do client é ignorado se ultrapassar.
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 20;
+  const events: any[] = [];
+  let pageCount = 0;
+  const nowIso = new Date().toISOString();
 
-  if (evtErr || !events) {
-    await logEvent({
-      component: 'early_market_detector',
-      status: 'error',
-      message: `events query failed: ${evtErr?.message}`,
-    });
-    return;
+  while (pageCount < MAX_PAGES) {
+    const offset = pageCount * PAGE_SIZE;
+    const { data: page, error: pageErr } = await supabase
+      .from('events')
+      .select('id, polymarket_id, title, start_date, end_date, outcomes, volume_24h, liquidity, polymarket_category')
+      .eq('is_new_market', true)
+      .eq('status', 'active')
+      .gt('end_date', nowIso)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (pageErr) {
+      await logEvent({
+        component: 'early_market_detector',
+        status: 'error',
+        message: `events query failed at page ${pageCount}: ${pageErr.message}`,
+      });
+      return;
+    }
+
+    if (!page || page.length === 0) break;
+    events.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    pageCount++;
   }
 
   let evaluated = 0;
