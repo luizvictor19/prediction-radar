@@ -6,6 +6,7 @@ import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 import { detectResolvedMarkets } from './resolved-detector.js';
 import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
+import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MAX_DAYS_TO_RESOLUTION = 90;
@@ -77,24 +78,54 @@ function passesBaseFilters(market: GammaMarket): boolean {
   return true;
 }
 
-let isRunning = false;
+const cycleLock = new CycleLock();
 
 export async function collectAll(): Promise<void> {
-  if (isRunning) {
+  const lockToken = cycleLock.tryAcquire();
+
+  if (!lockToken) {
+    const heldForMs = cycleLock.heldForMs() ?? 0;
     console.log('[collector] Previous run still in progress, skipping this tick');
     await logEvent({
       component: 'collector',
       status: 'partial',
       message: 'Skipped: previous run still in progress',
+      metadata: { previous_cycle_running_for_ms: heldForMs },
     });
     return;
   }
-  isRunning = true;
+
+  if (lockToken.staleTakeoverMs !== null) {
+    const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
+    console.warn(`[collector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    await logEvent({
+      component: 'collector',
+      status: 'partial',
+      message: `WARNING: previous cycle stuck for ${stuckMinutes}min — assumed dead, starting a new one`,
+      metadata: { stuck_for_ms: lockToken.staleTakeoverMs },
+    });
+  }
+
+  console.log('[collector] Starting collection pass...');
+  const startMs = Date.now();
+
+  // Contadores de progresso ficam fora do try para que o log de erro possa
+  // dizer até onde o ciclo chegou antes de morrer.
+  let offset = 0;
+  let pageCount = 0;
+  let scanned = 0;
+  let upserted = 0;
+  let snapshots = 0;
+  let errorsCount = 0;
+  let skippedLowVolumeIsolated = 0;
+  let includedNegRiskLowVolume = 0;
+  let skippedLiquidity = 0;
+  let skippedExcluded = 0;
+  let protectedIncluded = 0;
+  let skippedDuplicate = 0;
+  const writeErrors: string[] = [];
 
   try {
-    console.log('[collector] Starting collection pass...');
-    const startMs = Date.now();
-
     const config = await getSystemConfig();
     const minVolume24h = config.collector_min_volume_24h ?? 10000;
     const minLiquidity = config.collector_min_liquidity ?? 20000;
@@ -119,20 +150,6 @@ export async function collectAll(): Promise<void> {
     );
 
     const seenPolymarketIds = new Set<string>();
-
-    let offset = 0;
-    let pageCount = 0;
-    let scanned = 0;
-    let upserted = 0;
-    let snapshots = 0;
-    let errorsCount = 0;
-    let skippedLowVolumeIsolated = 0;
-    let includedNegRiskLowVolume = 0;
-    let skippedLiquidity = 0;
-    let skippedExcluded = 0;
-    let protectedIncluded = 0;
-    let skippedDuplicate = 0;
-    const writeErrors: string[] = [];
 
     // A same market can surface on two pages when the volume ranking shifts
     // mid-scan. Enqueueing it twice would break the batch upsert:
@@ -178,89 +195,96 @@ export async function collectAll(): Promise<void> {
       writeErrors.push(...snapResult.errors);
     }
 
-    while (true) {
-      const markets = await fetchActiveMarkets({
-        limit: PAGE_SIZE,
-        offset,
-        order: 'volume24hr',
-        ascending: false,
-      });
-      pageCount++;
+    // O flush vai no finally: se a paginação lançar (HTTP 4xx/5xx da Gamma,
+    // socket derrubado), os até 500 markets já preparados são gravados em vez
+    // de descartados junto com a exceção.
+    try {
+      while (true) {
+        const markets = await fetchActiveMarkets({
+          limit: PAGE_SIZE,
+          offset,
+          order: 'volume24hr',
+          ascending: false,
+        });
+        pageCount++;
 
-      if (markets.length === 0) break;
+        if (markets.length === 0) break;
 
-      for (const market of markets) {
-        // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
-        if (!market.closed) {
-          seenPolymarketIds.add(market.id);
-        }
+        for (const market of markets) {
+          // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
+          if (!market.closed) {
+            seenPolymarketIds.add(market.id);
+          }
 
-        if (!passesBaseFilters(market)) continue;
+          if (!passesBaseFilters(market)) continue;
 
-        if (queuedPolymarketIds.has(market.id)) {
-          skippedDuplicate++;
-          continue;
-        }
-
-        const isProtected = protectedPolymarketIds.has(market.id);
-
-        const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
-        if (volume24h < minVolume24h && !isProtected) {
-          if (!market.negRiskMarketID) {
-            skippedLowVolumeIsolated++;
+          if (queuedPolymarketIds.has(market.id)) {
+            skippedDuplicate++;
             continue;
           }
-          includedNegRiskLowVolume++;
+
+          const isProtected = protectedPolymarketIds.has(market.id);
+
+          const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
+          if (volume24h < minVolume24h && !isProtected) {
+            if (!market.negRiskMarketID) {
+              skippedLowVolumeIsolated++;
+              continue;
+            }
+            includedNegRiskLowVolume++;
+          }
+
+          const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
+          if (liquidity < minLiquidity && !isProtected) {
+            skippedLiquidity++;
+            continue;
+          }
+
+          if (isProtected) protectedIncluded++;
+
+          const feeType = market.feeType ?? null;
+          if (feeType && excludedCategories.length > 0 && excludedCategories.includes(feeType)) {
+            skippedExcluded++;
+            continue;
+          }
+
+          const { category, sub_category } = categorizeMarket(market);
+          const event = { ...gammaToEvent(market, category), sub_category };
+
+          const best_bid = market.bestBid || null;
+          const best_ask = market.bestAsk || null;
+
+          queuedPolymarketIds.add(market.id);
+          pending.push({
+            polymarketId: market.id,
+            event,
+            volume24h,
+            best_bid,
+            best_ask,
+            mid_price: best_bid && best_ask ? (best_bid + best_ask) / 2 : null,
+            spread: market.spread || null,
+          });
+
+          if (pending.length >= FLUSH_THRESHOLD) await flushPending();
         }
 
-        const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
-        if (liquidity < minLiquidity && !isProtected) {
-          skippedLiquidity++;
-          continue;
+        scanned += markets.length;
+        offset += markets.length;
+
+        if (pageCount % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
 
-        if (isProtected) protectedIncluded++;
-
-        const feeType = market.feeType ?? null;
-        if (feeType && excludedCategories.length > 0 && excludedCategories.includes(feeType)) {
-          skippedExcluded++;
-          continue;
+        if (pageCount >= 100) {
+          console.warn('[collector] Reached safety cap of 100 pages (10k markets)');
+          break;
         }
-
-        const { category, sub_category } = categorizeMarket(market);
-        const event = { ...gammaToEvent(market, category), sub_category };
-
-        const best_bid = market.bestBid || null;
-        const best_ask = market.bestAsk || null;
-
-        queuedPolymarketIds.add(market.id);
-        pending.push({
-          polymarketId: market.id,
-          event,
-          volume24h,
-          best_bid,
-          best_ask,
-          mid_price: best_bid && best_ask ? (best_bid + best_ask) / 2 : null,
-          spread: market.spread || null,
-        });
-
-        if (pending.length >= FLUSH_THRESHOLD) await flushPending();
       }
-
-      scanned += markets.length;
-      offset += markets.length;
-
-      if (pageCount % 5 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
-      if (pageCount >= 100) {
-        console.warn('[collector] Reached safety cap of 100 pages (10k markets)');
-        break;
-      }
+    } finally {
+      // batchInsert/batchUpsert nunca lançam, então este flush não mascara
+      // a exceção original que está subindo.
+      await flushPending();
     }
-
-    await flushPending();
 
     const durationMs = Date.now() - startMs;
     const status = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
@@ -291,7 +315,25 @@ export async function collectAll(): Promise<void> {
     await logCategorizerStats();
 
     console.log(`[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`);
+  } catch (err) {
+    // O .catch() do cron só faz console.error. Sem este log, um ciclo que morre
+    // no meio não deixa rastro em system_logs — que é onde o diagnóstico é feito.
+    // Os dados já preparados não se perdem: o flush roda no finally da paginação.
+    await logEvent({
+      component: 'collector',
+      status: 'error',
+      message: `Cycle failed after ${pageCount} pages: ${err instanceof Error ? err.message : String(err)}`,
+      metadata: {
+        error: String(err),
+        pages: pageCount,
+        scanned,
+        upserted_events: upserted,
+        upserted_snapshots: snapshots,
+        duration_ms: Date.now() - startMs,
+      },
+    });
+    throw err;
   } finally {
-    isRunning = false;
+    cycleLock.release(lockToken);
   }
 }

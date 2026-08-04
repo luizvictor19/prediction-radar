@@ -21,6 +21,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "bot": "tsx src/bot/index.ts",
     "backfill:neg-risk": "tsx scripts/backfill-neg-risk-ids.ts",
     "backfill:polymarket-category": "tsx scripts/backfill-polymarket-category.ts"

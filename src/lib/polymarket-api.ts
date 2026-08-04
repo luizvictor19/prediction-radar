@@ -3,10 +3,29 @@ import type { GammaMarket, ClobOrderbook } from '../types/index.js';
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const CLOB_URL = process.env['POLYMARKET_CLOB_URL'] ?? 'https://clob.polymarket.com';
 
+// Sem timeout, um socket pendurado deixa a promise do coletor sem resolver
+// para sempre — e com ela o lock de ciclo, que só é solto no finally.
+const FETCH_TIMEOUT_MS = 20_000;
+
 async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
-  return res.json() as Promise<T>;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Timeout after ${FETCH_TIMEOUT_MS}ms fetching ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function fetchActiveMarkets(params: {

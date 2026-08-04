@@ -1,26 +1,45 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 import { batchInsert, batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
+import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT_MS = 25_000;
 const CYCLE_TIMEOUT_MS = 300_000;
 const NEW_MARKET_WINDOW_HOURS = 24;
-let isRunning = false;
+
+const cycleLock = new CycleLock();
 
 export async function collectEarlyMarkets(): Promise<void> {
-  if (isRunning) {
+  const lockToken = cycleLock.tryAcquire();
+
+  if (!lockToken) {
     await logEvent({
       component: 'early_markets_collector',
       status: 'partial',
       message: 'previous cycle still running, skipping this tick',
+      metadata: { previous_cycle_running_for_ms: cycleLock.heldForMs() ?? 0 },
     });
     return;
   }
-  isRunning = true;
 
-  const cyclePromise = _collect();
+  if (lockToken.staleTakeoverMs !== null) {
+    const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
+    console.warn(`[early-markets] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    await logEvent({
+      component: 'early_markets_collector',
+      status: 'partial',
+      message: `WARNING: previous cycle stuck for ${stuckMinutes}min — assumed dead, starting a new one`,
+      metadata: { stuck_for_ms: lockToken.staleTakeoverMs },
+    });
+  }
+
+  // O lock é solto quando o trabalho real termina, não quando a race termina:
+  // no timeout o _collect() continua vivo, e soltar ali deixaria o próximo tick
+  // rodar em cima do ciclo zumbi. Se ele nunca terminar, o takeover destrava.
+  const cyclePromise = _collect().finally(() => cycleLock.release(lockToken));
+
   const timeoutPromise = new Promise<void>((_, reject) =>
     setTimeout(() => reject(new Error('cycle timeout 300s')), CYCLE_TIMEOUT_MS),
   );
@@ -29,8 +48,6 @@ export async function collectEarlyMarkets(): Promise<void> {
     await Promise.race([cyclePromise, timeoutPromise]);
   } catch (err) {
     await logEvent({ component: 'early_markets_collector', status: 'error', message: String(err) });
-  } finally {
-    isRunning = false;
   }
 }
 

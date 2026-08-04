@@ -1,26 +1,45 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 import { batchInsert } from '../lib/batch-write.js';
+import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT_MS = 8_000;
 const CYCLE_TIMEOUT_MS = 25_000;
+// Este coletor roda a cada 10s com timeout de ciclo de 25s: passado 2min ele
+// está travado, não lento. Os 20min do default seriam tempo demais parado.
+const STALE_AFTER_MS = 2 * 60 * 1000;
 
-let isRunning = false;
+const cycleLock = new CycleLock(STALE_AFTER_MS);
 
 export async function collectOpenLegMarkets(): Promise<void> {
-  if (isRunning) {
+  const lockToken = cycleLock.tryAcquire();
+
+  if (!lockToken) {
     await logEvent({
       component: 'open_legs_collector',
       status: 'partial',
       message: 'previous cycle still running, skipping this tick',
+      metadata: { previous_cycle_running_for_ms: cycleLock.heldForMs() ?? 0 },
     });
     return;
   }
-  isRunning = true;
 
-  const cyclePromise = _collect();
+  if (lockToken.staleTakeoverMs !== null) {
+    const stuckSeconds = Math.round(lockToken.staleTakeoverMs / 1000);
+    console.warn(`[open-legs] Previous cycle stuck for ${stuckSeconds}s — assuming dead, starting a new one`);
+    await logEvent({
+      component: 'open_legs_collector',
+      status: 'partial',
+      message: `WARNING: previous cycle stuck for ${stuckSeconds}s — assumed dead, starting a new one`,
+      metadata: { stuck_for_ms: lockToken.staleTakeoverMs },
+    });
+  }
+
+  // Solta no fim do trabalho real, não no fim da race — ver early-markets.
+  const cyclePromise = _collect().finally(() => cycleLock.release(lockToken));
+
   const timeoutPromise = new Promise<void>((_, reject) =>
     setTimeout(() => reject(new Error('cycle timeout 25s')), CYCLE_TIMEOUT_MS),
   );
@@ -29,8 +48,6 @@ export async function collectOpenLegMarkets(): Promise<void> {
     await Promise.race([cyclePromise, timeoutPromise]);
   } catch (err) {
     await logEvent({ component: 'open_legs_collector', status: 'error', message: String(err) });
-  } finally {
-    isRunning = false;
   }
 }
 
