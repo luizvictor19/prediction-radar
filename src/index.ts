@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { collectAll } from './collectors/polymarket.js';
 import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { collectEarlyMarkets } from './collectors/early-markets-collector.js';
+import { collectDiscovery } from './collectors/discovery-collector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 
@@ -20,6 +21,20 @@ async function main(): Promise<void> {
   cron.schedule('*/10 * * * * *', () => {
     void collectOpenLegMarkets().catch(err => console.error('[cron open_legs]', err));
   });
+
+  // Descoberta por startDate (spec 000, item 2a). Roda ao lado da varredura por
+  // volume nesta etapa, de propósito, para comparar o que cada uma enxerga.
+  //
+  // A cadência não é arbitrária: o teto de offset 2000 da Gamma alcança só ~36min
+  // de criação de markets (medido 2026-08-04). A cada 3min a janela é de ~5min,
+  // ~10x de folga na taxa normal e ainda dentro do teto em rajada.
+  cron.schedule('*/3 * * * *', () => {
+    void collectDiscovery().catch(err => console.error('[cron discovery]', err));
+  });
+
+  void collectDiscovery().catch(err =>
+    console.error('[discovery] Initial run failed:', err),
+  );
 
   // Ciclo leva ~5-7min; 15min dá folga e o lock interno previne overlap
   cron.schedule('*/15 * * * *', () => {

@@ -27,6 +27,10 @@ const DEFAULTS: SystemConfig = {
   excluded_categories: [],
   collector_min_volume_24h: 10000,
   collector_min_liquidity: 20000,
+  // Fallback dos prefixos da descoberta: a coluna só existe depois da migration
+  // 20260804163956_discovery_config. Sem isso o coletor não sobe antes dela.
+  discovery_slug_prefixes: ['cs2-', 'lol-', 'dota2-'],
+  discovery_lookback_minutes: 20,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

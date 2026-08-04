@@ -96,6 +96,9 @@ export interface SystemConfig {
   excluded_categories: string[];
   collector_min_volume_24h: number;
   collector_min_liquidity: number;
+  /** Prefixos de slug que a descoberta (spec 000, item 2a) persiste. */
+  discovery_slug_prefixes: string[];
+  discovery_lookback_minutes: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;
@@ -212,6 +215,8 @@ export interface GammaMarket {
   liquidity?: string;
   liquidityNum?: number;
   endDate: string;
+  /** Quando o market abriu. Ausente em alguns markets antigos. */
+  startDate?: string;
   active: boolean;
   closed: boolean;
   bestBid: number;
