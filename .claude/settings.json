@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test *)",
+      "Bash(npm run lint *)",
+      "Bash(npm run build *)",
+      "Bash(npx tsc *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(supabase migration new *)",
+      "Edit(src/**)",
+      "Write(src/**)",
+      "Write(supabase/migrations/**)",
+      "Edit(specs/**)",
+      "Write(specs/**)"
+    ],
+    "deny": [
+      "Bash(supabase db push *)",
+      "Bash(supabase db reset *)",
+      "Bash(supabase db pull *)",
+      "Bash(psql *)",
+      "Bash(git push *)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

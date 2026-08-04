@@ -8,3 +8,10 @@ npm-debug.log*
 .idea/
 .vscode/
 *.js.map
+.env.*
+supabase/.temp/
+.claude/settings.local.json
+CLAUDE.local.md.env.*
+supabase/.temp/
+.claude/settings.local.json
+CLAUDE.local.md
