@@ -101,18 +101,86 @@ deixar o ciclo abortar por causa de um chunk.
 **Verificação:** após o deploy, comparar `calls` em `pg_stat_statements` antes/depois
 (zerar com `select pg_stat_statements_reset()`). Esperado: queda de 2 ordens de grandeza.
 
-## Item 2 — Parar de coletar não-esports
+## Item 2 — Substituir a varredura por descoberta + watchlist
 
-### 2a. Whitelist no collector
+### Limites reais da Gamma API (medidos em 2026-08-04)
 
-O collector passa a filtrar por prefixo de slug antes de gravar:
+| Teste | Resultado |
+|---|---|
+| `offset=2000` | HTTP 200, 100 itens |
+| `offset=2050` e acima | **HTTP 422** |
+| Sem `order` | 422 no mesmo ponto |
+| `limit=1&offset=2100` | 422 |
+| `order=startDate` em offset alto | 422 no mesmo ponto |
+| `tag=esports` | **ignorado** — devolve a lista default |
+| `slug=X` (valor real) | funciona |
+| `id=X` (valor real) | funciona, filtra corretamente |
+| `id=A&id=B&...` repetido | funciona, **exige `limit` explícito** |
+| 100 ids + `limit=100` | HTTP 200, 100 itens |
+
+Conclusões:
+
+1. **Teto rígido de offset em 2000.** Nenhuma ordenação escapa. Paginação profunda
+   está descartada.
+2. **A varredura nunca viu 46k markets.** Sempre foram os ~2000 primeiros do ranking
+   de volume. O "46k → 1300 persistidos" do PROJECT.md nunca foi verdade.
+3. **`limit` default é 20 e se aplica também ao filtro por `id`.** Sem `limit` explícito,
+   um lote de 50 ids retorna 20 — silenciosamente. Falha calada, sem erro.
+
+### O redesenho
+
+A varredura por ranking de volume **deixa de existir**. Ela é estruturalmente cega ao
+que interessa agora: mercados de esports nascem com `volume_24h = 0` e ficam no fundo
+da ordenação, muito além da posição 2000. Confirmado nos dados — `cs2-yaw-guara`,
+`cs2-justpl-enjoy` e os CBLoL criados durante esta sessão, todos com volume zero.
+
+Três coletores, com papéis separados:
+
+#### 2a. Descoberta
+
+```
+GET /markets?active=true&closed=false&limit=100&order=startDate&ascending=false
+```
+
+Pagina do mais recente para trás, **parando ao encontrar markets já conhecidos**
+(N consecutivos já presentes em `events`). Em regime normal são 1-3 páginas por ciclo,
+longe do teto de 2000.
+
+Captura o market no minuto em que nasce — que é onde a série temporal pré-partida
+começa, e é exatamente o que a varredura por volume nunca alcançou.
+
+Filtro de vertical aplicado **na descoberta**, por prefixo de slug, lido de
+`system_config` (não hardcoded, para religar sem deploy):
 
 ```typescript
 const PREFIXOS_ATIVOS = ['cs2-', 'lol-', 'dota2-'];
-// futebol entra depois, quando o vocabulário de prefixos for confirmado
 ```
 
-Configurável via `system_config`, não hardcoded — para religar sem deploy.
+Nota: nem todo market de esports segue `{jogo}-{codA}-{codB}-{data}`. Mercados de
+qualificação aparecem como `will-furia-qualify-for-the-cblol-split-2-playoffs-...`.
+Sem dois times não há partida — descartar na descoberta, mas registrar a contagem
+para saber o volume desse formato.
+
+#### 2b. Refresh da watchlist
+
+```
+GET /markets?limit=100&id=A&id=B&...   (até 100 por chamada)
+```
+
+Somente markets de esports já descobertos. Sem offset, sem teto.
+
+**`limit` é obrigatório em toda chamada.** Omitir devolve 20 resultados sem erro —
+o refresh perderia a maior parte da watchlist silenciosamente.
+
+Verificação obrigatória: comparar a contagem de ids enviados com a de retornados,
+e logar divergência. Ausência pode significar market resolvido (esperado) ou lote
+truncado (bug).
+
+#### 2c. Auto-resolver
+
+Permanece como está.
+
+### Poda do histórico
 
 ### 2b. Poda do histórico
 
@@ -185,8 +253,8 @@ Estimativa com o item 3b abaixo: ~25 MB/dia, ~9 GB/ano. Reavaliar em 3 meses.
 
 ### 3b. Cadência por estado da partida
 
-Generalizar o `open-legs-collector` (que já roda a 10s) para uma watchlist alimentada
-por `start_date` / `end_date`:
+A watchlist do item 2b é dividida em faixas por proximidade da partida, cada faixa com
+sua própria frequência de refresh:
 
 | Estado | Intervalo |
 |---|---|
@@ -200,6 +268,12 @@ Com isso, a maioria fica na faixa barata quase todo o tempo.
 
 Um round de CS2 dura ~2 min; a granularidade atual de 3 min não permite leitura ao vivo.
 A faixa de 10-15s é o que viabiliza o produto em tempo real.
+
+Com lotes de até 100 ids por chamada, uma faixa com 200 mercados custa 2 requisições
+por ciclo. A faixa "ao vivo" raramente passa de algumas dezenas de mercados simultâneos.
+
+O `open-legs-collector` já roda a 10s e serve de molde, mas agora o refresh é por
+`id=` em lote, não uma chamada por market.
 
 ### 3c. Migração
 
@@ -244,12 +318,19 @@ o que teria valor. **O histórico útil começa no deploy deste item.**
 
 | # | Item | Depende de | Critério de pronto |
 |---|---|---|---|
-| 1 | Batch nos inserts | — | `calls` cai 2 ordens de grandeza |
-| 2 | Whitelist no collector | 1 | só slugs esports entram |
-| 3 | Poda do histórico (H2) | 2 | `events` abaixo de 100 MB |
-| 4 | `esports_snapshots` + partições | — | partição do dia criada automaticamente |
-| 5 | Cadência por estado | 4 | mercado ao vivo com gap < 20s |
-| 6 | Retenção esports-only | 4 | nenhum snapshot esports apagado |
+| 0 | Teto de offset não mata o ciclo | — | log `partial`, não `error` |
+| 1 | Batch nos inserts | — | ✅ feito (552 events / 1104 snaps em 6,6s) |
+| 2 | Descoberta por `startDate` | 0 | markets novos aparecem com volume 0 |
+| 3 | Watchlist com refresh por `id=` | 2 | contagem enviada == contagem retornada |
+| 4 | Desligar a varredura por volume | 3 | nenhuma chamada com `offset` > 0 |
+| 5 | Poda do histórico (H2) | 4 | `events` abaixo de 100 MB |
+| 6 | `esports_snapshots` + partições | — | partição do dia criada automaticamente |
+| 7 | Cadência por estado | 3, 6 | mercado ao vivo com gap < 20s |
+| 8 | Retenção esports-only | 6 | nenhum snapshot esports apagado |
+
+**Item 0 é imediato e barato.** Hoje o ciclo bate no teto de 2000, lança, e loga
+`status: 'error'` — apesar de ter gravado 552 markets com sucesso. A paginação deve
+encerrar graciosamente ao receber 422 em offset alto, logando `partial`.
 
 Itens 1-3 são contenção. Itens 4-6 são o que começa a gerar o histórico do backtest.
 

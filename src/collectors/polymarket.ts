@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase.js';
-import { fetchActiveMarkets } from '../lib/polymarket-api.js';
+import { fetchActiveMarkets, GammaHttpError } from '../lib/polymarket-api.js';
 import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
@@ -124,6 +124,9 @@ export async function collectAll(): Promise<void> {
   let protectedIncluded = 0;
   let skippedDuplicate = 0;
   const writeErrors: string[] = [];
+  // A Gamma corta a paginação em offset ~2000 com 422. Isso é um limite conhecido
+  // da API, não uma falha do ciclo: registra e segue com o que já foi coletado.
+  let paginationTruncated: string | null = null;
 
   try {
     const config = await getSystemConfig();
@@ -200,12 +203,24 @@ export async function collectAll(): Promise<void> {
     // de descartados junto com a exceção.
     try {
       while (true) {
-        const markets = await fetchActiveMarkets({
-          limit: PAGE_SIZE,
-          offset,
-          order: 'volume24hr',
-          ascending: false,
-        });
+        let markets: GammaMarket[];
+        try {
+          markets = await fetchActiveMarkets({
+            limit: PAGE_SIZE,
+            offset,
+            order: 'volume24hr',
+            ascending: false,
+          });
+        } catch (err) {
+          // 422 em offset alto é o teto da API: fim da paginação, não erro.
+          // Em offset 0 o 422 seria parâmetro inválido — aí sim é bug, propaga.
+          if (err instanceof GammaHttpError && err.status === 422 && offset > 0) {
+            paginationTruncated = `Gamma offset ceiling reached at offset ${offset} (HTTP 422)`;
+            console.warn(`[collector] ${paginationTruncated} — ending pagination gracefully`);
+            break;
+          }
+          throw err;
+        }
         pageCount++;
 
         if (markets.length === 0) break;
@@ -287,14 +302,19 @@ export async function collectAll(): Promise<void> {
     }
 
     const durationMs = Date.now() - startMs;
-    const status = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
+    const writeStatus = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
+    // Paginação truncada não rebaixa 'error' para 'partial' — só impede 'success',
+    // porque o ciclo varreu menos do que pretendia.
+    const status = writeStatus === 'success' && paginationTruncated ? 'partial' : writeStatus;
+    const truncationPrefix = paginationTruncated ? `${paginationTruncated}. ` : '';
 
     await logEvent({
       component: 'collector',
       status,
-      message: `Scanned ${scanned} (${pageCount} pages, sorted by volume), upserted ${upserted} events, ${snapshots} snapshots`,
+      message: `${truncationPrefix}Scanned ${scanned} (${pageCount} pages, sorted by volume), upserted ${upserted} events, ${snapshots} snapshots`,
       metadata: {
         scanned,
+        pagination_truncated: paginationTruncated,
         pages: pageCount,
         upserted_events: upserted,
         upserted_snapshots: snapshots,

@@ -7,6 +7,17 @@ const CLOB_URL = process.env['POLYMARKET_CLOB_URL'] ?? 'https://clob.polymarket.
 // para sempre — e com ela o lock de ciclo, que só é solto no finally.
 const FETCH_TIMEOUT_MS = 20_000;
 
+/**
+ * Erro de HTTP da Gamma carregando o status, para que o chamador distinga
+ * "acabou a paginação" (422 no teto de offset) de "a API caiu" (5xx).
+ */
+export class GammaHttpError extends Error {
+  constructor(readonly status: number, readonly url: string) {
+    super(`HTTP ${status} fetching ${url}`);
+    this.name = 'GammaHttpError';
+  }
+}
+
 async function get<T>(url: string): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -16,7 +27,7 @@ async function get<T>(url: string): Promise<T> {
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+    if (!res.ok) throw new GammaHttpError(res.status, url);
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
@@ -28,6 +39,11 @@ async function get<T>(url: string): Promise<T> {
   }
 }
 
+/**
+ * Teto rígido de offset da Gamma (medido em 2026-08-04): offset 2000 responde 200,
+ * 2050 em diante responde 422 — nenhuma ordenação escapa. Quem pagina precisa tratar
+ * o 422 como fim de paginação, não como falha (ver GammaHttpError).
+ */
 export async function fetchActiveMarkets(params: {
   limit?: number;
   offset?: number;
