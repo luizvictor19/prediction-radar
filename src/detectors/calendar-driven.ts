@@ -2,6 +2,7 @@ import type { CalendarDrivenSignalMetadata } from '../types/index.js';
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { batchInsert } from '../lib/batch-write.js';
 
 function stddev(values: number[]): number {
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
@@ -89,6 +90,9 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let skippedMalformedOutcomes = 0;
   let skippedExtremePrice = 0;
   let skippedCooldown = 0;
+
+  // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
+  const pendingSignals: Record<string, unknown>[] = [];
 
   const PRICE_EXTREME_LOW = 0.05;
   const PRICE_EXTREME_HIGH = 0.95;
@@ -289,7 +293,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         last_seen_at: nowIso,
       };
 
-      await supabase.from('detected_signals').insert({
+      pendingSignals.push({
         event_id: event.id,
         signal_type: 'calendar_driven',
         confidence_score: confidenceScore,
@@ -304,9 +308,13 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     }
   }
 
+  const signalsResult = await batchInsert('detected_signals', pendingSignals, {
+    label: 'calendar_driven_detector',
+  });
+
   await logEvent({
     component: 'calendar_driven_detector',
-    status: 'success',
+    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
     message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ${skippedExtremePrice} skipped_extreme_price, ${skippedCooldown} skipped_cooldown`,
     metadata: {
       markets_evaluated: marketsEvaluated,
@@ -318,7 +326,9 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       skipped_stale: skippedStale,
       skipped_extreme_price: skippedExtremePrice,
       skipped_cooldown: skippedCooldown,
+      signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
+      write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,
     },
   });
 }

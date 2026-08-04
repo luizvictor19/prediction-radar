@@ -5,12 +5,63 @@ import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 import { detectResolvedMarkets } from './resolved-detector.js';
+import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import type { GammaMarket } from '../types/index.js';
 
 const MAX_DAYS_TO_RESOLUTION = 90;
 // Polymarket Gamma API has a hard limit of 100 markets per page,
 // even when limit > 100 is requested. Confirmed empirically 2026-05-14.
 const PAGE_SIZE = 100;
+// Markets are buffered across pages and written in one round-trip per batch.
+const FLUSH_THRESHOLD = DEFAULT_CHUNK_SIZE;
+
+interface PendingMarket {
+  polymarketId: string;
+  event: Record<string, unknown>;
+  volume24h: number;
+  best_bid: number | null;
+  best_ask: number | null;
+  mid_price: number | null;
+  spread: number | null;
+}
+
+interface UpsertedEvent {
+  id: string;
+  polymarket_id: string;
+  outcomes: { values?: string[] } | null;
+}
+
+function buildSnapshotPair(pending: PendingMarket, event: UpsertedEvent): Record<string, unknown>[] {
+  const outcomeNames = event.outcomes?.values ?? ['Yes', 'No'];
+  const firstOutcome = outcomeNames[0] ?? 'Yes';
+  const secondOutcome = outcomeNames[1] ?? 'No';
+  const { best_bid, best_ask, mid_price, spread, volume24h } = pending;
+
+  return [
+    {
+      event_id: event.id,
+      outcome: firstOutcome,
+      best_bid,
+      best_ask,
+      mid_price,
+      spread,
+      bid_depth: null,
+      ask_depth: null,
+      volume_24h: volume24h,
+    },
+    {
+      event_id: event.id,
+      outcome: secondOutcome,
+      best_bid: best_ask !== null ? 1 - best_ask : null,
+      best_ask: best_bid !== null ? 1 - best_bid : null,
+      mid_price: mid_price !== null ? 1 - mid_price : null,
+      spread,
+      bid_depth: null,
+      ask_depth: null,
+      volume_24h: volume24h,
+    },
+  ];
+}
 
 function isWithinResolutionWindow(endDate: string): boolean {
   const end = new Date(endDate);
@@ -80,6 +131,52 @@ export async function collectAll(): Promise<void> {
     let skippedLiquidity = 0;
     let skippedExcluded = 0;
     let protectedIncluded = 0;
+    let skippedDuplicate = 0;
+    const writeErrors: string[] = [];
+
+    // A same market can surface on two pages when the volume ranking shifts
+    // mid-scan. Enqueueing it twice would break the batch upsert:
+    // ON CONFLICT DO UPDATE cannot touch the same row twice in one statement.
+    const queuedPolymarketIds = new Set<string>();
+    let pending: PendingMarket[] = [];
+
+    async function flushPending(): Promise<void> {
+      if (pending.length === 0) return;
+      const batch = pending;
+      pending = [];
+
+      const eventsResult = await batchUpsert<UpsertedEvent>(
+        'events',
+        batch.map(p => p.event),
+        {
+          onConflict: 'polymarket_id',
+          select: 'id, polymarket_id, outcomes',
+          chunkSize: EVENTS_CHUNK_SIZE,
+          label: 'collector',
+        },
+      );
+
+      upserted += eventsResult.rows.length;
+      errorsCount += eventsResult.failedRows;
+      writeErrors.push(...eventsResult.errors);
+
+      const eventByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row]));
+
+      const snapshotRows: Record<string, unknown>[] = [];
+      for (const p of batch) {
+        const event = eventByPolymarketId.get(p.polymarketId);
+        // Missing means the event chunk failed — no id to hang a snapshot on.
+        if (!event) continue;
+        snapshotRows.push(...buildSnapshotPair(p, event));
+      }
+
+      if (snapshotRows.length === 0) return;
+
+      const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'collector' });
+      snapshots += snapResult.written;
+      errorsCount += snapResult.failedRows;
+      writeErrors.push(...snapResult.errors);
+    }
 
     while (true) {
       const markets = await fetchActiveMarkets({
@@ -99,6 +196,11 @@ export async function collectAll(): Promise<void> {
         }
 
         if (!passesBaseFilters(market)) continue;
+
+        if (queuedPolymarketIds.has(market.id)) {
+          skippedDuplicate++;
+          continue;
+        }
 
         const isProtected = protectedPolymarketIds.has(market.id);
 
@@ -128,64 +230,21 @@ export async function collectAll(): Promise<void> {
         const { category, sub_category } = categorizeMarket(market);
         const event = { ...gammaToEvent(market, category), sub_category };
 
-        const { data: eventRow, error: upsertErr } = await supabase
-          .from('events')
-          .upsert(event, { onConflict: 'polymarket_id', ignoreDuplicates: false })
-          .select('id, outcomes')
-          .single();
-
-        if (upsertErr || !eventRow) {
-          console.error(`[collector] Upsert failed for ${market.id}:`, upsertErr?.message);
-          errorsCount++;
-          continue;
-        }
-
-        upserted++;
-
-        const outcomes = eventRow.outcomes as { values?: string[] } | null;
-        const outcomeNames = outcomes?.values ?? ['Yes', 'No'];
-        const firstOutcome = outcomeNames[0] ?? 'Yes';
-        const secondOutcome = outcomeNames[1] ?? 'No';
-
         const best_bid = market.bestBid || null;
         const best_ask = market.bestAsk || null;
-        const mid_price = best_bid && best_ask ? (best_bid + best_ask) / 2 : null;
-        const spread = market.spread || null;
 
-        const firstSnapshot = {
-          event_id: eventRow.id,
-          outcome: firstOutcome,
+        queuedPolymarketIds.add(market.id);
+        pending.push({
+          polymarketId: market.id,
+          event,
+          volume24h,
           best_bid,
           best_ask,
-          mid_price,
-          spread,
-          bid_depth: null,
-          ask_depth: null,
-          volume_24h: volume24h,
-        };
+          mid_price: best_bid && best_ask ? (best_bid + best_ask) / 2 : null,
+          spread: market.spread || null,
+        });
 
-        const secondSnapshot = {
-          event_id: eventRow.id,
-          outcome: secondOutcome,
-          best_bid: best_ask !== null ? 1 - best_ask : null,
-          best_ask: best_bid !== null ? 1 - best_bid : null,
-          mid_price: mid_price !== null ? 1 - mid_price : null,
-          spread,
-          bid_depth: null,
-          ask_depth: null,
-          volume_24h: volume24h,
-        };
-
-        const { error: snapErr } = await supabase
-          .from('polymarket_snapshots')
-          .insert([firstSnapshot, secondSnapshot]);
-
-        if (snapErr) {
-          console.error(`[collector] Snapshot failed for ${market.id}:`, snapErr.message);
-          errorsCount++;
-        } else {
-          snapshots += 2;
-        }
+        if (pending.length >= FLUSH_THRESHOLD) await flushPending();
       }
 
       scanned += markets.length;
@@ -200,6 +259,8 @@ export async function collectAll(): Promise<void> {
         break;
       }
     }
+
+    await flushPending();
 
     const durationMs = Date.now() - startMs;
     const status = errorsCount === 0 ? 'success' : upserted > 0 ? 'partial' : 'error';
@@ -219,7 +280,9 @@ export async function collectAll(): Promise<void> {
         included_neg_risk_low_volume: includedNegRiskLowVolume,
         skipped_low_liquidity: skippedLiquidity,
         skipped_excluded_category: skippedExcluded,
+        skipped_duplicate: skippedDuplicate,
         protected_included: protectedIncluded,
+        write_errors: writeErrors.length > 0 ? writeErrors.slice(0, 10) : null,
       },
     });
 

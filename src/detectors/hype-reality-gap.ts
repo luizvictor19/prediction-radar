@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { batchInsert } from '../lib/batch-write.js';
 import type { DetectedSignalInsert } from '../types/index.js';
 
 const MOMENTUM_WINDOW_MS = 60 * 60 * 1000;
@@ -36,6 +37,9 @@ export async function runHypeRealityGapDetector(): Promise<void> {
   let skippedStaleSnapshot = 0;
   let deduped = 0;
   let cooldownDismissed = 0;
+
+  // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
+  const pendingSignals: DetectedSignalInsert[] = [];
 
   try {
     const { data: events, error: eventsErr } = await supabase
@@ -210,18 +214,26 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         expires_at: new Date(Date.now() + SIGNAL_TTL_MS).toISOString(),
       };
 
-      await supabase.from('detected_signals').insert(insert);
+      pendingSignals.push(insert);
 
       if (momentum.triggered && liquidity.triggered) flaggedBoth++;
       else if (momentum.triggered) flaggedMomentum++;
       else flaggedLiquidity++;
     }
 
+    const signalsResult = await batchInsert('detected_signals', pendingSignals, {
+      label: 'hype_reality_gap_detector',
+    });
+
     const durationMs = Date.now() - startedAt;
     await logEvent({
       component: 'hype_reality_gap_detector',
-      status: 'success',
+      status: signalsResult.errors.length > 0 ? 'partial' : 'success',
       message: `Evaluated ${evaluated} markets: ${flaggedMomentum} momentum, ${flaggedLiquidity} liquidity, ${flaggedBoth} both, ${deduped} deduped, ${cooldownDismissed} cooldown_dismiss, ${skippedStaleSnapshot} stale snapshot, ${skippedNoData} no_data, ${skippedTailMarkets} tail in ${durationMs}ms`,
+      metadata: {
+        signals_inserted: signalsResult.written,
+        write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,
+      },
     });
   } catch (err) {
     await logEvent({

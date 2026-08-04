@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 import { getSystemConfig } from '../lib/config.js';
+import { batchInsert } from '../lib/batch-write.js';
 
 const FILTERS = {
   min_volume_24h: 3000,
@@ -53,10 +54,12 @@ export async function detectEarlyMarkets(): Promise<void> {
   }
 
   let evaluated = 0;
-  let flagged = 0;
   let skippedStaleSnapshot = 0;
   let skippedFilters = 0;
   let skippedDedup = 0;
+
+  // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
+  const pendingSignals: Record<string, unknown>[] = [];
 
   for (const event of events) {
     evaluated++;
@@ -157,7 +160,7 @@ export async function detectEarlyMarkets(): Promise<void> {
       last_seen_at: new Date().toISOString(),
     };
 
-    const { error: insErr } = await supabase.from('detected_signals').insert({
+    pendingSignals.push({
       signal_type: 'early_market',
       event_id: event.id,
       suggested_outcome: null,
@@ -166,16 +169,27 @@ export async function detectEarlyMarkets(): Promise<void> {
       metadata,
       expires_at: new Date(Date.now() + SIGNAL_TTL_MS).toISOString(),
     });
-
-    if (!insErr) flagged++;
   }
+
+  const signalsResult = await batchInsert('detected_signals', pendingSignals, {
+    label: 'early_market_detector',
+  });
+  const flagged = signalsResult.written;
 
   const durationMs = Date.now() - startedAt;
   await logEvent({
     component: 'early_market_detector',
-    status: 'success',
+    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
     message: `Evaluated ${evaluated} new markets, ${flagged} flagged, ${skippedStaleSnapshot} stale snapshot, ${skippedFilters} skipped filters, ${skippedDedup} deduped in ${durationMs}ms`,
-    metadata: { evaluated, flagged, skipped_stale_snapshot: skippedStaleSnapshot, skipped_filters: skippedFilters, skipped_dedup: skippedDedup, duration_ms: durationMs },
+    metadata: {
+      evaluated,
+      flagged,
+      skipped_stale_snapshot: skippedStaleSnapshot,
+      skipped_filters: skippedFilters,
+      skipped_dedup: skippedDedup,
+      duration_ms: durationMs,
+      write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,
+    },
   });
 }
 

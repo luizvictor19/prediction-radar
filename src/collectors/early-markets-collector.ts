@@ -1,11 +1,11 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { batchInsert, batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const FETCH_TIMEOUT_MS = 25_000;
 const CYCLE_TIMEOUT_MS = 300_000;
-const CHUNK_SIZE = 20;
 const NEW_MARKET_WINDOW_HOURS = 24;
 let isRunning = false;
 
@@ -34,16 +34,30 @@ export async function collectEarlyMarkets(): Promise<void> {
   }
 }
 
-async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; snapshots: number }> {
+interface PreparedMarket {
+  polymarketId: string;
+  event: Record<string, unknown>;
+  /** Ausente quando o market ainda não tem os dois lados do book. */
+  quote: {
+    outcomes: [string, string];
+    bestBid: number;
+    bestAsk: number;
+    spread: number | null;
+    volume24h: number;
+  } | null;
+}
+
+/** Monta as linhas de um market sem tocar no banco — a escrita acontece em lote. */
+function prepareMarket(market: GammaMarket): PreparedMarket | null {
   try {
     const startDate = (market as any).startDate as string | undefined;
-    if (!startDate) return { upserted: false, snapshots: 0 };
+    if (!startDate) return null;
 
     const volume24h = Number(market.volume24hr ?? market.volume24hrClob ?? 0);
     const liquidity = Number(market.liquidityNum ?? market.liquidity ?? 0);
 
     // Markets recém-criados ainda sem volume; apenas filtra liquidez mínima.
-    if (liquidity < 500) return { upserted: false, snapshots: 0 };
+    if (liquidity < 500) return null;
 
     const outcomes = JSON.parse(market.outcomes) as string[];
     const outcomePrices = JSON.parse(market.outcomePrices) as string[];
@@ -70,48 +84,53 @@ async function processMarket(market: GammaMarket): Promise<{ upserted: boolean; 
       neg_risk_market_id: market.negRiskMarketID ?? null,
     };
 
-    const { data: eventRow, error: upsertErr } = await supabase
-      .from('events')
-      .upsert(event, { onConflict: 'polymarket_id', ignoreDuplicates: false })
-      .select('id')
-      .single();
-
-    if (upsertErr || !eventRow) return { upserted: false, snapshots: 0 };
-
     const bestBid = market.bestBid;
     const bestAsk = market.bestAsk;
-    if (bestBid == null || bestAsk == null) return { upserted: true, snapshots: 0 };
+    const [primary, secondary] = outcomes;
 
-    const midPrimary = (bestBid + bestAsk) / 2;
-    const midSecondary = 1 - midPrimary;
-    const spread = market.spread ?? null;
+    // Sem os dois lados do book, ou com outcomes malformados, grava só o event.
+    // Uma linha inválida derrubaria o chunk inteiro de snapshots.
+    const quote =
+      bestBid != null && bestAsk != null && primary != null && secondary != null
+        ? {
+            outcomes: [primary, secondary] as [string, string],
+            bestBid,
+            bestAsk,
+            spread: market.spread ?? null,
+            volume24h,
+          }
+        : null;
 
-    const rows = [
-      {
-        event_id: eventRow.id,
-        outcome: outcomes[0],
-        best_bid: bestBid,
-        best_ask: bestAsk,
-        mid_price: midPrimary,
-        spread,
-        volume_24h: volume24h,
-      },
-      {
-        event_id: eventRow.id,
-        outcome: outcomes[1],
-        best_bid: 1 - bestAsk,
-        best_ask: 1 - bestBid,
-        mid_price: midSecondary,
-        spread,
-        volume_24h: volume24h,
-      },
-    ];
-
-    const { error: snapErr } = await supabase.from('polymarket_snapshots').insert(rows);
-    return { upserted: true, snapshots: snapErr ? 0 : 2 };
+    return { polymarketId: market.id, event, quote };
   } catch {
-    return { upserted: false, snapshots: 0 };
+    return null;
   }
+}
+
+function buildSnapshotPair(eventId: string, quote: NonNullable<PreparedMarket['quote']>): Record<string, unknown>[] {
+  const { outcomes, bestBid, bestAsk, spread, volume24h } = quote;
+  const midPrimary = (bestBid + bestAsk) / 2;
+
+  return [
+    {
+      event_id: eventId,
+      outcome: outcomes[0],
+      best_bid: bestBid,
+      best_ask: bestAsk,
+      mid_price: midPrimary,
+      spread,
+      volume_24h: volume24h,
+    },
+    {
+      event_id: eventId,
+      outcome: outcomes[1],
+      best_bid: 1 - bestAsk,
+      best_ask: 1 - bestBid,
+      mid_price: 1 - midPrimary,
+      spread,
+      volume_24h: volume24h,
+    },
+  ];
 }
 
 async function _collect(): Promise<void> {
@@ -179,19 +198,43 @@ async function _collect(): Promise<void> {
     }
   }
 
-  let upserted = 0;
-  let snapshotsInserted = 0;
+  // Duplicatas entre páginas quebrariam o upsert em lote: ON CONFLICT DO UPDATE
+  // não pode afetar a mesma linha duas vezes na mesma instrução.
+  const uniqueMarkets = dedupeByKey(allMarkets, m => m.id);
+  const prepared = uniqueMarkets
+    .map(prepareMarket)
+    .filter((p): p is PreparedMarket => p !== null);
 
-  console.log(`[early-markets] Processing ${allMarkets.length} markets in chunks of ${CHUNK_SIZE}...`);
+  console.log(`[early-markets] Writing ${prepared.length} markets in batch...`);
 
-  for (let i = 0; i < allMarkets.length; i += CHUNK_SIZE) {
-    const chunk = allMarkets.slice(i, i + CHUNK_SIZE);
-    const results = await Promise.all(chunk.map(processMarket));
-    for (const r of results) {
-      if (r.upserted) upserted++;
-      snapshotsInserted += r.snapshots;
-    }
+  const writeErrors: string[] = [];
+
+  const eventsResult = await batchUpsert<{ id: string; polymarket_id: string }>(
+    'events',
+    prepared.map(p => p.event),
+    {
+      onConflict: 'polymarket_id',
+      select: 'id, polymarket_id',
+      chunkSize: EVENTS_CHUNK_SIZE,
+      label: 'early_markets',
+    },
+  );
+  writeErrors.push(...eventsResult.errors);
+
+  const upserted = eventsResult.rows.length;
+  const eventIdByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row.id]));
+
+  const snapshotRows: Record<string, unknown>[] = [];
+  for (const p of prepared) {
+    const eventId = eventIdByPolymarketId.get(p.polymarketId);
+    // Ausente significa que o chunk do event falhou — sem id para o snapshot.
+    if (!eventId || !p.quote) continue;
+    snapshotRows.push(...buildSnapshotPair(eventId, p.quote));
   }
+
+  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'early_markets' });
+  writeErrors.push(...snapResult.errors);
+  const snapshotsInserted = snapResult.written;
 
   await supabase
     .from('events')
@@ -200,7 +243,7 @@ async function _collect(): Promise<void> {
     .lt('start_date', cutoffIso);
 
   const durationMs = Date.now() - startedAt;
-  const status = paginationFailed ? 'partial' : 'success';
+  const status = paginationFailed || writeErrors.length > 0 ? 'partial' : 'success';
   const messagePrefix = paginationFailed
     ? `Pagination aborted (${paginationError}), processed what was collected: `
     : '';
@@ -210,11 +253,14 @@ async function _collect(): Promise<void> {
     message: `${messagePrefix}Found ${allMarkets.length} new markets (<24h), upserted ${upserted}, ${snapshotsInserted} snapshots in ${durationMs}ms`,
     metadata: {
       total_found: allMarkets.length,
+      unique_markets: uniqueMarkets.length,
+      prepared: prepared.length,
       upserted,
       snapshots: snapshotsInserted,
       duration_ms: durationMs,
       pagination_failed: paginationFailed,
       pagination_error: paginationError,
+      write_errors: writeErrors.length > 0 ? writeErrors.slice(0, 10) : null,
     },
   });
 }

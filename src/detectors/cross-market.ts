@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 import { getFeeRate, calculateExpectedEdgePct } from '../lib/fees.js';
+import { batchInsert } from '../lib/batch-write.js';
 
 interface EventRow {
   id: string;
@@ -56,6 +57,9 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
   let flagged = 0;
   let highConfidence = 0;
   let deduped = 0;
+
+  // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
+  const pendingSignals: Record<string, unknown>[] = [];
 
   for (const event of eligibleEvents) {
     const outcomes = event.outcomes!;
@@ -172,7 +176,7 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
         last_seen_at: now,
       };
 
-      await supabase.from('detected_signals').insert({
+      pendingSignals.push({
         event_id: event.id,
         signal_type: 'cross_market_intra',
         confidence_score: confidenceScore,
@@ -185,16 +189,22 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
     }
   }
 
+  const signalsResult = await batchInsert('detected_signals', pendingSignals, {
+    label: 'cross_market_detector',
+  });
+
   await logEvent({
     component: 'cross_market_detector',
-    status: 'success',
+    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
     message: `Evaluated ${total} events, ${flagged} flagged, ${highConfidence} high-confidence, ${deduped} deduped`,
     metadata: {
       total,
       flagged,
       high_confidence: highConfidence,
       deduped,
+      signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
+      write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,
     },
   });
 }

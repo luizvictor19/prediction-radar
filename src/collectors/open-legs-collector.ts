@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { batchInsert } from '../lib/batch-write.js';
 import type { GammaMarket } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
@@ -49,10 +50,12 @@ async function _collect(): Promise<void> {
   const legs = (legsData ?? []) as unknown as Array<{ event_id: string; events: { polymarket_id: string } }>;
   if (legs.length === 0) return;
 
-  const polymarketIds = [...new Set(legs.map(l => l.events.polymarket_id))];
+  // O join já traz o event_id: dispensa um SELECT em events por market.
+  const eventIdByPolymarketId = new Map(legs.map(l => [l.events.polymarket_id, l.event_id]));
+  const polymarketIds = [...eventIdByPolymarketId.keys()];
 
-  let snapshotsInserted = 0;
   let fetchErrors = 0;
+  const snapshotRows: Record<string, unknown>[] = [];
 
   await Promise.all(polymarketIds.map(async (pmId) => {
     try {
@@ -73,16 +76,12 @@ async function _collect(): Promise<void> {
 
       if (market.closed) return;
 
-      const { data: evt } = await supabase
-        .from('events')
-        .select('id, outcomes')
-        .eq('polymarket_id', pmId)
-        .single();
-
-      if (!evt) return;
+      const eventId = eventIdByPolymarketId.get(pmId);
+      if (!eventId) return;
 
       const outcomes = JSON.parse(market.outcomes) as string[];
-      if (outcomes.length < 2) return;
+      const [primary, secondary] = outcomes;
+      if (primary == null || secondary == null) return;
 
       const { bestBid, bestAsk, spread } = market;
 
@@ -94,10 +93,10 @@ async function _collect(): Promise<void> {
       const capturedAt = new Date().toISOString();
       const volume24h = market.volume24hr ?? null;
 
-      const rows = [
+      snapshotRows.push(
         {
-          event_id: evt.id,
-          outcome: outcomes[0],
+          event_id: eventId,
+          outcome: primary,
           best_bid: bestBid,
           best_ask: bestAsk,
           mid_price: midPrimary,
@@ -106,8 +105,8 @@ async function _collect(): Promise<void> {
           captured_at: capturedAt,
         },
         {
-          event_id: evt.id,
-          outcome: outcomes[1],
+          event_id: eventId,
+          outcome: secondary,
           best_bid: bestAsk != null ? 1 - bestAsk : null,
           best_ask: bestBid != null ? 1 - bestBid : null,
           mid_price: midSecondary,
@@ -115,23 +114,22 @@ async function _collect(): Promise<void> {
           volume_24h: volume24h,
           captured_at: capturedAt,
         },
-      ];
-
-      const { error: insertErr } = await supabase.from('polymarket_snapshots').insert(rows);
-      if (insertErr) {
-        fetchErrors++;
-      } else {
-        snapshotsInserted += 2;
-      }
+      );
     } catch {
       fetchErrors++;
     }
   }));
 
+  // captured_at é fixado por market no fetch, então um único insert no fim do
+  // ciclo não distorce a série temporal.
+  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'open_legs' });
+  const snapshotsInserted = snapResult.written;
+
   const durationMs = Date.now() - startedAt;
   await logEvent({
     component: 'open_legs_collector',
-    status: 'success',
+    status: snapResult.errors.length > 0 ? 'partial' : 'success',
     message: `collected ${snapshotsInserted} snapshots from ${polymarketIds.length} markets (${fetchErrors} errors) in ${durationMs}ms`,
+    metadata: snapResult.errors.length > 0 ? { write_errors: snapResult.errors.slice(0, 10) } : undefined,
   });
 }

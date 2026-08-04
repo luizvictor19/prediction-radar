@@ -8,6 +8,7 @@ import {
   estimateBuyNoBasketFeeCost,
   estimateBuyYesBasketFeeCost,
 } from '../lib/fees.js';
+import { batchInsert } from '../lib/batch-write.js';
 
 interface EventRow {
   id: string;
@@ -131,6 +132,9 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let highConfidenceCount = 0;
   let dedupedCount = 0;
   const byCategoryCount: Record<string, number> = {};
+
+  // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
+  const pendingSignals: Record<string, unknown>[] = [];
 
   // Build DB-based group size map (no end_date or volume filter — all active members)
   // Batched in chunks of 100 to avoid URL length limits with large .in() lists.
@@ -415,7 +419,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
         last_seen_at: now,
       };
 
-      await supabase.from('detected_signals').insert({
+      pendingSignals.push({
         event_id: eventIdForSignal,
         signal_type: 'cross_market_inter',
         confidence_score: confidenceScore,
@@ -429,9 +433,13 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     }
   }
 
+  const signalsResult = await batchInsert('detected_signals', pendingSignals, {
+    label: 'cross_market_inter_detector',
+  });
+
   await logEvent({
     component: 'cross_market_inter_detector',
-    status: 'success',
+    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
     message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum, ${groupsSkippedStale} skipped stale`,
     metadata: {
       groups_evaluated: groupsEvaluated,
@@ -444,8 +452,10 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,
+      signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
       by_category: byCategoryCount,
+      write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,
     },
   });
 }
