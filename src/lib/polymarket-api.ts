@@ -61,6 +61,37 @@ export async function fetchActiveMarkets(params: {
   return get<GammaMarket[]>(url);
 }
 
+/** Máximo de ids por chamada ao filtro `id=` (medido 2026-08-04). */
+export const MAX_IDS_PER_REQUEST = 100;
+
+/**
+ * Busca markets por id, em lote. Sem offset, sem teto.
+ *
+ * Duas armadilhas, ambas medidas em 2026-08-04 e ambas silenciosas:
+ *
+ * 1. `limit` default é 20 e se aplica também ao filtro por id. Sem `limit`
+ *    explícito, um lote de 50 ids devolve 20 — sem erro, sem aviso.
+ * 2. O filtro `id=` aplica `closed=false` por padrão. Um lote de ids devolve
+ *    vazio exatamente para os markets que resolveram. Daí `closed` ser
+ *    parâmetro obrigatório aqui: quem chama tem que decidir qual lado quer.
+ *
+ * O chamador deve comparar quantos ids mandou com quantos voltaram — ausência
+ * pode ser resolução (esperado) ou lote truncado (bug).
+ */
+export async function fetchMarketsByIds(
+  ids: readonly string[],
+  opts: { closed: boolean },
+): Promise<GammaMarket[]> {
+  if (ids.length === 0) return [];
+  if (ids.length > MAX_IDS_PER_REQUEST) {
+    throw new Error(`fetchMarketsByIds: ${ids.length} ids excede o máximo de ${MAX_IDS_PER_REQUEST}`);
+  }
+
+  const query = ids.map(id => `id=${encodeURIComponent(id)}`).join('&');
+  const url = `${GAMMA_URL}/markets?limit=${ids.length}&closed=${opts.closed}&${query}`;
+  return get<GammaMarket[]>(url);
+}
+
 /**
  * @deprecated Gamma API ignores negRiskMarketID as a server-side filter — returns the full
  * paginated universe instead. Use DB aggregation (events table) for group size checks.

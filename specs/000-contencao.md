@@ -176,9 +176,70 @@ Verificação obrigatória: comparar a contagem de ids enviados com a de retorna
 e logar divergência. Ausência pode significar market resolvido (esperado) ou lote
 truncado (bug).
 
-#### 2c. Auto-resolver
+#### 2c. Auto-resolver — precisa virar componente próprio
 
-Permanece como está.
+**A versão anterior desta spec dizia "permanece como está". Está errado.** A investigação
+do código mostrou três coisas.
+
+**Duas trilhas, só uma depende da varredura.**
+
+A trilha prioritária monta candidatos a partir de `my_bet_legs` com posição aberta e
+verifica cada um individualmente via `GET /markets/{id}`, mais um detector de preço em
+extremo sustentado que lê apenas snapshots. Ignora de propósito o conjunto "sumiu do
+feed". **Essa trilha é independente e continua funcionando.** Seu dinheiro não corre
+risco ao desligar a varredura.
+
+A trilha normal usa `seenPolymarketIds` — o conjunto de markets que a varredura
+devolveu. O que não está lá é tratado como candidato a resolvido.
+
+**O sinal "sumiu do feed" já está quebrado hoje.**
+
+Os candidatos normais são ordenados por `end_date` ascendente: os mais próximos de
+resolver. Esses já saíram do topo do ranking de volume, então já não aparecem nas 2000
+posições que a varredura alcança. A maioria é falso "missing" em todo ciclo — cada um
+consome um GET individual e produz um log `partial` do tipo "sumiu do feed mas
+closed=false".
+
+O que segura o estrago hoje é `MAX_PER_CYCLE = 50` e o fato de cada candidato ser
+confirmado por fetch antes de qualquer ação. Remover a varredura torna um falso positivo
+parcial em total: 50 fetches sequenciais dentro de um teto de 60s (estoura e o ciclo
+morre em `error`) e 50 logs falsos por ciclo.
+
+`seenPolymarketIds` nunca foi prova de resolução — é só um pré-filtro barato para decidir
+em quem gastar um GET. A evidência sempre veio do fetch individual.
+
+**O auto-resolver não tem agendamento próprio.**
+
+`detectResolvedMarkets` é chamado de dentro de `collectAll`. Desligar a varredura tira
+dele não só o input, mas o próprio momento de execução. Ele precisa virar componente
+autônomo, com `CycleLock` e cron próprios.
+
+**A armadilha do `closed=false`**
+
+Medido em 2026-08-04:
+
+```
+GET /markets?limit=100&id=A&id=B...                  → 0 resultados para markets fechados
+GET /markets?limit=100&closed=true&id=A&id=B...      → 5 de 5, com closed,
+                                                       umaResolutionStatus,
+                                                       outcomePrices, umaEndDate
+```
+
+O filtro `id=` aplica `closed=false` por padrão. **Um refresh em lote devolve vazio
+exatamente para os markets que resolveram** — que são os que interessam. Vale também
+para o item 2b, que não previa isso.
+
+Mas isso dá de graça um sinal melhor que o atual: mandar os ids dos candidatos ativos
+em lote; os ausentes resolveram ou saíram de listagem. Uma segunda chamada com
+`closed=true` sobre os ausentes confirma e traz tudo que o parser de resolução precisa.
+
+**Duas requisições por 100 candidatos**, contra 50 fetches sequenciais hoje — e cobre
+os 500 candidatos em vez de uma amostra de 50. Com isso `MAX_PER_CYCLE` deixa de ser
+necessário e o log falso de "sumiu do feed" desaparece: ausência vira sinal real, não
+artefato do teto de offset.
+
+**Cuidado a manter:** ausência ambígua entre "resolveu" e "lote truncado". Daí `limit`
+explícito ser obrigatório e a comparação entre contagem enviada e recebida ser exigida.
 
 ### Poda do histórico
 
@@ -318,19 +379,45 @@ o que teria valor. **O histórico útil começa no deploy deste item.**
 
 | # | Item | Depende de | Critério de pronto |
 |---|---|---|---|
-| 0 | Teto de offset não mata o ciclo | — | log `partial`, não `error` |
-| 1 | Batch nos inserts | — | ✅ feito (552 events / 1104 snaps em 6,6s) |
-| 2 | Descoberta por `startDate` | 0 | markets novos aparecem com volume 0 |
-| 3 | Watchlist com refresh por `id=` | 2 | contagem enviada == contagem retornada |
-| 4 | Desligar a varredura por volume | 3 | nenhuma chamada com `offset` > 0 |
+| 0 | Teto de offset não mata o ciclo | — | ✅ feito — `partial`, zero `error` |
+| 1 | Batch nos inserts | — | ✅ feito — 626 events / 1252 snaps em ~6s |
+| 2a | Descoberta por `startDate` | 0 | ✅ feito — validado abaixo |
+| 2c | Auto-resolver autônomo | 2a | roda com cron e lock próprios, sem `seenPolymarketIds` |
+| 2b | Watchlist com refresh por `id=` | 2c | contagem enviada == recebida, `closed=true` no 2º passo |
+| 4 | Desligar a varredura por volume | 2b, 2c | via `system_config`, sem apagar código |
 | 5 | Poda do histórico (H2) | 4 | `events` abaixo de 100 MB |
 | 6 | `esports_snapshots` + partições | — | partição do dia criada automaticamente |
-| 7 | Cadência por estado | 3, 6 | mercado ao vivo com gap < 20s |
+| 7 | Cadência por estado | 2b, 6 | mercado ao vivo com gap < 20s |
 | 8 | Retenção esports-only | 6 | nenhum snapshot esports apagado |
 
-**Item 0 é imediato e barato.** Hoje o ciclo bate no teto de 2000, lança, e loga
-`status: 'error'` — apesar de ter gravado 552 markets com sucesso. A paginação deve
-encerrar graciosamente ao receber 422 em offset alto, logando `partial`.
+**O 2c foi movido para antes do 2b e do 4.** O auto-resolver hoje é chamado de dentro
+de `collectAll` e não tem agendamento próprio. Desligar a varredura antes de torná-lo
+autônomo faria as posições pararem de fechar sozinhas — regressão inaceitável com
+dinheiro real em jogo.
+
+### Validação do item 2a em produção (1 hora, 2026-08-04 17:06–18:06)
+
+| Origem | Total | Esports | Vol. médio | Liq. média |
+|---|---|---|---|---|
+| `discovery` | 60 | **60** | 0 | 17 |
+| varredura / early | 315 | **1** | 301 | 6.474 |
+
+A descoberta trouxe 60 dos 61 markets de esports do período. Todos com `volume_24h = 0`
+e liquidez média de US$ 17 — nenhum passaria pelo filtro de 10k/20k, nenhum apareceria
+nas 2000 primeiras posições do ranking de volume.
+
+Exemplo capturado: `cs2-gamers-jam1-2026-08-05`, `start_date` 17:39 do dia anterior à
+partida. Mercado capturado no minuto em que abriu — a fase de descoberta de preço, que
+a varredura por volume nunca alcançava porque só via o market depois de acumular
+liquidez, com o preço já formado.
+
+Os 2 markets de esports sem carimbo eram derivados de partidas que a descoberta já havia
+capturado (`cs2-ef1-inox-...-round-total-24pt5` carimbado às 17:19); ganharam volume
+rápido e a varredura os reencontrou. **Redundância, não cobertura complementar.**
+
+**Nota para a Spec 001:** uma partida gera 10-12 markets (série, por game, handicaps,
+totais, round handicaps). A watchlist cresce ~10x mais rápido que o número de partidas.
+A cadência do item 7 precisa priorizar o mercado da série sobre os derivados.
 
 Itens 1-3 são contenção. Itens 4-6 são o que começa a gerar o histórico do backtest.
 

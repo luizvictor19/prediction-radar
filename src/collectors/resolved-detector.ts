@@ -1,10 +1,9 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 import { adjustCash } from '../lib/bankroll.js';
+import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
+import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
-
-const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
-const FETCH_TIMEOUT_MS = 8_000;
 
 type ResolutionResult =
   | { kind: 'win'; winnerOutcome: string }
@@ -13,9 +12,7 @@ type ResolutionResult =
 
 function parseResolution(market: GammaMarket): ResolutionResult {
   if (!market.closed) return { kind: 'unresolved' };
-
-  const umaStatus = (market as unknown as { umaResolutionStatus?: string }).umaResolutionStatus;
-  if (umaStatus !== 'resolved') return { kind: 'unresolved' };
+  if (market.umaResolutionStatus !== 'resolved') return { kind: 'unresolved' };
 
   const prices = JSON.parse(market.outcomePrices) as string[];
   const outcomes = JSON.parse(market.outcomes) as string[];
@@ -87,18 +84,35 @@ async function detectResolutionByPrice(eventId: string): Promise<ResolutionResul
   return { kind: 'unresolved' };
 }
 
-async function fetchMarketWithTimeout(polymarketId: string): Promise<GammaMarket | null> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${GAMMA_URL}/markets/${polymarketId}`, { signal: controller.signal });
-    if (!res.ok) return null;
-    return await res.json() as GammaMarket;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
+interface BatchLookup {
+  byId: Map<string, GammaMarket>;
+  /** Ids em chunks que falharam: não se sabe nada sobre eles neste ciclo. */
+  failedIds: Set<string>;
+}
+
+/**
+ * Consulta a Gamma sobre ids específicos, em lotes de 100.
+ *
+ * Um chunk que falha não derruba os outros: seus ids vão para `failedIds` e
+ * ficam de fora das conclusões do ciclo. Tratá-los como "ausentes" seria ler
+ * uma falha de rede como sinal de resolução.
+ */
+async function lookupByIds(ids: readonly string[], closed: boolean): Promise<BatchLookup> {
+  const byId = new Map<string, GammaMarket>();
+  const failedIds = new Set<string>();
+
+  for (let i = 0; i < ids.length; i += MAX_IDS_PER_REQUEST) {
+    const chunk = ids.slice(i, i + MAX_IDS_PER_REQUEST);
+    try {
+      const markets = await fetchMarketsByIds(chunk, { closed });
+      for (const market of markets) byId.set(market.id, market);
+    } catch (err) {
+      for (const id of chunk) failedIds.add(id);
+      console.error(`[resolved_detector] lote closed=${closed} falhou (${chunk.length} ids): ${String(err)}`);
+    }
   }
+
+  return { byId, failedIds };
 }
 
 async function closeLegsForResolvedEvent(
@@ -207,16 +221,57 @@ async function closeLegsForResolvedEvent(
   return { closed, payout_total: payoutTotal };
 }
 
-const RESOLVED_DETECTOR_TIMEOUT_MS = 60_000;
-const MAX_PER_CYCLE = 50;
+/**
+ * Antes rodava de dentro do `collectAll` e recebia dele o conjunto "sumiu do
+ * feed". Os dois vínculos foram cortados (spec 000, item 2c): o pré-filtro virou
+ * consulta direta por `id=`, e o agendamento é próprio — a varredura por volume
+ * vai ser desligada no item 4 e levaria o auto-resolver junto.
+ */
+const RESOLVED_DETECTOR_TIMEOUT_MS = 120_000;
 
-export async function detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<void> {
+/**
+ * Teto de resoluções aplicadas por ciclo. Não é mais sobre custo de fetch (o
+ * lote resolve isso), e sim sobre as escritas sequenciais de cada fechamento de
+ * leg. O que passar disso fica para o próximo ciclo, e o log diz quanto ficou.
+ */
+const MAX_RESOLUTIONS_PER_CYCLE = 200;
+
+const cycleLock = new CycleLock();
+
+export async function detectResolvedMarkets(): Promise<void> {
+  const lockToken = cycleLock.tryAcquire();
+
+  if (!lockToken) {
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'partial',
+      message: 'previous cycle still running, skipping this tick',
+      metadata: { previous_cycle_running_for_ms: cycleLock.heldForMs() ?? 0 },
+    });
+    return;
+  }
+
+  if (lockToken.staleTakeoverMs !== null) {
+    const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
+    console.warn(`[resolved_detector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'partial',
+      message: `WARNING: previous cycle stuck for ${stuckMinutes}min — assumed dead, starting a new one`,
+      metadata: { stuck_for_ms: lockToken.staleTakeoverMs },
+    });
+  }
+
+  // O lock é solto quando o trabalho real termina, não quando a race termina:
+  // soltar no timeout deixaria o próximo tick rodar em cima do ciclo zumbi.
+  const cyclePromise = _detectResolvedMarkets().finally(() => cycleLock.release(lockToken));
+
   const timeoutPromise = new Promise<void>((_, reject) =>
-    setTimeout(() => reject(new Error('resolved_detector timeout 60s')), RESOLVED_DETECTOR_TIMEOUT_MS),
+    setTimeout(() => reject(new Error('resolved_detector timeout 120s')), RESOLVED_DETECTOR_TIMEOUT_MS),
   );
 
   try {
-    await Promise.race([_detectResolvedMarkets(seenPolymarketIds), timeoutPromise]);
+    await Promise.race([cyclePromise, timeoutPromise]);
   } catch (err) {
     await logEvent({
       component: 'resolved_detector',
@@ -226,7 +281,7 @@ export async function detectResolvedMarkets(seenPolymarketIds: Set<string>): Pro
   }
 }
 
-async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<void> {
+async function _detectResolvedMarkets(): Promise<void> {
   const startedAt = Date.now();
 
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -283,31 +338,37 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
 
   const priorityEventIds = priorityIds;
 
-  // Priority events (with open legs): always check, regardless of whether they
-  // appeared in the feed. Polymarket may keep resolved markets in feed briefly,
-  // so "missing" isn't a reliable signal for events we have positions in.
-  const priorityToCheck = candidates.filter(e => priorityEventIds.has(e.id));
-
-  // Non-priority events: only check those that disappeared from the feed
-  const normalMissing = candidates.filter(e =>
-    !priorityEventIds.has(e.id) && !seenPolymarketIds.has(e.polymarket_id)
-  );
-
-  if (priorityToCheck.length === 0 && normalMissing.length === 0) {
+  if (candidates.length === 0) {
     await logEvent({
       component: 'resolved_detector',
       status: 'success',
-      message: `no events to check (${candidates.length} active)`,
+      message: 'no candidates to check',
     });
     return;
   }
 
-  const priorityMissing = priorityToCheck;
+  // Etapa 3: perguntar à Gamma sobre exatamente estes candidatos.
+  //
+  // Antes o pré-filtro era "sumiu do feed da varredura por volume" — sinal que
+  // já nascia falso para a maioria, porque a varredura só alcança as ~2000
+  // primeiras posições e os candidatos aqui são justamente os mais antigos.
+  // Agora a pergunta é direta, por id: 2 requisições por 100 candidatos.
+  const idsToCheck = [...new Set(candidates.map(e => e.polymarket_id))];
 
-  const normalToProcess = normalMissing.slice(0, MAX_PER_CYCLE);
-  const skippedDueToLimit = normalMissing.length - normalToProcess.length;
+  const active = await lookupByIds(idsToCheck, false);
 
-  const toProcess = [...priorityMissing, ...normalToProcess];
+  // Ausente do lote `closed=false` = resolveu, foi deslistado, ou o chunk falhou.
+  // Os que falharam saem da conta: ler falha de rede como resolução seria grave.
+  const absentIds = idsToCheck.filter(id => !active.byId.has(id) && !active.failedIds.has(id));
+
+  // O `closed=false` é default e silencioso no filtro por id — sem esta segunda
+  // chamada, o market resolvido simplesmente não volta e nunca seria detectado.
+  const resolved = await lookupByIds(absentIds, true);
+
+  const lookupFailedIds = new Set([...active.failedIds, ...resolved.failedIds]);
+  const unknownIds = absentIds.filter(
+    id => !resolved.byId.has(id) && !resolved.failedIds.has(id),
+  );
 
   let resolvedCount = 0;
   let voidCount = 0;
@@ -315,12 +376,24 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
   let totalPayout = 0;
   let unresolvedCount = 0;
   let stillOpenCount = 0;
-  let fetchErrors = 0;
+  let appliedCount = 0;
+  let skippedDueToLimit = 0;
 
-  for (const event of toProcess) {
-      const market = await fetchMarketWithTimeout(event.polymarket_id);
+  for (const event of candidates) {
+      const market = resolved.byId.get(event.polymarket_id) ?? active.byId.get(event.polymarket_id);
+
       if (!market) {
-        fetchErrors++;
+        // Sem resposta dos dois lados: nada a concluir neste ciclo. O contador
+        // de `unknownIds` já registra; um chunk que falhou nem isso conclui.
+        continue;
+      }
+
+      // O teto só vale para quem pode gerar escrita: mercado fechado (caminho de
+      // resolução) ou prioritário (caminho do preço extremo). Mercado aberto sem
+      // posição não escreve nada e não deve contar como adiado.
+      const mayWrite = market.closed || priorityEventIds.has(event.id);
+      if (mayWrite && appliedCount >= MAX_RESOLUTIONS_PER_CYCLE) {
+        skippedDueToLimit++;
         continue;
       }
 
@@ -366,6 +439,7 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
             );
 
             resolvedCount++;
+            appliedCount++;
             totalLegsClosed += closed;
             totalPayout += payout_total;
 
@@ -378,11 +452,10 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
           }
         }
 
-        await logEvent({
-          component: 'resolved_detector',
-          status: 'partial',
-          message: `event ${event.id} (${event.title.slice(0, 60)}) sumiu do feed mas closed=false (liquidez/pausa?), ignorando`,
-        });
+        // Mercado ainda aberto — hoje isso é um fato lido da API, não uma
+        // suspeita. O log `partial` de "sumiu do feed mas closed=false" saiu
+        // junto com o pré-filtro que o produzia: era artefato do teto de offset,
+        // dezenas por ciclo, e não dizia nada sobre o mercado.
         stillOpenCount++;
         continue;
       }
@@ -393,8 +466,7 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
         continue;
       }
 
-      const umaEndDate = (market as unknown as { umaEndDate?: string }).umaEndDate
-        ?? new Date().toISOString();
+      const umaEndDate = market.umaEndDate ?? new Date().toISOString();
 
       const updateData: Record<string, unknown> = {
         status: 'resolved',
@@ -432,6 +504,7 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
       if (resolution.kind === 'void') voidCount++;
       else resolvedCount++;
 
+      appliedCount++;
       totalLegsClosed += closed;
       totalPayout += payout_total;
 
@@ -443,9 +516,47 @@ async function _detectResolvedMarkets(seenPolymarketIds: Set<string>): Promise<v
     }
 
   const durationMs = Date.now() - startedAt;
+
+  // Exigência do spec (2b/2c): ausência é ambígua entre "resolveu" e "lote
+  // truncado". Comparar o que foi mandado com o que voltou é o que separa os
+  // dois — divergência sem resolução correspondente é bug, não mercado fechando.
+  const accountedFor =
+    active.byId.size + resolved.byId.size + unknownIds.length + lookupFailedIds.size;
+  const unaccounted = idsToCheck.length - accountedFor;
+
+  const status = lookupFailedIds.size > 0 || unaccounted !== 0 || skippedDueToLimit > 0
+    ? 'partial'
+    : 'success';
+
   await logEvent({
     component: 'resolved_detector',
-    status: 'success',
-    message: `checked ${toProcess.length} events (${priorityMissing.length} priority, ${normalToProcess.length} normal): ${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ${stillOpenCount} still open, ${fetchErrors} fetch errors. ${skippedDueToLimit > 0 ? `${skippedDueToLimit} skipped (limit ${MAX_PER_CYCLE}). ` : ''}Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
+    status,
+    message:
+      `checked ${idsToCheck.length} candidates (${priorityEventIds.size} priority): ` +
+      `${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ` +
+      `${stillOpenCount} still open, ${unknownIds.length} sem resposta dos dois lotes, ` +
+      `${lookupFailedIds.size} em lote que falhou. ` +
+      `${skippedDueToLimit > 0 ? `${skippedDueToLimit} adiados (teto ${MAX_RESOLUTIONS_PER_CYCLE}/ciclo). ` : ''}` +
+      `Closed ${totalLegsClosed} legs, payout total $${totalPayout.toFixed(2)} in ${durationMs}ms`,
+    metadata: {
+      candidates: idsToCheck.length,
+      priority: priorityEventIds.size,
+      ids_sent_open: idsToCheck.length,
+      ids_returned_open: active.byId.size,
+      ids_sent_closed: absentIds.length,
+      ids_returned_closed: resolved.byId.size,
+      // != 0 é bug de contagem no lote, não mercado resolvendo.
+      unaccounted,
+      lookup_failed_ids: lookupFailedIds.size,
+      unknown_ids: unknownIds.length,
+      resolved: resolvedCount,
+      void: voidCount,
+      pending_uma: unresolvedCount,
+      still_open: stillOpenCount,
+      skipped_due_to_limit: skippedDueToLimit,
+      legs_closed: totalLegsClosed,
+      payout_total: totalPayout,
+      duration_ms: durationMs,
+    },
   });
 }

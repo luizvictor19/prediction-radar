@@ -4,6 +4,7 @@ import { collectAll } from './collectors/polymarket.js';
 import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { collectEarlyMarkets } from './collectors/early-markets-collector.js';
 import { collectDiscovery } from './collectors/discovery-collector.js';
+import { detectResolvedMarkets } from './collectors/resolved-detector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 
@@ -34,6 +35,18 @@ async function main(): Promise<void> {
 
   void collectDiscovery().catch(err =>
     console.error('[discovery] Initial run failed:', err),
+  );
+
+  // Auto-resolver: componente próprio (spec 000, item 2c). Antes rodava no fim
+  // do collectAll e recebia dele o conjunto "sumiu do feed" — quando a varredura
+  // por volume for desligada no item 4, ela levaria o auto-resolver junto.
+  // O custo agora é ~2 requisições por 100 candidatos, então 5min é folgado.
+  cron.schedule('*/5 * * * *', () => {
+    void detectResolvedMarkets().catch(err => console.error('[cron resolved]', err));
+  });
+
+  void detectResolvedMarkets().catch(err =>
+    console.error('[resolved] Initial run failed:', err),
   );
 
   // Ciclo leva ~5-7min; 15min dá folga e o lock interno previne overlap

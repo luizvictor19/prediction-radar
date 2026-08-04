@@ -4,7 +4,6 @@ import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
-import { detectResolvedMarkets } from './resolved-detector.js';
 import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
@@ -152,8 +151,6 @@ export async function collectAll(): Promise<void> {
       (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
     );
 
-    const seenPolymarketIds = new Set<string>();
-
     // A same market can surface on two pages when the volume ranking shifts
     // mid-scan. Enqueueing it twice would break the batch upsert:
     // ON CONFLICT DO UPDATE cannot touch the same row twice in one statement.
@@ -226,11 +223,6 @@ export async function collectAll(): Promise<void> {
         if (markets.length === 0) break;
 
         for (const market of markets) {
-          // Closed markets must not be marked as "seen" so the auto-resolver can pick them up
-          if (!market.closed) {
-            seenPolymarketIds.add(market.id);
-          }
-
           if (!passesBaseFilters(market)) continue;
 
           if (queuedPolymarketIds.has(market.id)) {
@@ -330,8 +322,10 @@ export async function collectAll(): Promise<void> {
       },
     });
 
-    await detectResolvedMarkets(seenPolymarketIds);
-
+    // O auto-resolver saiu daqui (spec 000, item 2c): tem cron e lock próprios
+    // em src/index.ts. Ele não dependia da varredura para ter razão, só para ser
+    // chamado e para escolher em quem gastar um GET — e as duas coisas foram
+    // substituídas por consulta direta por `id=`.
     await logCategorizerStats();
 
     console.log(`[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`);

@@ -232,6 +232,9 @@ export interface GammaMarket {
   eventMetadata?: Record<string, unknown> | null;
   sportsMarketType?: string | null;
   line?: number | null;
+  /** 'resolved' quando o oráculo UMA já fechou o mercado. */
+  umaResolutionStatus?: string;
+  umaEndDate?: string;
 }
 
 export interface ClobOrderbook {
