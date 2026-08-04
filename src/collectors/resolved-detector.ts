@@ -2,8 +2,46 @@ import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 import { adjustCash } from '../lib/bankroll.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
+import { getSystemConfig } from '../lib/config.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
+
+const CANDIDATE_FIELDS = 'id, polymarket_id, title, end_date, status';
+
+interface CandidateEvent {
+  id: string;
+  polymarket_id: string;
+  title: string;
+  end_date: string | null;
+  status: string;
+}
+
+/**
+ * O filtro `or=(slug.like.X*)` do PostgREST é uma string em que vírgula, ponto e
+ * parênteses são estrutura, não conteúdo. Um prefixo com qualquer um deles não
+ * seria escapado — mudaria o sentido do filtro em silêncio, e um filtro de
+ * resolução errado é o tipo de bug que só aparece no extrato.
+ *
+ * Prefixo de slug é `[a-z0-9_-]`. O que fugir disso é descartado com aviso.
+ */
+const SAFE_PREFIX_RE = /^[a-z0-9_-]+$/i;
+
+export function safeSlugPrefixes(prefixes: readonly string[]): string[] {
+  const safe: string[] = [];
+
+  for (const prefix of prefixes) {
+    if (prefix.length === 0) continue;
+    if (!SAFE_PREFIX_RE.test(prefix)) {
+      console.warn(
+        `[resolved_detector] prefixo ignorado por caractere inseguro no filtro: ${JSON.stringify(prefix)}`,
+      );
+      continue;
+    }
+    safe.push(prefix);
+  }
+
+  return safe;
+}
 
 type ResolutionResult =
   | { kind: 'win'; winnerOutcome: string }
@@ -287,56 +325,101 @@ async function _detectResolvedMarkets(): Promise<void> {
   const cutoff90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const cutoffFuture30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  const candidateErrors: string[] = [];
+
+  // Uma leitura só de `my_bet_legs`: a trilha prioritária quer as legs abertas,
+  // a normal quer qualquer leg (fechada inclusive — a resolução do event pode
+  // chegar depois de a posição ter sido encerrada à mão).
+  const { data: legRows, error: legsErr } = await supabase
+    .from('my_bet_legs')
+    .select('event_id, closed_at');
+
+  if (legsErr) candidateErrors.push(`my_bet_legs: ${legsErr.message}`);
+
+  const openLegEventIds = [
+    ...new Set(
+      (legRows ?? [])
+        .filter(l => l.closed_at === null)
+        .map(l => l.event_id as string | null)
+        .filter(Boolean) as string[],
+    ),
+  ];
+
+  const anyLegEventIds = [
+    ...new Set((legRows ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[]),
+  ];
+
   // Etapa 1: events com leg aberta (prioritários — sempre incluir, sem filtro de end_date)
   // Justificativa: se temos posição aberta, sempre vale checar resolução.
   // Polymarket pode retornar end_date errado (visto em market groups com
   // múltiplas sub-resoluções) e filtrar por isso esconde events que precisam
   // ser checados.
-  const { data: openLegEvents } = await supabase
-    .from('my_bet_legs')
-    .select('event_id')
-    .is('closed_at', null);
-
-  const openLegEventIds = (openLegEvents ?? [])
-    .map(l => l.event_id as string | null)
-    .filter(Boolean) as string[];
-
-  const { data: priorityCandidates } = openLegEventIds.length > 0
+  const { data: priorityCandidates, error: prioErr } = openLegEventIds.length > 0
     ? await supabase
         .from('events')
-        .select('id, polymarket_id, title, end_date, status')
+        .select(CANDIDATE_FIELDS)
         .in('id', openLegEventIds)
         .in('status', ['active', 'closed_manual'])
-    : { data: [] as { id: string; polymarket_id: string; title: string; end_date: string | null; status: string }[] };
+    : { data: [] as CandidateEvent[], error: null };
 
-  // Etapa 2: outros candidates (limit 500, ordenados por end_date asc)
+  if (prioErr) candidateErrors.push(`priority: ${prioErr.message}`);
+
   const priorityIds = new Set((priorityCandidates ?? []).map(p => p.id));
 
-  const { data: normalCandidates, error: candErr } = await supabase
-    .from('events')
-    .select('id, polymarket_id, title, end_date, status')
-    .in('status', ['active', 'closed_manual'])
-    .gte('end_date', cutoff90d)
-    .lte('end_date', cutoffFuture30d)
-    .order('end_date', { ascending: true })
-    .limit(500);
+  // Etapa 2: trilha normal.
+  //
+  // Antes era "todo event ativo com end_date na janela", limit 500 — que na
+  // prática varria 430k mercados de crypto/weather antigos que nunca tiveram
+  // aposta e nunca vão interessar. Agora são dois recortes com dono:
+  // mercado da vertical ativa, ou mercado em que houve dinheiro.
+  const prefixes = safeSlugPrefixes((await getSystemConfig()).discovery_slug_prefixes ?? []);
 
-  if (candErr) {
+  const { data: esportsCandidates, error: esportsErr } = prefixes.length > 0
+    ? await supabase
+        .from('events')
+        .select(CANDIDATE_FIELDS)
+        .in('status', ['active', 'closed_manual'])
+        .gte('end_date', cutoff90d)
+        .lte('end_date', cutoffFuture30d)
+        .or(prefixes.map(p => `slug.like.${p}*`).join(','))
+        .order('end_date', { ascending: true })
+        .limit(500)
+    : { data: [] as CandidateEvent[], error: null };
+
+  if (esportsErr) candidateErrors.push(`esports: ${esportsErr.message}`);
+
+  // Sem janela de end_date, mesma justificativa da trilha prioritária: onde
+  // houve aposta, o end_date da Polymarket não é confiável o bastante para
+  // decidir que não vale mais checar.
+  const { data: betCandidates, error: betErr } = anyLegEventIds.length > 0
+    ? await supabase
+        .from('events')
+        .select(CANDIDATE_FIELDS)
+        .in('id', anyLegEventIds)
+        .in('status', ['active', 'closed_manual'])
+    : { data: [] as CandidateEvent[], error: null };
+
+  if (betErr) candidateErrors.push(`bet: ${betErr.message}`);
+
+  // Merge sem duplicar; o prioritário manda, porque é ele que habilita o
+  // fallback por preço extremo.
+  const byId = new Map<string, CandidateEvent>();
+  for (const group of [esportsCandidates ?? [], betCandidates ?? [], priorityCandidates ?? []]) {
+    for (const event of group) byId.set(event.id, event);
+  }
+
+  const candidates = [...byId.values()];
+  const priorityEventIds = priorityIds;
+  const esportsCount = (esportsCandidates ?? []).length;
+  const betCount = (betCandidates ?? []).length;
+
+  if (candidateErrors.length > 0) {
     await logEvent({
       component: 'resolved_detector',
       status: 'error',
-      message: `query candidates failed: ${candErr.message}`,
+      message: `candidate queries failed: ${candidateErrors.join('; ')}`,
     });
-    return;
   }
-
-  // Merge: prioritários + normais (sem duplicar)
-  const candidates = [
-    ...(priorityCandidates ?? []),
-    ...(normalCandidates ?? []).filter(c => !priorityIds.has(c.id)),
-  ];
-
-  const priorityEventIds = priorityIds;
 
   if (candidates.length === 0) {
     await logEvent({
@@ -524,15 +607,17 @@ async function _detectResolvedMarkets(): Promise<void> {
     active.byId.size + resolved.byId.size + unknownIds.length + lookupFailedIds.size;
   const unaccounted = idsToCheck.length - accountedFor;
 
-  const status = lookupFailedIds.size > 0 || unaccounted !== 0 || skippedDueToLimit > 0
-    ? 'partial'
-    : 'success';
+  const status =
+    candidateErrors.length > 0 || lookupFailedIds.size > 0 || unaccounted !== 0 || skippedDueToLimit > 0
+      ? 'partial'
+      : 'success';
 
   await logEvent({
     component: 'resolved_detector',
     status,
     message:
-      `checked ${idsToCheck.length} candidates (${priorityEventIds.size} priority): ` +
+      `checked ${idsToCheck.length} candidates ` +
+      `(${priorityEventIds.size} priority, ${esportsCount} esports, ${betCount} com aposta): ` +
       `${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ` +
       `${stillOpenCount} still open, ${unknownIds.length} sem resposta dos dois lotes, ` +
       `${lookupFailedIds.size} em lote que falhou. ` +
@@ -541,6 +626,10 @@ async function _detectResolvedMarkets(): Promise<void> {
     metadata: {
       candidates: idsToCheck.length,
       priority: priorityEventIds.size,
+      candidates_esports: esportsCount,
+      candidates_with_bet: betCount,
+      slug_prefixes: prefixes,
+      candidate_errors: candidateErrors.length > 0 ? candidateErrors : null,
       ids_sent_open: idsToCheck.length,
       ids_returned_open: active.byId.size,
       ids_sent_closed: absentIds.length,
