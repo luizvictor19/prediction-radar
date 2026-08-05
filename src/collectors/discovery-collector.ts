@@ -3,8 +3,14 @@ import { fetchActiveMarkets, GammaHttpError } from '../lib/polymarket-api.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
-import { batchInsert, batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
+import { batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
+import {
+  gammaLiquidity,
+  gammaVolume24h,
+  writeEsportsSnapshots,
+  type EsportsSnapshotRow,
+} from '../lib/esports-snapshots.js';
 import type { GammaMarket } from '../types/index.js';
 
 /**
@@ -104,7 +110,13 @@ interface PreparedMarket {
   polymarketId: string;
   event: Record<string, unknown>;
   /** Ausente enquanto o market não tem os dois lados do book — o normal ao nascer. */
-  quote: { outcomes: [string, string]; bestBid: number; bestAsk: number; spread: number | null; volume24h: number } | null;
+  quote: {
+    outcomes: [string, string];
+    bestBid: number;
+    bestAsk: number;
+    volume24h: number | null;
+    liquidity: number | null;
+  } | null;
 }
 
 function prepareMarket(market: GammaMarket): PreparedMarket | null {
@@ -131,8 +143,10 @@ function prepareMarket(market: GammaMarket): PreparedMarket | null {
             outcomes: [primary, secondary] as [string, string],
             bestBid,
             bestAsk,
-            spread: market.spread ?? null,
-            volume24h: Number(market.volume24hr ?? market.volume24hrClob ?? 0),
+            volume24h: gammaVolume24h(market),
+            // O primeiro ponto da curva de liquidez: é aqui que o market nasce,
+            // com os ~US$ 17 que a varredura por volume nunca chegou a ver.
+            liquidity: gammaLiquidity(market),
           }
         : null;
 
@@ -143,8 +157,17 @@ function prepareMarket(market: GammaMarket): PreparedMarket | null {
   }
 }
 
-function buildSnapshotPair(eventId: string, quote: NonNullable<PreparedMarket['quote']>): Record<string, unknown>[] {
-  const { outcomes, bestBid, bestAsk, spread, volume24h } = quote;
+/**
+ * `capturedAt` explícito em vez do default do banco: em tabela particionada é o
+ * valor da linha que escolhe a partição, e deixá-lo a cargo do servidor é abrir
+ * mão de saber em qual dia a linha caiu.
+ */
+function buildSnapshotPair(
+  eventId: string,
+  quote: NonNullable<PreparedMarket['quote']>,
+  capturedAt: string,
+): EsportsSnapshotRow[] {
+  const { outcomes, bestBid, bestAsk, volume24h, liquidity } = quote;
   const mid = (bestBid + bestAsk) / 2;
 
   return [
@@ -154,8 +177,9 @@ function buildSnapshotPair(eventId: string, quote: NonNullable<PreparedMarket['q
       best_bid: bestBid,
       best_ask: bestAsk,
       mid_price: mid,
-      spread,
       volume_24h: volume24h,
+      liquidity,
+      captured_at: capturedAt,
     },
     {
       event_id: eventId,
@@ -163,8 +187,9 @@ function buildSnapshotPair(eventId: string, quote: NonNullable<PreparedMarket['q
       best_bid: 1 - bestAsk,
       best_ask: 1 - bestBid,
       mid_price: 1 - mid,
-      spread,
       volume_24h: volume24h,
+      liquidity,
+      captured_at: capturedAt,
     },
   ];
 }
@@ -328,6 +353,9 @@ async function _collect(): Promise<void> {
   const seenIds = new Set<string>();
   const newPolymarketIds = new Set<string>();
   const candidates: GammaMarket[] = [];
+  // O instante da resposta da página em que o market apareceu. Um timestamp
+  // único no fim do ciclo empilharia até 20 páginas no mesmo ponto da série.
+  const capturedAtById = new Map<string, string>();
 
   while (pageCount < MAX_PAGES) {
     let page: GammaMarket[];
@@ -352,6 +380,7 @@ async function _collect(): Promise<void> {
     }
 
     pageCount++;
+    const pageCapturedAt = new Date().toISOString();
     if (page.length === 0) {
       stopReason = 'empty_page';
       break;
@@ -388,6 +417,7 @@ async function _collect(): Promise<void> {
       // cada market criado. Sem isso, o upsert recebe a mesma linha duas vezes.
       if (seenIds.has(market.id)) continue;
       seenIds.add(market.id);
+      capturedAtById.set(market.id, pageCapturedAt);
 
       if (known.has(market.id)) {
         candidatesKnown++;
@@ -447,15 +477,18 @@ async function _collect(): Promise<void> {
 
   const eventIdByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row.id]));
 
-  const snapshotRows: Record<string, unknown>[] = [];
+  const snapshotRows: EsportsSnapshotRow[] = [];
   for (const p of prepared) {
     const eventId = eventIdByPolymarketId.get(p.polymarketId);
     // Ausente significa que o chunk do event falhou — sem id para pendurar o snapshot.
     if (!eventId || !p.quote) continue;
-    snapshotRows.push(...buildSnapshotPair(eventId, p.quote));
+    const capturedAt = capturedAtById.get(p.polymarketId) ?? new Date().toISOString();
+    snapshotRows.push(...buildSnapshotPair(eventId, p.quote, capturedAt));
   }
 
-  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'discovery' });
+  // Item 3: a série de esports vive em `esports_snapshots`, particionada por dia.
+  // O primeiro ponto dela é este — o market no minuto em que nasceu.
+  const snapResult = await writeEsportsSnapshots(snapshotRows, 'discovery');
   writeErrors.push(...snapResult.errors);
 
   // A marca não avança quando a paginação morreu no meio: o trecho que ficou
@@ -500,6 +533,8 @@ async function _collect(): Promise<void> {
       upserted_events: eventsResult.rows.length,
       failed_event_rows: eventsResult.failedRows,
       snapshots: snapResult.written,
+      // 'polymarket_snapshots' = migration 20260805142957 ainda não aplicada.
+      snapshot_table: snapResult.table,
       duration_ms: durationMs,
       write_errors: writeErrors.length > 0 ? writeErrors.slice(0, 10) : null,
     },

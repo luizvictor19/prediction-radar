@@ -20,6 +20,10 @@ const DEFAULTS: SystemConfig = {
   inter_market_min_members: 3,
   inter_market_min_total_volume_24h: 10000,
   snapshot_retention_days: 1,
+  // Espelha o default da migration 20260805_esports_snapshots. Vale enquanto a
+  // coluna não existir: o job de partição não pode cair no `undefined` e dropar
+  // com a retenção errada.
+  esports_snapshot_retention_days: 3650,
   system_logs_retention_days: 30,
   min_expected_edge_pct: 1.5,
   notify_min_edge_pct: 2.5,

@@ -89,6 +89,11 @@ export interface SystemConfig {
   inter_market_min_members: number;
   inter_market_min_total_volume_24h: number;
   snapshot_retention_days: number;
+  /**
+   * Janela de `esports_snapshots` (spec 000, item 3). Longa de propósito: é a
+   * matéria-prima do backtest. O piso de 30 dias é aplicado no banco.
+   */
+  esports_snapshot_retention_days: number;
   system_logs_retention_days: number;
   min_expected_edge_pct: number;
   notify_min_edge_pct: number;

@@ -78,7 +78,7 @@ test('watchlist vazia não inventa divergência', () => {
 });
 
 test('snapshot do par binário deriva o segundo outcome do primeiro', () => {
-  const rows = buildSnapshotRows('ev1', market(), '2026-08-04T18:00:00.000Z');
+  const rows = buildSnapshotRows('ev1', market({ liquidityNum: 17.4 }), '2026-08-04T18:00:00.000Z');
   assert.equal(rows.length, 2);
   assert.deepEqual(rows[0], {
     event_id: 'ev1',
@@ -86,8 +86,8 @@ test('snapshot do par binário deriva o segundo outcome do primeiro', () => {
     best_bid: 0.4,
     best_ask: 0.6,
     mid_price: 0.5,
-    spread: 0.2,
     volume_24h: null,
+    liquidity: 17.4,
     captured_at: '2026-08-04T18:00:00.000Z',
   });
   assert.deepEqual(rows[1], {
@@ -96,10 +96,18 @@ test('snapshot do par binário deriva o segundo outcome do primeiro', () => {
     best_bid: 0.4,
     best_ask: 0.6,
     mid_price: 0.5,
-    spread: 0.2,
     volume_24h: null,
+    liquidity: 17.4,
     captured_at: '2026-08-04T18:00:00.000Z',
   });
+});
+
+test('liquidez ausente é null, não 0 — 0 é um fato sobre o book', () => {
+  const rows = buildSnapshotRows('ev1', market(), '2026-08-04T18:00:00.000Z');
+  assert.equal(rows[0]?.liquidity, null);
+
+  const zero = buildSnapshotRows('ev1', market({ liquidityNum: 0 }), '2026-08-04T18:00:00.000Z');
+  assert.equal(zero[0]?.liquidity, 0);
 });
 
 test('grava com um lado só do book', () => {

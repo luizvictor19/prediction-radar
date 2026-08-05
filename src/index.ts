@@ -8,6 +8,7 @@ import { collectWatchlist } from './collectors/watchlist-collector.js';
 import { detectResolvedMarkets } from './collectors/resolved-detector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
+import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
@@ -76,6 +77,21 @@ async function main(): Promise<void> {
   cron.schedule('*/10 * * * *', () => {
     void collectEarlyMarkets().catch(err => console.error('[cron early-markets]', err));
   });
+
+  // Partições de `esports_snapshots` (spec 000, item 3): cria as dos próximos
+  // dias e dropa as vencidas. Roda antes da retenção porque são coisas opostas —
+  // a retenção deleta linha de `polymarket_snapshots` (e é o DELETE em ciclo que
+  // inflou um índice para 1492 MB); aqui a limpeza é DROP PARTITION.
+  //
+  // Diário basta: a folga de criação é de 2 dias à frente. A execução no start
+  // garante que um deploy no horário do cron não deixe o dia sem partição.
+  cron.schedule('30 2 * * *', () => {
+    void runEsportsPartitionJob().catch(err => console.error('[cron esports_partitions]', err));
+  });
+
+  void runEsportsPartitionJob().catch(err =>
+    console.error('[esports_partitions] Initial run failed:', err),
+  );
 
   cron.schedule('0 3 * * *', () => {
     void runRetentionJob().catch(err => console.error('[cron retention]', err));

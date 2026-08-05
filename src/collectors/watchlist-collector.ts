@@ -1,10 +1,15 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
-import { batchInsert } from '../lib/batch-write.js';
 import { getSystemConfig } from '../lib/config.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
 import { safeSlugPrefixes, slugPrefixFilter } from '../lib/slug-prefixes.js';
+import {
+  gammaLiquidity,
+  gammaVolume24h,
+  writeEsportsSnapshots,
+  type EsportsSnapshotRow,
+} from '../lib/esports-snapshots.js';
 import type { GammaMarket } from '../types/index.js';
 
 /**
@@ -20,9 +25,12 @@ import type { GammaMarket } from '../types/index.js';
  * Aqui a pergunta é direta, por `id=`, sobre exatamente os markets da
  * watchlist. Sem offset, sem teto, 1 requisição por 100 markets.
  *
+ * A série vai para `esports_snapshots` (item 3): tabela estreita e particionada
+ * por dia, para que a limpeza seja DROP PARTITION. Este coletor sozinho grava
+ * ~650k linhas/dia, e é o volume que torna DELETE em ciclo insustentável.
+ *
  * Escopo deliberadamente fora daqui:
  * - Cadência por estado da partida é o item 7. Aqui é intervalo fixo.
- * - `esports_snapshots` é o item 6. Aqui grava em `polymarket_snapshots`.
  * - Resolução é do `resolved-detector` (item 2c). Market fechado aqui só é
  *   contado e ignorado — este coletor não escreve em `events`.
  */
@@ -160,7 +168,7 @@ export function buildSnapshotRows(
   eventId: string,
   market: GammaMarket,
   capturedAt: string,
-): Record<string, unknown>[] {
+): EsportsSnapshotRow[] {
   let outcomes: string[];
   try {
     outcomes = JSON.parse(market.outcomes) as string[];
@@ -177,8 +185,10 @@ export function buildSnapshotRows(
   if (bid == null && ask == null) return [];
 
   const mid = bid != null && ask != null ? (bid + ask) / 2 : null;
-  const spread = market.spread ?? null;
-  const volume24h = market.volume24hr ?? market.volume24hrClob ?? null;
+  const volume24h = gammaVolume24h(market);
+  // A curva de liquidez do market recém-nascido (~US$ 17 na medição do item 2a)
+  // é parte do que a série de esports existe para registrar.
+  const liquidity = gammaLiquidity(market);
 
   return [
     {
@@ -187,8 +197,8 @@ export function buildSnapshotRows(
       best_bid: bid,
       best_ask: ask,
       mid_price: mid,
-      spread,
       volume_24h: volume24h,
+      liquidity,
       captured_at: capturedAt,
     },
     {
@@ -197,8 +207,8 @@ export function buildSnapshotRows(
       best_bid: ask != null ? 1 - ask : null,
       best_ask: bid != null ? 1 - bid : null,
       mid_price: mid != null ? 1 - mid : null,
-      spread,
       volume_24h: volume24h,
+      liquidity,
       captured_at: capturedAt,
     },
   ];
@@ -321,7 +331,7 @@ async function _collect(): Promise<void> {
   const eventIdByPolymarketId = new Map(watchlist.map(e => [e.polymarket_id, e.id]));
   const idsToCheck = [...eventIdByPolymarketId.keys()];
 
-  const snapshotRows: Record<string, unknown>[] = [];
+  const snapshotRows: EsportsSnapshotRow[] = [];
   let malformed = 0;
   let closedInOpenBatch = 0;
 
@@ -358,7 +368,7 @@ async function _collect(): Promise<void> {
   const reconciled = reconcile(idsToCheck, open, closed);
   const divergences = [...open.divergences, ...closed.divergences];
 
-  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'watchlist' });
+  const snapResult = await writeEsportsSnapshots(snapshotRows, 'watchlist');
 
   const durationMs = Date.now() - startedAt;
   const requests =
@@ -412,6 +422,8 @@ async function _collect(): Promise<void> {
       closed_in_open_batch: closedInOpenBatch,
       malformed_outcomes: malformed,
       snapshots: snapResult.written,
+      // 'polymarket_snapshots' = migration 20260805142957 ainda não aplicada.
+      snapshot_table: snapResult.table,
       failed_snapshot_rows: snapResult.failedRows,
       duration_ms: durationMs,
       write_errors: snapResult.errors.length > 0 ? snapResult.errors.slice(0, 10) : null,
