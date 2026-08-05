@@ -4,6 +4,7 @@ import { adjustCash } from '../lib/bankroll.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
 import { getSystemConfig } from '../lib/config.js';
 import { CycleLock } from '../lib/cycle-lock.js';
+import { safeSlugPrefixes, slugPrefixFilter } from '../lib/slug-prefixes.js';
 import type { GammaMarket } from '../types/index.js';
 
 const CANDIDATE_FIELDS = 'id, polymarket_id, title, end_date, status';
@@ -16,32 +17,10 @@ interface CandidateEvent {
   status: string;
 }
 
-/**
- * O filtro `or=(slug.like.X*)` do PostgREST é uma string em que vírgula, ponto e
- * parênteses são estrutura, não conteúdo. Um prefixo com qualquer um deles não
- * seria escapado — mudaria o sentido do filtro em silêncio, e um filtro de
- * resolução errado é o tipo de bug que só aparece no extrato.
- *
- * Prefixo de slug é `[a-z0-9_-]`. O que fugir disso é descartado com aviso.
- */
-const SAFE_PREFIX_RE = /^[a-z0-9_-]+$/i;
-
-export function safeSlugPrefixes(prefixes: readonly string[]): string[] {
-  const safe: string[] = [];
-
-  for (const prefix of prefixes) {
-    if (prefix.length === 0) continue;
-    if (!SAFE_PREFIX_RE.test(prefix)) {
-      console.warn(
-        `[resolved_detector] prefixo ignorado por caractere inseguro no filtro: ${JSON.stringify(prefix)}`,
-      );
-      continue;
-    }
-    safe.push(prefix);
-  }
-
-  return safe;
-}
+// O guard do filtro `or=` mora na lib desde que o watchlist-collector passou a
+// montar o mesmo recorte por prefixo. Reexportado porque é a superfície que os
+// testes deste componente já usavam.
+export { safeSlugPrefixes };
 
 type ResolutionResult =
   | { kind: 'win'; winnerOutcome: string }
@@ -372,7 +351,10 @@ async function _detectResolvedMarkets(): Promise<void> {
   // prática varria 430k mercados de crypto/weather antigos que nunca tiveram
   // aposta e nunca vão interessar. Agora são dois recortes com dono:
   // mercado da vertical ativa, ou mercado em que houve dinheiro.
-  const prefixes = safeSlugPrefixes((await getSystemConfig()).discovery_slug_prefixes ?? []);
+  const prefixes = safeSlugPrefixes(
+    (await getSystemConfig()).discovery_slug_prefixes ?? [],
+    'resolved_detector',
+  );
 
   const { data: esportsCandidates, error: esportsErr } = prefixes.length > 0
     ? await supabase
@@ -381,7 +363,7 @@ async function _detectResolvedMarkets(): Promise<void> {
         .in('status', ['active', 'closed_manual'])
         .gte('end_date', cutoff90d)
         .lte('end_date', cutoffFuture30d)
-        .or(prefixes.map(p => `slug.like.${p}*`).join(','))
+        .or(slugPrefixFilter(prefixes))
         .order('end_date', { ascending: true })
         .limit(500)
     : { data: [] as CandidateEvent[], error: null };

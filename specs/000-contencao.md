@@ -382,7 +382,7 @@ o que teria valor. **O histórico útil começa no deploy deste item.**
 | 0 | Teto de offset não mata o ciclo | — | ✅ feito — `partial`, zero `error` |
 | 1 | Batch nos inserts | — | ✅ feito — 626 events / 1252 snaps em ~6s |
 | 2a | Descoberta por `startDate` | 0 | ✅ feito — validado abaixo |
-| 2c | Auto-resolver autônomo | 2a | roda com cron e lock próprios, sem `seenPolymarketIds` |
+| 2c | Auto-resolver autônomo | 2a | ✅ feito — cron `*/5`, `CycleLock` próprio, lote por `id=` |
 | 2b | Watchlist com refresh por `id=` | 2c | contagem enviada == recebida, `closed=true` no 2º passo |
 | 4 | Desligar a varredura por volume | 2b, 2c | via `system_config`, sem apagar código |
 | 5 | Poda do histórico (H2) | 4 | `events` abaixo de 100 MB |

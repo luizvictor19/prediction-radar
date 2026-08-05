@@ -4,6 +4,7 @@ import { collectAll } from './collectors/polymarket.js';
 import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { collectEarlyMarkets } from './collectors/early-markets-collector.js';
 import { collectDiscovery } from './collectors/discovery-collector.js';
+import { collectWatchlist } from './collectors/watchlist-collector.js';
 import { detectResolvedMarkets } from './collectors/resolved-detector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
@@ -35,6 +36,21 @@ async function main(): Promise<void> {
 
   void collectDiscovery().catch(err =>
     console.error('[discovery] Initial run failed:', err),
+  );
+
+  // Refresh da watchlist de esports (spec 000, item 2b). Fecha a lacuna que a
+  // descoberta abriu: o market de esports nasce com volume 0, não entra na
+  // varredura por volume nem tem aposta aberta — descoberto no minuto em que
+  // nasce e, sem isto, sem nenhuma leitura de preço depois.
+  //
+  // 3min é a granularidade atual dos snapshots. Cadência por estado da partida
+  // (5min / 1min / 10-15s ao vivo) é o item 7, não este.
+  cron.schedule('*/3 * * * *', () => {
+    void collectWatchlist().catch(err => console.error('[cron watchlist]', err));
+  });
+
+  void collectWatchlist().catch(err =>
+    console.error('[watchlist] Initial run failed:', err),
   );
 
   // Auto-resolver: componente próprio (spec 000, item 2c). Antes rodava no fim
