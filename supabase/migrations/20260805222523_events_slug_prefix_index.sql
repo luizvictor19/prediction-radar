@@ -1,0 +1,34 @@
+-- Índice de prefixo de slug em `events`.
+--
+-- Serve o recorte por vertical que a watchlist (spec 000, item 2b) e o
+-- auto-resolver (2c) montam: `slugPrefixFilter` produz `or=(slug.like.cs2-*)`,
+-- que o PostgREST traduz para `slug LIKE 'cs2-%'`. `text_pattern_ops` é o que
+-- torna esse LIKE de prefixo indexável fora da collation C — com o opclass
+-- default o planner não usa índice nenhum aqui.
+--
+-- JÁ APLICADO À MÃO, com CONCURRENTLY. Este arquivo existe para o versionamento
+-- não divergir do banco, não para aplicar coisa nova.
+--
+-- Por que aqui está sem CONCURRENTLY: o `supabase db push` executa as migrations
+-- pendentes dentro de uma transação, e `CREATE INDEX CONCURRENTLY` não roda em
+-- bloco de transação (SQLSTATE 25001) — a migration falharia inteira. As duas
+-- formas produzem o mesmo índice; a diferença é só o lock durante a construção,
+-- e o caso em que ela importava (tabela em produção, 711 MB, com escrita ativa)
+-- foi resolvido à mão e não se repete aqui:
+--
+--   - neste banco, `if not exists` encontra o índice já criado e não faz nada;
+--   - num banco reconstruído do zero pelas migrations, `events` está vazia e o
+--     lock de escrita da construção não custa nada.
+--
+-- Se um dia for preciso criar este índice em outra base já populada e em uso,
+-- o caminho continua sendo rodar o CONCURRENTLY à mão, fora do `db push`.
+--
+-- Cuidado ao conferir: `if not exists` casa por NOME, não por definição. Se o
+-- índice aplicado à mão divergir do que está escrito aqui, esta migration passa
+-- em silêncio e a divergência permanece. Para confirmar que são o mesmo:
+--
+--   select indexdef from pg_indexes where indexname = 'idx_events_slug_prefix';
+--
+-- e comparar com a definição abaixo.
+create index if not exists idx_events_slug_prefix
+  on public.events (slug text_pattern_ops);

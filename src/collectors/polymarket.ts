@@ -3,7 +3,7 @@ import { fetchActiveMarkets, GammaHttpError } from '../lib/polymarket-api.js';
 import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
-import { logEvent } from '../lib/logger.js';
+import { logEvent, logDisabled } from '../lib/logger.js';
 import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
@@ -80,6 +80,25 @@ function passesBaseFilters(market: GammaMarket): boolean {
 const cycleLock = new CycleLock();
 
 export async function collectAll(): Promise<void> {
+  const config = await getSystemConfig();
+
+  // Spec 000, item 4. Antes do lock de propósito: desligado não é um ciclo que
+  // não fez nada, é um ciclo que não existiu — não toma lock nem conta como
+  // execução. O código inteiro abaixo continua de pé, e um UPDATE em
+  // `system_config` o traz de volta sem deploy.
+  //
+  // O que substituiu a varredura: descoberta por `startDate` (item 2a) para
+  // achar o market no minuto em que nasce, e watchlist por `id=` (item 2b) para
+  // acompanhar o preço depois. Nenhum dos dois pagina por ranking de volume, que
+  // é onde o teto de offset 2000 da Gamma escondia todo o esports.
+  if (!config.volume_scan_enabled) {
+    await logDisabled(
+      'collector',
+      'Varredura por volume desligada (system_config.volume_scan_enabled = false, spec 000 item 4)',
+    );
+    return;
+  }
+
   const lockToken = cycleLock.tryAcquire();
 
   if (!lockToken) {
@@ -128,7 +147,6 @@ export async function collectAll(): Promise<void> {
   let paginationTruncated: string | null = null;
 
   try {
-    const config = await getSystemConfig();
     const minVolume24h = config.collector_min_volume_24h ?? 10000;
     const minLiquidity = config.collector_min_liquidity ?? 20000;
     const excludedCategories = config.excluded_categories ?? [];

@@ -31,6 +31,12 @@ const DEFAULTS: SystemConfig = {
   excluded_categories: [],
   collector_min_volume_24h: 10000,
   collector_min_liquidity: 20000,
+  // Spec 000, item 4. `false` no fallback é deliberado nos dois sentidos: vale
+  // enquanto a coluna não existir (o desligamento não fica esperando o apply) e
+  // vale quando a leitura da config falha — numa queda do banco o sistema volta
+  // ao estado pretendido, não ao anterior.
+  volume_scan_enabled: false,
+  early_markets_enabled: false,
   // Fallback dos prefixos da descoberta: a coluna só existe depois da migration
   // 20260804163956_discovery_config. Sem isso o coletor não sobe antes dela.
   discovery_slug_prefixes: ['cs2-', 'lol-', 'dota2-'],

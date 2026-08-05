@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
-import { logEvent } from '../lib/logger.js';
+import { logEvent, logDisabled } from '../lib/logger.js';
+import { getSystemConfig } from '../lib/config.js';
 import { batchInsert, batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
@@ -12,6 +13,23 @@ const NEW_MARKET_WINDOW_HOURS = 24;
 const cycleLock = new CycleLock();
 
 export async function collectEarlyMarkets(): Promise<void> {
+  // Spec 000, item 4. Este coletor nunca alcançou a própria janela: pagina
+  // `order=startDate` atrás de 24h de markets novos, e o teto de offset 2000 da
+  // Gamma cobre ~36 min — todo ciclo terminava em `pagination_failed`. Os ~36 min
+  // que ele de fato cobria são os mesmos da descoberta (item 2a), que roda a cada
+  // 3 min e sem o piso de liquidez de US$ 500 que aqui exclui, por construção, o
+  // mercado de esports recém-nascido (~US$ 17).
+  //
+  // Código mantido: a janela de 24h volta a fazer sentido se a Gamma um dia
+  // afrouxar o teto de offset.
+  if (!(await getSystemConfig()).early_markets_enabled) {
+    await logDisabled(
+      'early_markets_collector',
+      'Early-markets desligado (system_config.early_markets_enabled = false, spec 000 item 4)',
+    );
+    return;
+  }
+
   const lockToken = cycleLock.tryAcquire();
 
   if (!lockToken) {

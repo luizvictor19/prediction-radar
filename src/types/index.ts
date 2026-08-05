@@ -101,6 +101,14 @@ export interface SystemConfig {
   excluded_categories: string[];
   collector_min_volume_24h: number;
   collector_min_liquidity: number;
+  /**
+   * Varredura por volume (`collectAll`). Desligada na spec 000, item 4 —
+   * descoberta (2a) e watchlist (2b) cobrem esports, e o que ela ainda trazia
+   * era crypto/weather. O código fica; religar é um UPDATE.
+   */
+  volume_scan_enabled: boolean;
+  /** Early-markets. Desligado pelo mesmo item 4: ver a migration para o porquê. */
+  early_markets_enabled: boolean;
   /** Prefixos de slug que a descoberta (spec 000, item 2a) persiste. */
   discovery_slug_prefixes: string[];
   discovery_lookback_minutes: number;
