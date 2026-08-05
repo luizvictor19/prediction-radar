@@ -37,6 +37,7 @@ const DEFAULTS: SystemConfig = {
   // ao estado pretendido, não ao anterior.
   volume_scan_enabled: false,
   early_markets_enabled: false,
+  generic_detectors_enabled: false,
   // Fallback dos prefixos da descoberta: a coluna só existe depois da migration
   // 20260804163956_discovery_config. Sem isso o coletor não sobe antes dela.
   discovery_slug_prefixes: ['cs2-', 'lol-', 'dota2-'],

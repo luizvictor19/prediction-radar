@@ -58,6 +58,13 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
   let highConfidence = 0;
   let deduped = 0;
 
+  // Contagem e amostra em vez de uma linha por evento: log dentro de loop é o
+  // que levou `system_logs` a 2,7M linhas e fez o `retention_job` estourar.
+  const SAMPLE_LIMIT = 5;
+  const parseErrors: string[] = [];
+  const mismatchErrors: string[] = [];
+  const dedupQueryErrors: string[] = [];
+
   // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
   const pendingSignals: Record<string, unknown>[] = [];
 
@@ -73,23 +80,13 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
       });
     } catch (parseErr) {
       const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      await logEvent({
-        component: 'cross_market_detector',
-        status: 'error',
-        message: `Skipping event ${event.id} — price parse error: ${msg}`,
-        metadata: { event_id: event.id, title: event.title },
-      });
+      parseErrors.push(`${event.id}: ${msg}`);
       total--;
       continue;
     }
 
     if (prices.length !== outcomes.values.length || prices.length === 0) {
-      await logEvent({
-        component: 'cross_market_detector',
-        status: 'error',
-        message: `Skipping event ${event.id} — outcomes/prices length mismatch`,
-        metadata: { event_id: event.id, values_len: outcomes.values.length, prices_len: prices.length },
-      });
+      mismatchErrors.push(`${event.id}: ${outcomes.values.length} outcomes / ${prices.length} prices`);
       total--;
       continue;
     }
@@ -135,12 +132,7 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
       .maybeSingle();
 
     if (dedupError) {
-      await logEvent({
-        component: 'cross_market_detector',
-        status: 'error',
-        message: `Dedup query failed for event ${event.id}: ${dedupError.message}`,
-        metadata: { event_id: event.id, error: dedupError.message },
-      });
+      dedupQueryErrors.push(`${event.id}: ${dedupError.message}`);
       continue;
     }
 
@@ -193,15 +185,29 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
     label: 'cross_market_detector',
   });
 
+  const malformed = parseErrors.length + mismatchErrors.length;
+  const queryErrors = dedupQueryErrors.length;
+
   await logEvent({
     component: 'cross_market_detector',
-    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
-    message: `Evaluated ${total} events, ${flagged} flagged, ${highConfidence} high-confidence, ${deduped} deduped`,
+    status: signalsResult.errors.length > 0 || malformed > 0 || queryErrors > 0 ? 'partial' : 'success',
+    message:
+      `Evaluated ${total} events, ${flagged} flagged, ${highConfidence} high-confidence, ${deduped} deduped` +
+      `${malformed > 0 ? `, ${malformed} skipped_malformed` : ''}` +
+      `${queryErrors > 0 ? `, ${queryErrors} query_errors` : ''}`,
     metadata: {
       total,
       flagged,
       high_confidence: highConfidence,
       deduped,
+      skipped_price_parse: parseErrors.length,
+      skipped_length_mismatch: mismatchErrors.length,
+      dedup_query_errors: queryErrors,
+      // Amostras: os contadores acima dão o tamanho, estas dão por onde começar.
+      malformed_sample: malformed > 0
+        ? [...parseErrors, ...mismatchErrors].slice(0, SAMPLE_LIMIT)
+        : null,
+      query_error_sample: queryErrors > 0 ? dedupQueryErrors.slice(0, SAMPLE_LIMIT) : null,
       signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
       write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,

@@ -109,6 +109,12 @@ export interface SystemConfig {
   volume_scan_enabled: boolean;
   /** Early-markets. Desligado pelo mesmo item 4: ver a migration para o porquê. */
   early_markets_enabled: boolean;
+  /**
+   * Os cinco detectores genéricos. Desligados junto com a varredura: leem
+   * `polymarket_snapshots`, que parou de receber dado novo fora de esports.
+   * Não afeta `cleanup_stale_signals`.
+   */
+  generic_detectors_enabled: boolean;
   /** Prefixos de slug que a descoberta (spec 000, item 2a) persiste. */
   discovery_slug_prefixes: string[];
   discovery_lookback_minutes: number;

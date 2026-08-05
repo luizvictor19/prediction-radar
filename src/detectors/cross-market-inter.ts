@@ -131,7 +131,30 @@ export async function runCrossMarketInterDetector(): Promise<void> {
   let flaggedCount = 0;
   let highConfidenceCount = 0;
   let dedupedCount = 0;
+  let membersWithoutYesPrice = 0;
+  let groupsWithDroppedMembers = 0;
+  let membersDroppedLowPrice = 0;
+  let highEdgeGroups = 0;
   const byCategoryCount: Record<string, number> = {};
+
+  /**
+   * Contagem e amostra por ciclo, nunca uma linha por grupo.
+   *
+   * O pior caso aqui não era nem o erro: era o log `partial` de "Group X passed
+   * coverage", emitido para todo grupo avaliado em todo ciclo. Log de sucesso
+   * dentro de loop é o mesmo padrão que levou `system_logs` a 2,7M linhas — o
+   * número de grupos que passou já está em `groups_evaluated`.
+   */
+  const SAMPLE_LIMIT = 5;
+  const noYesPriceSample: string[] = [];
+  const lowCoverageSample: string[] = [];
+  const lowSumSample: string[] = [];
+  const highEdgeSample: string[] = [];
+  const dedupQueryErrors: string[] = [];
+
+  const sample = (into: string[], value: string): void => {
+    if (into.length < SAMPLE_LIMIT) into.push(value);
+  };
 
   // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
   const pendingSignals: Record<string, unknown>[] = [];
@@ -184,12 +207,8 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     for (const event of members) {
       const yesPrice = extractYesPrice(event.outcomes);
       if (yesPrice === null) {
-        await logEvent({
-          component: 'cross_market_inter_detector',
-          status: 'error',
-          message: `Member ${event.id} has no valid Yes price — skipping member`,
-          metadata: { event_id: event.id, title: event.title, neg_risk_market_id: negRiskMarketId },
-        });
+        membersWithoutYesPrice++;
+        sample(noYesPriceSample, `${event.id} (grupo ${negRiskMarketId})`);
         continue;
       }
       validMembers.push({ event, yesPrice });
@@ -199,12 +218,8 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const eligibleMembers = validMembers.filter(m => m.yesPrice >= MIN_YES_PRICE_PER_MEMBER);
 
     if (validMembers.length > eligibleMembers.length) {
-      const dropped = validMembers.length - eligibleMembers.length;
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'partial',
-        message: `Group ${negRiskMarketId} dropped ${dropped} member(s) with yes_price < 0.05`,
-      });
+      groupsWithDroppedMembers++;
+      membersDroppedLowPrice += validMembers.length - eligibleMembers.length;
     }
 
     if (eligibleMembers.length < minMembers) {
@@ -232,30 +247,17 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const totalGroupSize = groupTotalMap.get(negRiskMarketId) ?? 0;
     const coverageRatio = totalGroupSize > 0 ? eligibleMembers.length / totalGroupSize : 0;
     if (coverageRatio < 0.95) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'partial',
-        message: `Group ${negRiskMarketId} skipped: incomplete coverage ${eligibleMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
-        metadata: {
-          neg_risk_market_id: negRiskMarketId,
-          coverage_ratio: coverageRatio,
-          category: groupCategory ?? 'unknown',
-        },
-      });
       groupsSkippedLowCoverage++;
+      sample(
+        lowCoverageSample,
+        `${negRiskMarketId}: ${eligibleMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
+      );
       continue;
     }
 
-    await logEvent({
-      component: 'cross_market_inter_detector',
-      status: 'partial',
-      message: `Group ${negRiskMarketId} passed coverage: ${eligibleMembers.length}/${totalGroupSize} (${(coverageRatio * 100).toFixed(1)}%)`,
-      metadata: {
-        neg_risk_market_id: negRiskMarketId,
-        coverage_ratio: coverageRatio,
-        category: groupCategory ?? 'unknown',
-      },
-    });
+    // O "passed coverage" que existia aqui saiu: era uma linha `partial` por
+    // grupo aprovado, em todo ciclo, dizendo que nada de errado aconteceu.
+    // Quantos passaram é `groups_evaluated`, logo abaixo.
 
     const feeRate = getFeeRate(groupCategory, directFeeRate);
     const yesPrices = eligibleMembers.map((m) => m.yesPrice);
@@ -267,19 +269,8 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       : estimateBuyYesBasketFeeCost(feeRate, yesPrices);
 
     if (direction === 'under' && priceSum < 0.7) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'partial',
-        message: `Group ${negRiskMarketId} skipped: 'under' with price_sum ${priceSum.toFixed(3)} < 0.7 (likely incomplete group / closed members)`,
-        metadata: {
-          neg_risk_market_id: negRiskMarketId,
-          price_sum: priceSum,
-          direction,
-          group_size: eligibleMembers.length,
-          category: groupCategory ?? 'unknown',
-        },
-      });
       groupsSkippedLowSum++;
+      sample(lowSumSample, `${negRiskMarketId}: sum ${priceSum.toFixed(3)}, ${eligibleMembers.length} membros`);
       continue;
     }
 
@@ -287,21 +278,14 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const catKey = groupCategory ?? 'unknown';
     byCategoryCount[catKey] = (byCategoryCount[catKey] ?? 0) + 1;
 
-    // Temporary: warn on suspiciously high edge so early runs can be inspected manually
+    // Edge alto continua merecendo olho — mas como amostra no log do ciclo, não
+    // como linha por grupo. Acima de 5% costuma ser grupo incompleto, não dinheiro.
     if (expectedEdgePct > 5) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'partial',
-        message: `High-edge signal ${negRiskMarketId}: ${expectedEdgePct.toFixed(2)}% — manual inspection recommended`,
-        metadata: {
-          neg_risk_market_id: negRiskMarketId,
-          edge_pct: expectedEdgePct,
-          direction,
-          price_sum: priceSum,
-          coverage_ratio: coverageRatio,
-          category: groupCategory ?? 'unknown',
-        },
-      });
+      highEdgeGroups++;
+      sample(
+        highEdgeSample,
+        `${negRiskMarketId}: ${expectedEdgePct.toFixed(2)}% ${direction}, sum ${priceSum.toFixed(3)}, cobertura ${(coverageRatio * 100).toFixed(0)}%`,
+      );
     }
 
     // Skip entirely if edge too low to even log
@@ -366,12 +350,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       .maybeSingle();
 
     if (dedupError) {
-      await logEvent({
-        component: 'cross_market_inter_detector',
-        status: 'error',
-        message: `Dedup query failed for group ${negRiskMarketId}: ${dedupError.message}`,
-        metadata: { neg_risk_market_id: negRiskMarketId, error: dedupError.message },
-      });
+      dedupQueryErrors.push(`${negRiskMarketId}: ${dedupError.message}`);
       continue;
     }
 
@@ -439,8 +418,14 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
   await logEvent({
     component: 'cross_market_inter_detector',
-    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
-    message: `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence (edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum, ${groupsSkippedStale} skipped stale`,
+    status: signalsResult.errors.length > 0 || dedupQueryErrors.length > 0 ? 'partial' : 'success',
+    message:
+      `Evaluated ${groupsEvaluated} groups, ${flaggedCount} flagged, ${highConfidenceCount} high-confidence ` +
+      `(edge >= ${minEdgePct}%), ${dedupedCount} deduped, ${groupsSkippedLowEdge} skipped low edge, ` +
+      `${groupsSkippedLowCoverage} skipped low coverage, ${groupsSkippedLowSum} skipped low sum, ` +
+      `${groupsSkippedStale} skipped stale` +
+      `${highEdgeGroups > 0 ? `, ${highEdgeGroups} edge > 5% (conferir)` : ''}` +
+      `${dedupQueryErrors.length > 0 ? `, ${dedupQueryErrors.length} query_errors` : ''}`,
     metadata: {
       groups_evaluated: groupsEvaluated,
       groups_skipped_too_small: groupsSkippedTooSmall,
@@ -449,6 +434,19 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       groups_skipped_low_edge: groupsSkippedLowEdge,
       groups_skipped_low_sum: groupsSkippedLowSum,
       groups_skipped_stale: groupsSkippedStale,
+      groups_with_dropped_members: groupsWithDroppedMembers,
+      members_dropped_low_price: membersDroppedLowPrice,
+      members_without_yes_price: membersWithoutYesPrice,
+      // Edge acima de 5% quase sempre é grupo incompleto. Fica visível sem custar
+      // uma linha de log por grupo.
+      high_edge_groups: highEdgeGroups,
+      high_edge_sample: highEdgeSample.length > 0 ? highEdgeSample : null,
+      // Amostras dos descartes: o contador dá o tamanho, estas dão o que abrir.
+      low_coverage_sample: lowCoverageSample.length > 0 ? lowCoverageSample : null,
+      low_sum_sample: lowSumSample.length > 0 ? lowSumSample : null,
+      no_yes_price_sample: noYesPriceSample.length > 0 ? noYesPriceSample : null,
+      dedup_query_errors: dedupQueryErrors.length,
+      query_error_sample: dedupQueryErrors.length > 0 ? dedupQueryErrors.slice(0, SAMPLE_LIMIT) : null,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,

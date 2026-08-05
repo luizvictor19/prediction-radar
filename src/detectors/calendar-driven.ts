@@ -90,6 +90,30 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   let skippedMalformedOutcomes = 0;
   let skippedExtremePrice = 0;
   let skippedCooldown = 0;
+  let autoDismissedDuplicates = 0;
+
+  /**
+   * Contagem e amostra, nunca uma linha por evento.
+   *
+   * O que estava aqui antes: um `logEvent` por evento pulado dentro do loop.
+   * Num único ciclo isso rendeu 722 linhas `partial` iguais — "Event {uuid}
+   * skipped: only 0 valid snapshots" — e foi esse padrão, somado ao dos outros
+   * detectores, que levou `system_logs` a 2,7M linhas e fez o `retention_job`
+   * estourar por timeout tentando limpar.
+   *
+   * O número é o que diagnostica (722 eventos sem snapshot é um fato sobre o
+   * coletor, não sobre um evento); a amostra é o que dá por onde começar a olhar.
+   */
+  const SAMPLE_LIMIT = 5;
+  const cooldownQueryErrors: string[] = [];
+  const snapshotQueryErrors: string[] = [];
+  const dedupQueryErrors: string[] = [];
+  const malformedSample: string[] = [];
+  const lowSnapshotsSample: string[] = [];
+
+  const sample = (into: string[], value: string): void => {
+    if (into.length < SAMPLE_LIMIT) into.push(value);
+  };
 
   // Sinais novos vão para um buffer e são gravados em um insert só no fim do ciclo.
   const pendingSignals: Record<string, unknown>[] = [];
@@ -118,13 +142,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .maybeSingle();
 
     if (cooldownErr) {
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'error',
-        message: `Cooldown query failed for event ${event.id}: ${cooldownErr.message}`,
-        metadata: { event_id: event.id, error: cooldownErr.message },
-      });
       // Em caso de erro, segue (fail-open) — melhor processar que pular silenciosamente
+      cooldownQueryErrors.push(`${event.id}: ${cooldownErr.message}`);
     } else if (recentDismiss) {
       skippedCooldown++;
       continue;
@@ -132,13 +151,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
 
     const yesSideName = event.outcomes?.values?.[0];
     if (!yesSideName) {
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'partial',
-        message: `Event ${event.id} skipped: malformed outcomes (no values[0])`,
-        metadata: { event_id: event.id, outcomes: event.outcomes },
-      });
       skippedMalformedOutcomes++;
+      sample(malformedSample, event.id);
       continue;
     }
 
@@ -151,12 +165,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .order('captured_at', { ascending: true });
 
     if (snapErr) {
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'error',
-        message: `Snapshot query failed for event ${event.id}: ${snapErr.message}`,
-        metadata: { event_id: event.id, error: snapErr.message },
-      });
+      snapshotQueryErrors.push(`${event.id}: ${snapErr.message}`);
       continue;
     }
 
@@ -165,13 +174,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .filter((p): p is number => p !== null);
 
     if (validPrices.length < 5) {
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'partial',
-        message: `Event ${event.id} skipped: only ${validPrices.length} valid snapshots (need >= 5)`,
-        metadata: { event_id: event.id, snapshot_count: validPrices.length },
-      });
       skippedLowSnapshots++;
+      sample(lowSnapshotsSample, `${event.id} (${validPrices.length})`);
       continue;
     }
 
@@ -213,12 +217,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       .order('created_at', { ascending: false });
 
     if (dedupErr) {
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'error',
-        message: `Dedup query failed for event ${event.id}: ${dedupErr.message}`,
-        metadata: { event_id: event.id, error: dedupErr.message },
-      });
+      dedupQueryErrors.push(`${event.id}: ${dedupErr.message}`);
       continue;
     }
 
@@ -231,12 +230,9 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         .update({ dismissed: true })
         .in('id', olderIds);
 
-      await logEvent({
-        component: 'calendar_driven_detector',
-        status: 'partial',
-        message: `Auto-dismissed ${olderIds.length} duplicate signal(s) for event ${event.id}`,
-        metadata: { event_id: event.id, dismissed_ids: olderIds },
-      });
+      // Escrita, não descarte — por isso vira contador no log do ciclo em vez de
+      // sumir junto com as linhas por evento.
+      autoDismissedDuplicates += olderIds.length;
     }
 
     // Verificar se há bet aberta no evento
@@ -312,10 +308,18 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     label: 'calendar_driven_detector',
   });
 
+  const queryErrors =
+    cooldownQueryErrors.length + snapshotQueryErrors.length + dedupQueryErrors.length;
+
   await logEvent({
     component: 'calendar_driven_detector',
-    status: signalsResult.errors.length > 0 ? 'partial' : 'success',
-    message: `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ${skippedExtremePrice} skipped_extreme_price, ${skippedCooldown} skipped_cooldown`,
+    status: signalsResult.errors.length > 0 || queryErrors > 0 ? 'partial' : 'success',
+    message:
+      `Evaluated ${marketsEvaluated} markets, ${flaggedCount} flagged, ${dedupedCount} deduped, ` +
+      `${skippedLowSnapshots} skipped_low_snapshots, ${skippedHighVolatility} skipped_high_volatility, ` +
+      `${skippedMalformedOutcomes} skipped_malformed_outcomes, ${skippedStale} skipped_stale, ` +
+      `${skippedExtremePrice} skipped_extreme_price, ${skippedCooldown} skipped_cooldown` +
+      `${queryErrors > 0 ? `, ${queryErrors} query_errors` : ''}`,
     metadata: {
       markets_evaluated: marketsEvaluated,
       flagged: flaggedCount,
@@ -326,6 +330,16 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       skipped_stale: skippedStale,
       skipped_extreme_price: skippedExtremePrice,
       skipped_cooldown: skippedCooldown,
+      auto_dismissed_duplicates: autoDismissedDuplicates,
+      // Amostras: o contador acima diz o tamanho, estes dizem por onde começar.
+      low_snapshots_sample: lowSnapshotsSample.length > 0 ? lowSnapshotsSample : null,
+      malformed_outcomes_sample: malformedSample.length > 0 ? malformedSample : null,
+      cooldown_query_errors: cooldownQueryErrors.length,
+      snapshot_query_errors: snapshotQueryErrors.length,
+      dedup_query_errors: dedupQueryErrors.length,
+      query_error_sample: queryErrors > 0
+        ? [...cooldownQueryErrors, ...snapshotQueryErrors, ...dedupQueryErrors].slice(0, 5)
+        : null,
       signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
       write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,

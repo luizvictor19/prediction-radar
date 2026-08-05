@@ -12,12 +12,33 @@ type DetectorFn = () => Promise<void>;
 
 let isRunning = false;
 
-const ACTIVE_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
+/**
+ * Os cinco detectores genéricos, atrás de `system_config.generic_detectors_enabled`.
+ *
+ * Todos leem `events` + `polymarket_snapshots`. Com a varredura por volume
+ * desligada (spec 000, item 4), o lado não-esports dessas tabelas parou de
+ * receber dado novo — eles rodavam a cada 15 min sobre uma foto congelada.
+ * A série que ainda cresce é a de esports, em `esports_snapshots`, e nenhum
+ * deles lê de lá.
+ *
+ * Nada foi apagado: um UPDATE na flag traz os cinco de volta sem deploy.
+ */
+const GENERIC_DETECTORS: Array<{ name: string; fn: DetectorFn }> = [
   { name: 'cross_market_intra', fn: runCrossMarketIntraDetector },
   { name: 'cross_market_inter', fn: runCrossMarketInterDetector },
   { name: 'calendar_driven', fn: runCalendarDrivenDetector },
   { name: 'hype_reality_gap', fn: runHypeRealityGapDetector },
   { name: 'early_market', fn: detectEarlyMarkets },
+];
+
+/**
+ * Fora da flag de propósito: é limpeza do que já existe, não detecção.
+ *
+ * E é com os detectores parados que ela mais importa — sem ninguém renovando
+ * `last_seen_at`, todo sinal genérico ainda ativo vence e precisa ser dismissado,
+ * ou a fila do bot fica com sinal morto para sempre.
+ */
+const MAINTENANCE_TASKS: Array<{ name: string; fn: DetectorFn }> = [
   { name: 'cleanup_stale_signals', fn: runStaleSignalsCleanup },
 ];
 
@@ -85,6 +106,14 @@ async function dismissStaleSignals(): Promise<void> {
 }
 
 export async function runAllDetectors(): Promise<void> {
+  // Antes do lock: o que está desligado não roda, não toma lock e não entra na
+  // contagem do ciclo. A leitura da config é cacheada por 60s.
+  //
+  // O guard vive aqui, e não dentro de cada detector, porque este é o único
+  // chamador dos cinco. Se algum dia um deles for chamado direto (script, bot),
+  // o guard não o cobre — nesse caso o certo é gatilhar na função, não aqui.
+  const genericEnabled = (await getSystemConfig()).generic_detectors_enabled;
+
   if (isRunning) {
     await logEvent({
       component: 'detector_runner',
@@ -99,7 +128,11 @@ export async function runAllDetectors(): Promise<void> {
     const start = Date.now();
     const results: Array<{ name: string; success: boolean; error?: string }> = [];
 
-    for (const detector of ACTIVE_DETECTORS) {
+    const toRun = genericEnabled
+      ? [...GENERIC_DETECTORS, ...MAINTENANCE_TASKS]
+      : MAINTENANCE_TASKS;
+
+    for (const detector of toRun) {
       try {
         await detector.fn();
         results.push({ name: detector.name, success: true });
@@ -127,11 +160,23 @@ export async function runAllDetectors(): Promise<void> {
     }
 
     const duration = Date.now() - start;
+    // O estado desligado vai na linha que já existe, em vez de virar log próprio:
+    // o runner tica a cada 15 min e uma segunda linha por ciclo seria 96 linhas/dia
+    // para dizer sempre a mesma coisa.
+    const disabledNote = genericEnabled
+      ? ''
+      : ` (genéricos desligados por system_config.generic_detectors_enabled)`;
+
     await logEvent({
       component: 'detector_runner',
       status: results.every((r) => r.success) ? 'success' : 'partial',
-      message: `Ran ${results.length} detectors in ${duration}ms`,
-      metadata: { results, duration_ms: duration },
+      message: `Ran ${results.length} detectors in ${duration}ms${disabledNote}`,
+      metadata: {
+        results,
+        duration_ms: duration,
+        generic_detectors_enabled: genericEnabled,
+        skipped: genericEnabled ? null : GENERIC_DETECTORS.map(d => d.name),
+      },
     });
   } finally {
     isRunning = false;
