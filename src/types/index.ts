@@ -156,6 +156,13 @@ export interface SystemConfig {
   health_stale_open_legs_minutes: number;
   /** Intervalo mínimo entre dois avisos do MESMO componente ainda parado. */
   health_alert_cooldown_minutes: number;
+  /**
+   * Resolver de esports (spec 001, item 3). Desliga o job dos 10 min e o
+   * recompute semanal sem deploy.
+   */
+  esports_resolver_enabled: boolean;
+  /** Eventos PLANEJADOS por ciclo incremental — não eventos lidos. */
+  esports_resolver_batch_size: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;

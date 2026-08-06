@@ -9,6 +9,7 @@ import { detectResolvedMarkets } from './collectors/resolved-detector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
+import { runEsportsResolver, runEsportsResolverRecompute } from './jobs/esports-resolver.js';
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
@@ -78,6 +79,42 @@ async function main(): Promise<void> {
   );
   cron.schedule('*/10 * * * *', () => {
     void collectEarlyMarkets().catch(err => console.error('[cron early-markets]', err));
+  });
+
+  // Resolver de esports (spec 001, item 3): liga cada market a uma partida, com
+  // times, liga e edição como entidades. Roda depois da descoberta na ordem
+  // natural das coisas — resolve o que ela trouxe — mas sem acoplamento: o
+  // varredor pega o que ainda não tem link, independente de quem o inseriu.
+  //
+  // 10 min é folga sobre a descoberta (3 min). O ciclo não tem prazo curto: um
+  // market que espera 10 minutos por identidade não perde nada, porque a série
+  // de preço quem grava é a watchlist, e ela não depende disto.
+  cron.schedule('*/10 * * * *', () => {
+    void runEsportsResolver().catch(err => console.error('[cron esports_resolver]', err));
+  });
+
+  // Sem execução no start, ao contrário dos coletores acima — e é decisão, não
+  // esquecimento. O primeiro ciclo depois de um deploy é o mais caro que existe
+  // (o cursor vive em memória, então ele reatravessa o histórico já linkado para
+  // reencontrar o fim da fila), e o boot já dispara sete outras cargas iniciais
+  // contra o mesmo Postgres — que tem taxa de erro em aberto (spec 001, H2).
+  //
+  // O que se ganharia é adiantar em até 10 minutos uma resolução que ninguém
+  // espera: a série de preço quem grava é a watchlist, e ela não depende disto.
+
+  // Recompute semanal — o estado B da spec 001. O caminho 2 casa `outcome_a_index`
+  // comparando o código do slug (`navi`) com o nome do outcome ('Natus Vincere'),
+  // e falha até o registro de times conhecer o nome. Quem preenche isso é o
+  // caminho 1, quando o MESMO código reaparece num evento recente — então o
+  // histórico melhora sozinho conforme o presente é coletado, e esta passada é o
+  // que colhe a melhora.
+  //
+  // Domingo 04:00: depois da retenção (03:00) e longe do horário de jogo. Semanal
+  // porque o registro de times cresce na escala de temporada, não de horas.
+  cron.schedule('0 4 * * 0', () => {
+    void runEsportsResolverRecompute().catch(err =>
+      console.error('[cron esports_resolver_recompute]', err),
+    );
   });
 
   // Partições de `esports_snapshots` (spec 000, item 3): cria as dos próximos

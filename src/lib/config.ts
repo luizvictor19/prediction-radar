@@ -64,6 +64,13 @@ const DEFAULTS: SystemConfig = {
   health_stale_resolved_detector_minutes: 20,
   health_stale_open_legs_minutes: 10,
   health_alert_cooldown_minutes: 60,
+  // Espelham os defaults da migration do resolver. O fallback LIGA — ao
+  // contrário das flags de coletor, e pelo mesmo motivo do health_alerts: o
+  // resolver não escreve nada enquanto as tabelas de entidade não existirem (ele
+  // sonda antes), então nascer ligado não tem como surpreender. O que ele não
+  // pode é ficar esperando o apply de uma migration de config para começar.
+  esports_resolver_enabled: true,
+  esports_resolver_batch_size: 1000,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

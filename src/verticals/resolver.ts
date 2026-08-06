@@ -916,11 +916,22 @@ async function loadTeamNames(codes: readonly string[]): Promise<Map<string, stri
   return names;
 }
 
-/** Cache do mapa aprendido. Uma varredura inteira usa o mesmo. */
+/**
+ * Cache do mapa aprendido. Uma varredura inteira usa o mesmo.
+ *
+ * Com validade, e não eterno: o processo do cron vive por dias, e um mapa
+ * congelado no primeiro ciclo depois do deploy nunca aprenderia a família nova
+ * que a Gamma publicasse depois. 6h é folgado contra o custo (uma varredura de
+ * ~8 requisições sobre os eventos que têm `sports_market_type`).
+ */
+const LEARNED_ROLES_TTL_MS = 6 * 60 * 60_000;
+
 let learnedRolesCache: LearnedRoles | null = null;
+let learnedRolesAt = 0;
 
 export function resetLearnedRoles(): void {
   learnedRolesCache = null;
+  learnedRolesAt = 0;
 }
 
 /**
@@ -933,7 +944,10 @@ export function resetLearnedRoles(): void {
  * recentes com a coluna preenchida.
  */
 async function loadLearnedRoles(prefixes: readonly string[]): Promise<LearnedRoles> {
-  if (learnedRolesCache !== null) return learnedRolesCache;
+  const now = Date.now();
+  if (learnedRolesCache !== null && now - learnedRolesAt < LEARNED_ROLES_TTL_MS) {
+    return learnedRolesCache;
+  }
 
   const observations: Array<{ learnKey: string; role: string }> = [];
 
@@ -970,6 +984,7 @@ async function loadLearnedRoles(prefixes: readonly string[]): Promise<LearnedRol
   }
 
   learnedRolesCache = learnRoles(observations);
+  learnedRolesAt = now;
   return learnedRolesCache;
 }
 
