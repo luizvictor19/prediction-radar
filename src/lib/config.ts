@@ -71,6 +71,16 @@ const DEFAULTS: SystemConfig = {
   // pode é ficar esperando o apply de uma migration de config para começar.
   esports_resolver_enabled: true,
   esports_resolver_batch_size: 1000,
+  // Espelham os defaults da migration 20260806225235. Ligado no fallback pelo
+  // mesmo motivo do resolver: `runEnrichers` sonda `context_fragments` antes de
+  // chamar enricher nenhum, então o componente não escreve nada enquanto a
+  // migration 20260806211531 não estiver aplicada — e não pode ficar esperando o
+  // apply de uma migration de CONFIG para começar a existir.
+  esports_enricher_enabled: true,
+  esports_enricher_lookahead_minutes: 1440,
+  esports_enricher_lookbehind_minutes: 360,
+  esports_enricher_min_interval_minutes: 30,
+  esports_enricher_batch_size: 50,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

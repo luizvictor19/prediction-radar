@@ -163,6 +163,21 @@ export interface SystemConfig {
   esports_resolver_enabled: boolean;
   /** Eventos PLANEJADOS por ciclo incremental — não eventos lidos. */
   esports_resolver_batch_size: number;
+  /**
+   * Enriquecimento de esports (spec 001, item 5). Desliga o job dos 5 min sem
+   * deploy.
+   */
+  esports_enricher_enabled: boolean;
+  /** Janela de partidas enriquecidas, em torno de `esports_matches.scheduled_at`. */
+  esports_enricher_lookahead_minutes: number;
+  esports_enricher_lookbehind_minutes: number;
+  /**
+   * Intervalo mínimo entre dois enriquecimentos da MESMA partida. É o parâmetro
+   * que governa o volume de `context_fragments` — ver a migration.
+   */
+  esports_enricher_min_interval_minutes: number;
+  /** Teto de partidas por ciclo. O job reporta quando o teto corta. */
+  esports_enricher_batch_size: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;

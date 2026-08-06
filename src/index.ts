@@ -10,6 +10,7 @@ import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
 import { runEsportsResolver, runEsportsResolverRecompute } from './jobs/esports-resolver.js';
+import { runEsportsEnricher } from './jobs/esports-enricher.js';
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
@@ -115,6 +116,23 @@ async function main(): Promise<void> {
     void runEsportsResolverRecompute().catch(err =>
       console.error('[cron esports_resolver_recompute]', err),
     );
+  });
+
+  // Enriquecimento de esports (spec 001, item 5): grava em `context_fragments` o
+  // contexto das partidas próximas — movimento de preço, liquidez, consistência
+  // série x games, e o parágrafo que a própria Polymarket gera.
+  //
+  // Depende do resolver, e não por acoplamento de código: sem `market_match_links`
+  // não há como saber quais markets são de qual partida, e os enrichers devolvem
+  // vazio. O tick de 5 min não é a cadência de gravação — quem decide é
+  // `esports_enricher_min_interval_minutes` (30 min), e o tick só precisa ser mais
+  // rápido que ele. Mesmo desenho da watchlist.
+  //
+  // Sem execução no start, como o resolver: o boot já dispara oito outras cargas
+  // contra o mesmo Postgres (H2 em aberto), e o que se ganharia é adiantar em até
+  // 5 minutos um fragmento cuja cadência é de 30.
+  cron.schedule('*/5 * * * *', () => {
+    void runEsportsEnricher().catch(err => console.error('[cron esports_enricher]', err));
   });
 
   // Partições de `esports_snapshots` (spec 000, item 3): cria as dos próximos

@@ -337,7 +337,12 @@ export function resetFragmentsProbe(): void {
   probedAt = 0;
 }
 
-async function fragmentsTableAvailable(): Promise<boolean> {
+/**
+ * Exportada porque `runEnrichers` devolve `[]` tanto quando não há o que gravar
+ * quanto quando a tabela não existe, e o job precisa distinguir as duas para
+ * reportar `partial` com a mensagem certa em vez de "nada a fazer".
+ */
+export async function fragmentsTableAvailable(): Promise<boolean> {
   const now = Date.now();
   if (tableAvailable === true) return true;
   if (tableAvailable === false && now - probedAt < PROBE_RETRY_MS) return false;
