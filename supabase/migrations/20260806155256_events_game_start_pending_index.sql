@@ -1,0 +1,56 @@
+-- Índice dos eventos com jogo ainda por começar, em `events`.
+--
+-- Serve a varredura de pendentes da descoberta (spec 000, item 2a), que existe
+-- porque a paginação por `startDate` do evento só o enxerga no minuto em que ele
+-- nasce. Markets filhos nascem depois: medido em 2026-08-06 sobre 288 markets, a
+-- mediana nasce junto do pai, mas o p99 é de 411 min e o maior observado, 491.
+-- Um mercado derivado aberto 8h depois entra num evento que a marca d'água já
+-- ultrapassou, e sem a varredura ele nunca seria descoberto.
+--
+-- A consulta é `fetchPendingEventSlugs()`:
+--
+--   select event_group_slug from events
+--   where status = 'active'
+--     and event_group_slug is not null
+--     and game_start_time > now()
+--   order by game_start_time asc
+--   limit 1000;
+--
+-- O índice cobre as três partes que custam: o `status = 'active'` vira o
+-- predicado parcial, o `game_start_time > now()` vira range scan, e a ordenação
+-- sai de graça — com o LIMIT, o scan para nas primeiras mil linhas em vez de
+-- ordenar o conjunto inteiro. Sem ele o plano é seq scan sobre a tabela toda
+-- mais sort, e foi isso que estourou o statement timeout do PostgREST.
+--
+-- `event_group_slug is not null` fica fora de propósito: é filtro residual e
+-- barato depois do recorte acima, e incluí-lo mudaria a definição do índice que
+-- já foi aplicado (ver o aviso sobre `if not exists` no fim).
+--
+-- JÁ APLICADO À MÃO, com CONCURRENTLY. Este arquivo existe para o versionamento
+-- não divergir do banco, não para aplicar coisa nova.
+--
+-- Por que aqui está sem CONCURRENTLY: mesma situação de
+-- `20260805222523_events_slug_prefix_index`. O `supabase db push` executa as
+-- migrations pendentes dentro de uma transação, e `CREATE INDEX CONCURRENTLY`
+-- não roda em bloco de transação (SQLSTATE 25001) — a migration falharia
+-- inteira. As duas formas produzem o mesmo índice; a diferença é só o lock
+-- durante a construção, e o caso em que ela importava (tabela em produção, com
+-- escrita ativa) foi resolvido à mão e não se repete aqui:
+--
+--   - neste banco, `if not exists` encontra o índice já criado e não faz nada;
+--   - num banco reconstruído do zero pelas migrations, `events` está vazia e o
+--     lock de escrita da construção não custa nada.
+--
+-- Se um dia for preciso criar este índice em outra base já populada e em uso,
+-- o caminho continua sendo rodar o CONCURRENTLY à mão, fora do `db push`.
+--
+-- Cuidado ao conferir: `if not exists` casa por NOME, não por definição. Se o
+-- índice aplicado à mão divergir do que está escrito aqui, esta migration passa
+-- em silêncio e a divergência permanece. Para confirmar que são o mesmo:
+--
+--   select indexdef from pg_indexes where indexname = 'idx_events_game_start_pending';
+--
+-- e comparar com a definição abaixo.
+create index if not exists idx_events_game_start_pending
+  on public.events (game_start_time)
+  where status = 'active';
