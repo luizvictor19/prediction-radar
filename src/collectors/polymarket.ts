@@ -6,7 +6,16 @@ import { getSystemConfig } from '../lib/config.js';
 import { logEvent, logDisabled } from '../lib/logger.js';
 import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
+import { ColumnProbe } from '../lib/column-probe.js';
 import type { GammaMarket } from '../types/index.js';
+
+/**
+ * Item 7: a varredura também carimba o horário da partida. Ela está a caminho de
+ * ser desligada (item 4), mas enquanto roda é ela quem reencontra o market de
+ * esports que já ganhou volume — e o upsert dela escreve a linha inteira. Ou o
+ * carimbo sai daqui também, ou ele é apagado a cada passagem da varredura.
+ */
+const gameStartTimeProbe = new ColumnProbe('events', 'game_start_time', 'collector');
 
 const MAX_DAYS_TO_RESOLUTION = 90;
 // Polymarket Gamma API has a hard limit of 100 markets per page,
@@ -180,9 +189,14 @@ export async function collectAll(): Promise<void> {
       const batch = pending;
       pending = [];
 
+      // `game_start_time` vem de `gammaToEvent` (item 7) e sai de novo enquanto a
+      // migration 20260806015533 não for aplicada: coluna inexistente no payload
+      // derruba o chunk inteiro.
+      const eventRows = await gameStartTimeProbe.strip(batch.map(p => p.event));
+
       const eventsResult = await batchUpsert<UpsertedEvent>(
         'events',
-        batch.map(p => p.event),
+        eventRows,
         {
           onConflict: 'polymarket_id',
           select: 'id, polymarket_id, outcomes',

@@ -28,6 +28,12 @@ export interface Event {
   volume_24h: number | null;
   liquidity: number | null;
   end_date: string | null;
+  /**
+   * Horário real da partida (spec 000, item 7). Distinto de `start_date`
+   * (abertura do mercado) e de `end_date` (fim da janela de resolução, ~6h
+   * depois do jogo). É a âncora da cadência da watchlist.
+   */
+  game_start_time: string | null;
   sports_market_type: string | null;
   line: number | null;
   status: string;
@@ -118,6 +124,18 @@ export interface SystemConfig {
   /** Prefixos de slug que a descoberta (spec 000, item 2a) persiste. */
   discovery_slug_prefixes: string[];
   discovery_lookback_minutes: number;
+  /** Cadência da watchlist por faixa (spec 000, itens 3b e 7). Ver a migration. */
+  watchlist_interval_live_seconds: number;
+  watchlist_interval_soon_seconds: number;
+  watchlist_interval_far_seconds: number;
+  /** Quantas vezes mais lento o derivado é refrescado. 1 desliga a distinção. */
+  watchlist_derived_interval_multiplier: number;
+  /** Quanto antes de `game_start_time` a faixa de 1 min começa. */
+  watchlist_soon_window_minutes: number;
+  /** Teto do ao vivo, para a partida que começou e nunca resolveu. */
+  watchlist_live_max_minutes: number;
+  /** `sports_market_type` que identifica o mercado da série. */
+  watchlist_primary_market_types: string[];
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;
@@ -236,6 +254,16 @@ export interface GammaMarket {
   endDate: string;
   /** Quando o market abriu. Ausente em alguns markets antigos. */
   startDate?: string;
+  /**
+   * Horário real da partida. Medido em 2026-08-06: presente em 171/171 markets
+   * de esports, e ~6h antes do `endDate` (p50).
+   *
+   * Vem como `'2026-08-06 18:30:00+00'` — sem `T`, sem `Z`, não é ISO-8601.
+   * Normalizar antes de gravar ou comparar (ver `gammaGameStartTime`).
+   */
+  gameStartTime?: string | null;
+  /** Mesmo instante, em ISO. Só ~2/3 dos markets trazem — o da série. */
+  eventStartTime?: string | null;
   active: boolean;
   closed: boolean;
   bestBid: number;
@@ -247,7 +275,7 @@ export interface GammaMarket {
   feeType?: string | null;
   feeSchedule?: { rate: number; exponent: number; takerOnly: boolean; rebateRate: number } | null;
   series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
-  events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null }> | null;
+  events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null; startTime?: string | null }> | null;
   eventMetadata?: Record<string, unknown> | null;
   sportsMarketType?: string | null;
   line?: number | null;

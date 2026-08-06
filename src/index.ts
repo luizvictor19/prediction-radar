@@ -39,14 +39,16 @@ async function main(): Promise<void> {
     console.error('[discovery] Initial run failed:', err),
   );
 
-  // Refresh da watchlist de esports (spec 000, item 2b). Fecha a lacuna que a
-  // descoberta abriu: o market de esports nasce com volume 0, não entra na
+  // Refresh da watchlist de esports (spec 000, itens 2b e 3b). Fecha a lacuna
+  // que a descoberta abriu: o market de esports nasce com volume 0, não entra na
   // varredura por volume nem tem aposta aberta — descoberto no minuto em que
   // nasce e, sem isto, sem nenhuma leitura de preço depois.
   //
-  // 3min é a granularidade atual dos snapshots. Cadência por estado da partida
-  // (5min / 1min / 10-15s ao vivo) é o item 7, não este.
-  cron.schedule('*/3 * * * *', () => {
+  // O tick é de 5s, mas não é a cadência de coleta: quem decide o que é
+  // refrescado é a faixa de cada mercado (ao vivo / falta pouco / longe), lida
+  // de `system_config`. O tick só precisa ser mais rápido que a faixa mais
+  // rápida — com 10-15s ao vivo, 5s dá a folga que evita aliasing.
+  cron.schedule('*/5 * * * * *', () => {
     void collectWatchlist().catch(err => console.error('[cron watchlist]', err));
   });
 

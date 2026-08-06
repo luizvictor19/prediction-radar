@@ -42,6 +42,15 @@ const DEFAULTS: SystemConfig = {
   // 20260804163956_discovery_config. Sem isso o coletor não sobe antes dela.
   discovery_slug_prefixes: ['cs2-', 'lol-', 'dota2-'],
   discovery_lookback_minutes: 20,
+  // Espelham os defaults da migration 20260806015533. Valem enquanto as colunas
+  // não existirem — sem eles o coletor cairia em NaN e não refrescaria nada.
+  watchlist_interval_live_seconds: 12,
+  watchlist_interval_soon_seconds: 60,
+  watchlist_interval_far_seconds: 300,
+  watchlist_derived_interval_multiplier: 5,
+  watchlist_soon_window_minutes: 360,
+  watchlist_live_max_minutes: 360,
+  watchlist_primary_market_types: ['moneyline'],
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

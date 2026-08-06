@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabase.js';
-import { logEvent } from '../lib/logger.js';
+import { logEvent, logDisabled } from '../lib/logger.js';
 import { getSystemConfig } from '../lib/config.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
 import { safeSlugPrefixes, slugPrefixFilter } from '../lib/slug-prefixes.js';
+import { ColumnProbe } from '../lib/column-probe.js';
 import {
   gammaLiquidity,
   gammaVolume24h,
@@ -26,11 +27,18 @@ import type { GammaMarket } from '../types/index.js';
  * watchlist. Sem offset, sem teto, 1 requisição por 100 markets.
  *
  * A série vai para `esports_snapshots` (item 3): tabela estreita e particionada
- * por dia, para que a limpeza seja DROP PARTITION. Este coletor sozinho grava
- * ~650k linhas/dia, e é o volume que torna DELETE em ciclo insustentável.
+ * por dia, para que a limpeza seja DROP PARTITION. É o volume deste coletor que
+ * torna DELETE em ciclo insustentável.
+ *
+ * A cadência é por faixa (itens 3b e 7): o tick roda a cada 5s e cada faixa é
+ * refrescada no seu próprio intervalo. Um round de CS2 dura ~2 min — a
+ * granularidade de 3 min de antes não permitia leitura ao vivo de nada.
+ *
+ * A faixa sai da distância até `events.game_start_time`, o horário real da
+ * partida — não até `end_date`, que é o fim da janela de resolução e cai ~6h
+ * depois do jogo (medido; ver `classifyBand`).
  *
  * Escopo deliberadamente fora daqui:
- * - Cadência por estado da partida é o item 7. Aqui é intervalo fixo.
  * - Resolução é do `resolved-detector` (item 2c). Market fechado aqui só é
  *   contado e ignorado — este coletor não escreve em `events`.
  */
@@ -38,8 +46,8 @@ import type { GammaMarket } from '../types/index.js';
 const COMPONENT = 'watchlist_collector';
 
 /**
- * Teto de markets por ciclo. 10 requisições à Gamma, e o que passar disso é
- * logado — teto silencioso lê como "cobri tudo" quando não cobriu.
+ * Teto de markets na watchlist. O que passar disso é logado — teto silencioso
+ * lê como "cobri tudo" quando não cobriu.
  */
 const MAX_WATCHLIST = 1000;
 
@@ -52,13 +60,48 @@ const MAX_WATCHLIST = 1000;
  */
 const ENDED_GRACE_MS = 24 * 60 * 60 * 1000;
 
-const CYCLE_TIMEOUT_MS = 120_000;
+const CYCLE_TIMEOUT_MS = 45_000;
 
-const cycleLock = new CycleLock();
+/**
+ * Este coletor tica a cada 5s. O default de 20 min de ciclo travado seria 240
+ * ticks perdidos antes de alguém assumir — mesmo raciocínio do open-legs.
+ */
+const STALE_AFTER_MS = 2 * 60 * 1000;
+
+/**
+ * A lista de quem está na watchlist muda devagar (a descoberta roda a cada 3
+ * min); o que muda a cada segundo é em que faixa cada um está, e isso se calcula
+ * em memória. Sem esse cache, o tick de 5s viraria 17k queries/dia em `events`.
+ */
+const ROSTER_TTL_MS = 60_000;
+
+/**
+ * Uma linha de log a cada 5 min, agregando os ~60 ciclos do período.
+ *
+ * Logar por ciclo aqui seriam 17k linhas/dia — o padrão que inflou `system_logs`
+ * para 2,7M linhas e quebrou o `retention_job`. O que interessa (quantos
+ * refreshes por faixa, quantos snapshots, o que falhou) é justamente o que
+ * agrega bem.
+ */
+const LOG_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Folga na checagem de vencimento, para o tick de 5s não virar aliasing: sem
+ * ela, um intervalo de 12s só seria atendido a cada 15s (o tick dos 10s ainda
+ * não venceu, o dos 15s sim).
+ */
+const TICK_TOLERANCE_MS = 2_500;
+
+const cycleLock = new CycleLock(STALE_AFTER_MS);
 
 interface WatchlistEvent {
   id: string;
   polymarket_id: string;
+  /** Lifecycle: é ele que decide quem sai da watchlist (ver ENDED_GRACE_MS). */
+  end_date: string | null;
+  /** A âncora da cadência (item 7). Null enquanto a coluna não existe ou não foi backfilled. */
+  game_start_time: string | null;
+  sports_market_type: string | null;
 }
 
 export interface BatchLookup {
@@ -214,16 +257,216 @@ export function buildSnapshotRows(
   ];
 }
 
+export type Band = 'live' | 'soon' | 'far';
+
+/** Uma faixa é (banda × classe). Seis buckets, cada um com seu intervalo. */
+export type BucketKey = `${Band}:${'primary' | 'derived'}`;
+
+export interface Cadence {
+  liveSeconds: number;
+  soonSeconds: number;
+  farSeconds: number;
+  derivedMultiplier: number;
+  soonWindowMinutes: number;
+  liveMaxMinutes: number;
+  primaryTypes: string[];
+}
+
+export function readCadence(config: {
+  watchlist_interval_live_seconds?: number;
+  watchlist_interval_soon_seconds?: number;
+  watchlist_interval_far_seconds?: number;
+  watchlist_derived_interval_multiplier?: number;
+  watchlist_soon_window_minutes?: number;
+  watchlist_live_max_minutes?: number;
+  watchlist_primary_market_types?: string[] | null;
+}): Cadence {
+  // Pisos de 1: um intervalo 0 ou negativo em config viraria refresh a cada
+  // tick, para todas as faixas ao mesmo tempo — o oposto do que este item existe
+  // para fazer.
+  const positive = (value: number | undefined, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+
+  return {
+    liveSeconds: positive(config.watchlist_interval_live_seconds, 12),
+    soonSeconds: positive(config.watchlist_interval_soon_seconds, 60),
+    farSeconds: positive(config.watchlist_interval_far_seconds, 300),
+    derivedMultiplier: positive(config.watchlist_derived_interval_multiplier, 5),
+    soonWindowMinutes: positive(config.watchlist_soon_window_minutes, 360),
+    liveMaxMinutes: positive(config.watchlist_live_max_minutes, 360),
+    // `?? ['moneyline']` e não `?? []`: enquanto a migration não for aplicada a
+    // coluna não existe, e cair em lista vazia trataria TODO mercado como
+    // derivado — a faixa ao vivo nunca rodaria e o item inteiro seria um no-op
+    // silencioso. Lista vazia explícita na config continua significando
+    // "trate todos como derivados", que é a chave de desligamento.
+    primaryTypes: config.watchlist_primary_market_types ?? ['moneyline'],
+  };
+}
+
+/**
+ * Em que banda o market está, pela distância até o começo da partida.
+ *
+ * A âncora é `game_start_time` — nem `start_date` nem `end_date` servem, e por
+ * motivos diferentes:
+ *
+ *   `start_date` é a abertura do mercado (item 2a: `start_date` do dia anterior
+ *   ao jogo, que é justamente o que faz a descoberta por `order=startDate`
+ *   funcionar). Classificar por ele poria toda a watchlist na faixa ao vivo
+ *   desde o nascimento.
+ *
+ *   `end_date` é o fim da janela de resolução, não o fim do jogo. Medido na
+ *   Gamma em 2026-08-06 sobre 171 markets de esports: `end_date` cai ~6h depois
+ *   de `gameStartTime` (p50; p10 4h). Uma janela ao vivo de 180 min antes do
+ *   `end_date` só abriria em `game_start_time + 3h`, com a partida encerrada —
+ *   a faixa de 10-15s inteira depois do jogo.
+ *
+ * Sem âncora a banda é `far`. É degradação segura (o market continua sendo
+ * coletado, só devagar) e o contador `null_game_start_time` no log é o que
+ * denuncia — antes do apply da migration ou do backfill, é o roster inteiro.
+ *
+ * Passado o teto do ao vivo sem resolver, volta para `far`: é partida adiada com
+ * âncora velha ou resolução travada na UMA. O preço ainda se move, mas não a
+ * 12s. Quem tira da lista é o `ENDED_GRACE_MS` na query do roster.
+ */
+export function classifyBand(gameStartTime: string | null, nowMs: number, cadence: Cadence): Band {
+  if (gameStartTime === null) return 'far';
+
+  const startMs = Date.parse(gameStartTime);
+  if (Number.isNaN(startMs)) return 'far';
+
+  const msToStart = startMs - nowMs;
+  if (msToStart > cadence.soonWindowMinutes * 60_000) return 'far';
+  if (msToStart > 0) return 'soon';
+
+  return -msToStart <= cadence.liveMaxMinutes * 60_000 ? 'live' : 'far';
+}
+
+/**
+ * O mercado da série, não o derivado.
+ *
+ * Uma partida gera vários markets e só um deles é a série (medido em 2026-08-06:
+ * 171 markets para 25 partidas — média 6,8, p50 6, máximo 39 num LoL). Os outros
+ * (por game, handicap, total, round handicap, first blood) se movem junto e
+ * valem menos por ponto de série.
+ *
+ * A comparação é por igualdade exata, e isso importa: `child_moneyline` é o
+ * moneyline POR GAME, derivado, e um `startsWith` o promoveria a série.
+ *
+ * Lista vazia em config trata todos como derivados — e isso aparece no log como
+ * `live:primary = 0`, que é o sintoma de o valor de `sports_market_type` estar
+ * diferente do esperado.
+ */
+export function isPrimaryMarket(sportsMarketType: string | null, cadence: Cadence): boolean {
+  if (sportsMarketType === null) return false;
+  return cadence.primaryTypes.includes(sportsMarketType);
+}
+
+export function bucketOf(entry: WatchlistEvent, nowMs: number, cadence: Cadence): BucketKey {
+  const band = classifyBand(entry.game_start_time, nowMs, cadence);
+  return `${band}:${isPrimaryMarket(entry.sports_market_type, cadence) ? 'primary' : 'derived'}`;
+}
+
+export function intervalMsFor(bucket: BucketKey, cadence: Cadence): number {
+  const [band, klass] = bucket.split(':') as [Band, 'primary' | 'derived'];
+  const base =
+    band === 'live' ? cadence.liveSeconds : band === 'soon' ? cadence.soonSeconds : cadence.farSeconds;
+
+  return base * 1000 * (klass === 'primary' ? 1 : cadence.derivedMultiplier);
+}
+
+/**
+ * Ordem de atendimento dentro de um ciclo: o que tem prazo mais curto primeiro.
+ *
+ * O lock é um só, então um refresh da faixa lenta (até 6 requisições) atrasa o
+ * ao vivo se vier antes. Com a ordem invertida o atraso cai para o que a faixa
+ * ao vivo leva sozinha — 1-2 requisições.
+ */
+const BUCKET_ORDER: BucketKey[] = [
+  'live:primary',
+  'live:derived',
+  'soon:primary',
+  'soon:derived',
+  'far:primary',
+  'far:derived',
+];
+
+/** Última vez que cada bucket foi refrescado. Em memória: um deploy zera. */
+const lastRefreshAt = new Map<BucketKey, number>();
+
+export function isBucketDue(
+  bucket: BucketKey,
+  nowMs: number,
+  cadence: Cadence,
+  lastRun: number | undefined,
+): boolean {
+  if (lastRun === undefined) return true;
+  return nowMs - lastRun >= intervalMsFor(bucket, cadence) - TICK_TOLERANCE_MS;
+}
+
+/**
+ * `events.game_start_time` só existe depois da migration 20260806015533, que é
+ * aplicada à mão. Pedi-la no `select` antes disso derrubaria a query inteira e
+ * deixaria o coletor sem roster — pior que ficar sem a âncora.
+ */
+const gameStartTimeProbe = new ColumnProbe('events', 'game_start_time', 'watchlist');
+
+/** O roster, em cache. Ver ROSTER_TTL_MS. */
+let roster: WatchlistEvent[] = [];
+let rosterLoadedAt = 0;
+let rosterTruncated = false;
+let rosterNullEndDate = 0;
+let rosterNullGameStart = 0;
+let rosterHasAnchor = false;
+
+/** Acumulado da janela de log. Ver LOG_INTERVAL_MS. */
+interface WindowStats {
+  startedAt: number;
+  cycles: number;
+  ticksSkippedLocked: number;
+  refreshes: Record<string, number>;
+  requests: number;
+  snapshots: number;
+  failedRows: number;
+  closedInOpenBatch: number;
+  malformed: number;
+  unknownIds: number;
+  lookupFailedIds: number;
+  unaccounted: number;
+  divergences: string[];
+  writeErrors: string[];
+  tables: Set<string>;
+}
+
+function emptyStats(startedAt: number): WindowStats {
+  return {
+    startedAt,
+    cycles: 0,
+    ticksSkippedLocked: 0,
+    refreshes: {},
+    requests: 0,
+    snapshots: 0,
+    failedRows: 0,
+    closedInOpenBatch: 0,
+    malformed: 0,
+    unknownIds: 0,
+    lookupFailedIds: 0,
+    unaccounted: 0,
+    divergences: [],
+    writeErrors: [],
+    tables: new Set(),
+  };
+}
+
+let stats = emptyStats(Date.now());
+
 export async function collectWatchlist(): Promise<void> {
   const lockToken = cycleLock.tryAcquire();
 
   if (!lockToken) {
-    await logEvent({
-      component: COMPONENT,
-      status: 'partial',
-      message: 'previous cycle still running, skipping this tick',
-      metadata: { previous_cycle_running_for_ms: cycleLock.heldForMs() ?? 0 },
-    });
+    // Contador, não linha de log: com tick de 5s, um ciclo de 15s pula 2 ticks
+    // e isso é normal. Logar cada um seriam milhares de linhas/dia dizendo que
+    // o coletor está ocupado. O número sai no log agregado da janela.
+    stats.ticksSkippedLocked++;
     return;
   }
 
@@ -243,7 +486,7 @@ export async function collectWatchlist(): Promise<void> {
   const cyclePromise = _collect().finally(() => cycleLock.release(lockToken));
 
   const timeoutPromise = new Promise<void>((_, reject) =>
-    setTimeout(() => reject(new Error('cycle timeout 120s')), CYCLE_TIMEOUT_MS),
+    setTimeout(() => reject(new Error(`cycle timeout ${CYCLE_TIMEOUT_MS}ms`)), CYCLE_TIMEOUT_MS),
   );
 
   try {
@@ -258,85 +501,99 @@ export async function collectWatchlist(): Promise<void> {
   }
 }
 
-async function _collect(): Promise<void> {
-  const startedAt = Date.now();
+/**
+ * Recarrega o roster quando vencido. Devolve o erro em vez de logar: com tick de
+ * 5s, um banco fora do ar viraria 17k linhas de erro por dia.
+ */
+async function ensureRoster(prefixes: string[], nowMs: number): Promise<string | null> {
+  if (roster.length > 0 && nowMs - rosterLoadedAt < ROSTER_TTL_MS) return null;
 
-  const config = await getSystemConfig();
-  const prefixes = safeSlugPrefixes(config.discovery_slug_prefixes ?? [], 'watchlist');
+  const endedCutoff = new Date(nowMs - ENDED_GRACE_MS).toISOString();
 
-  if (prefixes.length === 0) {
-    // Lista vazia é o desligamento pela config, não um bug — mesmo contrato da
-    // descoberta, e é o que permite religar a vertical sem deploy.
-    await logEvent({
-      component: COMPONENT,
-      status: 'success',
-      message: 'Watchlist disabled: discovery_slug_prefixes is empty',
-    });
-    return;
-  }
+  rosterHasAnchor = await gameStartTimeProbe.isSupported();
 
-  const endedCutoff = new Date(startedAt - ENDED_GRACE_MS).toISOString();
-
-  // Ordenado por `end_date` ascendente: se o teto cortar, o que fica de fora é
-  // a partida mais distante, não a que está prestes a acontecer.
+  // Quem decide quem SAI da watchlist continua sendo o `end_date` — ele é o fim
+  // da janela de resolução, que é exatamente o critério de lifecycle. O que
+  // mudou no item 7 é quem decide a CADÊNCIA de quem fica.
   //
   // O filtro por `end_date` exclui também as linhas com `end_date` nulo (NULL
   // não satisfaz a comparação). Market vindo da descoberta sempre tem a coluna;
   // o contador `null_end_date` abaixo mede se essa premissa se mantém.
-  const { data, error } = await supabase
+  //
+  // Ordenado pela âncora ascendente: o teto corta a partida mais distante, e
+  // quem já começou (âncora no passado) vem primeiro — é quem menos pode faltar.
+  // `nullsFirst: false` põe o market sem âncora no fim da fila: ele já está na
+  // faixa lenta, e é o que menos custa perder se o teto morder.
+  const filtered = supabase
     .from('events')
-    .select('id, polymarket_id')
+    .select(
+      rosterHasAnchor
+        ? 'id, polymarket_id, end_date, sports_market_type, game_start_time'
+        : 'id, polymarket_id, end_date, sports_market_type',
+    )
     .eq('status', 'active')
     .gte('end_date', endedCutoff)
-    .or(slugPrefixFilter(prefixes))
-    .order('end_date', { ascending: true })
-    .limit(MAX_WATCHLIST + 1);
+    .or(slugPrefixFilter(prefixes));
 
-  if (error) {
-    await logEvent({
-      component: COMPONENT,
-      status: 'error',
-      message: `watchlist query failed: ${error.message}`,
-    });
-    return;
-  }
+  const ordered = rosterHasAnchor
+    ? filtered.order('game_start_time', { ascending: true, nullsFirst: false })
+    : filtered.order('end_date', { ascending: true });
 
-  const rows = (data ?? []) as WatchlistEvent[];
+  const { data, error } = await ordered.limit(MAX_WATCHLIST + 1);
+
+  if (error) return `roster query: ${error.message}`;
+
+  // O `select` é montado em runtime, então o parser de tipos do PostgREST não
+  // tem o que inferir aqui — a forma da linha é conferida na projeção abaixo.
+  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map(row => ({
+    id: row['id'] as string,
+    polymarket_id: row['polymarket_id'] as string,
+    end_date: (row['end_date'] as string | null) ?? null,
+    // Ausente da resposta inteira quando a coluna ainda não existe.
+    game_start_time: (row['game_start_time'] as string | null | undefined) ?? null,
+    sports_market_type: (row['sports_market_type'] as string | null) ?? null,
+  })) as WatchlistEvent[];
 
   // O +1 no limit é só para enxergar o corte: com ele a truncagem vira número no
   // log em vez de silêncio.
-  const truncated = rows.length > MAX_WATCHLIST;
-  const watchlist = truncated ? rows.slice(0, MAX_WATCHLIST) : rows;
+  rosterTruncated = rows.length > MAX_WATCHLIST;
+  roster = rosterTruncated ? rows.slice(0, MAX_WATCHLIST) : rows;
+  rosterLoadedAt = nowMs;
+
+  // Sem âncora não há faixa rápida. Antes do apply da migration é o roster
+  // inteiro; depois do backfill tem que cair para perto de zero, e só voltar a
+  // subir se a Gamma parar de mandar `gameStartTime`.
+  rosterNullGameStart = roster.filter(entry => entry.game_start_time === null).length;
 
   // Mede a premissa do comentário acima em vez de confiar nela: se um dia
   // aparecer esports ativo sem `end_date`, ele está fora da watchlist e este é
   // o número que denuncia.
-  const { count: nullEndDateCount } = await supabase
+  const { count } = await supabase
     .from('events')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')
     .is('end_date', null)
     .or(slugPrefixFilter(prefixes));
 
-  if (watchlist.length === 0) {
-    await logEvent({
-      component: COMPONENT,
-      status: 'success',
-      message: 'watchlist vazia: nenhum event de esports ativo na janela',
-      metadata: { prefixes, null_end_date: nullEndDateCount ?? 0 },
-    });
-    return;
-  }
+  rosterNullEndDate = count ?? 0;
+  return null;
+}
 
-  const eventIdByPolymarketId = new Map(watchlist.map(e => [e.polymarket_id, e.id]));
+/**
+ * Refresca um bucket: pergunta à Gamma por esses ids e devolve as linhas.
+ *
+ * As duas chamadas (`closed=false` e depois `closed=true` sobre os ausentes) são
+ * a exigência do item 2b e continuam valendo por bucket — ausência no primeiro
+ * lote é ambígua entre "resolveu" e "lote truncado", e só a segunda separa.
+ */
+async function refreshBucket(entries: WatchlistEvent[]): Promise<EsportsSnapshotRow[]> {
+  const eventIdByPolymarketId = new Map(entries.map(e => [e.polymarket_id, e.id]));
   const idsToCheck = [...eventIdByPolymarketId.keys()];
 
   const snapshotRows: EsportsSnapshotRow[] = [];
-  let malformed = 0;
-  let closedInOpenBatch = 0;
 
   // O `captured_at` é carimbado por chunk, no instante da resposta — um
-  // timestamp único no fim do ciclo empilharia até 10 requisições no mesmo
+  // timestamp único no fim do ciclo empilharia várias requisições no mesmo
   // ponto da série e mentiria sobre quando cada preço foi lido.
   const collectFromChunk = (markets: GammaMarket[]): void => {
     const capturedAt = new Date().toISOString();
@@ -347,91 +604,168 @@ async function _collect(): Promise<void> {
       // O filtro `closed=false` deveria bastar, mas quem decide é o campo, não
       // o parâmetro: preço de market fechado é 0/1 e sujaria a série.
       if (market.closed) {
-        closedInOpenBatch++;
+        stats.closedInOpenBatch++;
         continue;
       }
 
       const pair = buildSnapshotRows(eventId, market, capturedAt);
-      if (pair.length === 0) malformed++;
+      if (pair.length === 0) stats.malformed++;
       snapshotRows.push(...pair);
     }
   };
 
   const open = await lookupByIds(idsToCheck, false, collectFromChunk);
 
-  // Sem esta segunda chamada a ausência ficaria ambígua para sempre: o filtro
-  // `id=` aplica `closed=false` por padrão, então o market que resolveu some do
-  // primeiro lote sem erro nenhum. Só sobre os ausentes — os vivos já voltaram.
   const absentIds = idsToCheck.filter(id => !open.byId.has(id) && !open.failedIds.has(id));
   const closed = await lookupByIds(absentIds, true);
 
   const reconciled = reconcile(idsToCheck, open, closed);
-  const divergences = [...open.divergences, ...closed.divergences];
 
-  const snapResult = await writeEsportsSnapshots(snapshotRows, 'watchlist');
+  stats.requests +=
+    Math.ceil(idsToCheck.length / MAX_IDS_PER_REQUEST) +
+    Math.ceil(absentIds.length / MAX_IDS_PER_REQUEST);
+  stats.unknownIds += reconciled.unknownIds.length;
+  stats.lookupFailedIds += reconciled.failedIds.length;
+  stats.unaccounted += reconciled.unaccounted;
+  stats.divergences.push(...open.divergences, ...closed.divergences);
 
-  const durationMs = Date.now() - startedAt;
-  const requests =
-    Math.ceil(idsToCheck.length / MAX_IDS_PER_REQUEST) + Math.ceil(absentIds.length / MAX_IDS_PER_REQUEST);
+  return snapshotRows;
+}
 
+/** Uma linha a cada LOG_INTERVAL_MS, agregando os ciclos do período. */
+async function flushWindowLog(
+  nowMs: number,
+  occupancy: Record<string, number>,
+  rosterError: string | null,
+): Promise<void> {
+  if (nowMs - stats.startedAt < LOG_INTERVAL_MS) return;
+
+  const windowMinutes = (nowMs - stats.startedAt) / 60_000;
   const status =
-    snapResult.errors.length > 0 ||
-    reconciled.failedIds.length > 0 ||
-    reconciled.unaccounted !== 0 ||
-    divergences.length > 0 ||
-    truncated
-      ? 'partial'
-      : 'success';
+    rosterError !== null || stats.writeErrors.length > 0 || stats.lookupFailedIds > 0
+      ? 'error'
+      : stats.unaccounted !== 0 || stats.divergences.length > 0 || rosterTruncated
+        ? 'partial'
+        : 'success';
+
+  const refreshSummary = Object.entries(stats.refreshes)
+    .map(([bucket, n]) => `${bucket}=${n}`)
+    .join(' ');
 
   await logEvent({
     component: COMPONENT,
     status,
     message:
-      `Watchlist: ${idsToCheck.length} markets em ${requests} requisições — ` +
-      `${reconciled.openIds.length} vivos, ${reconciled.closedIds.length} fechados, ` +
-      `${reconciled.unknownIds.length} sem resposta dos dois lotes, ` +
-      `${reconciled.failedIds.length} em lote que falhou. ` +
-      `${snapResult.written} snapshots` +
-      `${truncated ? ` (TRUNCADA no teto de ${MAX_WATCHLIST})` : ''} em ${durationMs}ms`,
+      `Watchlist ${windowMinutes.toFixed(1)}min: ${stats.cycles} ciclos, ` +
+      `${stats.snapshots} snapshots em ${stats.requests} requisições. ` +
+      `Refreshes por faixa: ${refreshSummary || 'nenhum'}. ` +
+      `Roster ${roster.length}${rosterTruncated ? ` (TRUNCADO no teto de ${MAX_WATCHLIST})` : ''}` +
+      `${rosterError !== null ? ` — ERRO: ${rosterError}` : ''}`,
     metadata: {
-      prefixes,
-      watchlist_size: idsToCheck.length,
-      // true = há mais esports ativo do que o teto por ciclo; o excedente é a
-      // partida mais distante, e não foi coletado neste ciclo.
-      truncated,
-      max_watchlist: MAX_WATCHLIST,
-      // > 0 = esports ativo sem `end_date`, invisível para o recorte acima.
-      null_end_date: nullEndDateCount ?? 0,
-      requests,
-      ids_sent_open: idsToCheck.length,
-      ids_returned_open: open.byId.size,
-      ids_sent_closed: absentIds.length,
-      ids_returned_closed: closed.byId.size,
-      // Divergência entre enviados e recebidos por chunk. Com `limit` explícito
-      // isto deve ficar vazio no lote aberto; entrada aqui é sinal de truncamento.
-      batch_divergences: divergences.length > 0 ? divergences : null,
-      open_markets: reconciled.openIds.length,
-      closed_markets: reconciled.closedIds.length,
-      // Ausente dos dois lotes: resolveu e saiu de listagem, ou lote truncado.
-      // Amostra para dar o que consultar à mão quando o número surpreender.
-      unknown_ids: reconciled.unknownIds.length,
-      unknown_sample: reconciled.unknownIds.slice(0, 10),
-      lookup_failed_ids: reconciled.failedIds.length,
+      window_minutes: Number(windowMinutes.toFixed(2)),
+      cycles: stats.cycles,
+      // Ticks em que o ciclo anterior ainda rodava. Alguns por janela é normal;
+      // muitos significam que o ciclo não cabe no intervalo da faixa mais rápida.
+      ticks_skipped_locked: stats.ticksSkippedLocked,
+      // Mercados refrescados por bucket na janela — não é o mesmo que ocupação.
+      refreshes_by_bucket: stats.refreshes,
+      // Quantos mercados estão em cada bucket agora. `live:primary = 0` com
+      // partida rolando é o sintoma de `sports_market_type` não bater com
+      // `watchlist_primary_market_types` — ou de `game_start_time` não ter sido
+      // carimbado (ver `null_game_start_time`).
+      occupancy_by_bucket: occupancy,
+      roster_size: roster.length,
+      roster_truncated: rosterTruncated,
+      roster_error: rosterError,
+      // > 0 = esports ativo sem `end_date`, invisível para o recorte do roster.
+      null_end_date: rosterNullEndDate,
+      // false = migration 20260806015533 ainda não aplicada: o coletor roda sem
+      // âncora, tudo na faixa lenta.
+      anchor_column: rosterHasAnchor,
+      // Mercados no roster sem âncora — presos na faixa lenta. Alto e estável
+      // depois do apply significa backfill não rodado (item 7, passo manual).
+      null_game_start_time: rosterNullGameStart,
+      requests: stats.requests,
+      snapshots: stats.snapshots,
+      snapshot_tables: [...stats.tables],
+      failed_snapshot_rows: stats.failedRows,
+      closed_in_open_batch: stats.closedInOpenBatch,
+      malformed_outcomes: stats.malformed,
+      unknown_ids: stats.unknownIds,
+      lookup_failed_ids: stats.lookupFailedIds,
       // != 0 é bug de contagem no reconcile, não mercado resolvendo.
-      unaccounted: reconciled.unaccounted,
-      closed_in_open_batch: closedInOpenBatch,
-      malformed_outcomes: malformed,
-      snapshots: snapResult.written,
-      // 'polymarket_snapshots' = migration 20260805142957 ainda não aplicada.
-      snapshot_table: snapResult.table,
-      failed_snapshot_rows: snapResult.failedRows,
-      duration_ms: durationMs,
-      write_errors: snapResult.errors.length > 0 ? snapResult.errors.slice(0, 10) : null,
+      unaccounted: stats.unaccounted,
+      batch_divergences: stats.divergences.length > 0 ? stats.divergences.slice(0, 5) : null,
+      write_errors: stats.writeErrors.length > 0 ? stats.writeErrors.slice(0, 5) : null,
     },
   });
 
+  stats = emptyStats(nowMs);
+}
+
+async function _collect(): Promise<void> {
+  const nowMs = Date.now();
+
+  const config = await getSystemConfig();
+  const prefixes = safeSlugPrefixes(config.discovery_slug_prefixes ?? [], 'watchlist');
+
+  if (prefixes.length === 0) {
+    // Lista vazia é o desligamento pela config, não um bug — mesmo contrato da
+    // descoberta, e é o que permite religar a vertical sem deploy.
+    await logDisabled(COMPONENT, 'Watchlist disabled: discovery_slug_prefixes is empty');
+    return;
+  }
+
+  const cadence = readCadence(config);
+  const rosterError = await ensureRoster(prefixes, nowMs);
+
+  const grouped = new Map<BucketKey, WatchlistEvent[]>();
+  for (const entry of roster) {
+    const bucket = bucketOf(entry, nowMs, cadence);
+    const list = grouped.get(bucket);
+    if (list) list.push(entry);
+    else grouped.set(bucket, [entry]);
+  }
+
+  const occupancy: Record<string, number> = {};
+  for (const [bucket, entries] of grouped) occupancy[bucket] = entries.length;
+
+  // Prioridade por prazo: o ao vivo é atendido antes de a faixa lenta gastar
+  // requisições, porque o lock é um só e o atraso dela cairia em cima dele.
+  const due = BUCKET_ORDER.filter(bucket => {
+    const entries = grouped.get(bucket);
+    return (
+      entries !== undefined &&
+      entries.length > 0 &&
+      isBucketDue(bucket, nowMs, cadence, lastRefreshAt.get(bucket))
+    );
+  });
+
+  if (due.length === 0) {
+    await flushWindowLog(nowMs, occupancy, rosterError);
+    return;
+  }
+
+  stats.cycles++;
+
+  const snapshotRows: EsportsSnapshotRow[] = [];
+  for (const bucket of due) {
+    const entries = grouped.get(bucket)!;
+    lastRefreshAt.set(bucket, nowMs);
+    stats.refreshes[bucket] = (stats.refreshes[bucket] ?? 0) + entries.length;
+    snapshotRows.push(...(await refreshBucket(entries)));
+  }
+
+  const snapResult = await writeEsportsSnapshots(snapshotRows, 'watchlist');
+  stats.snapshots += snapResult.written;
+  stats.failedRows += snapResult.failedRows;
+  stats.writeErrors.push(...snapResult.errors);
+  if (snapResult.table !== null) stats.tables.add(snapResult.table);
+
   console.log(
-    `[watchlist] ${idsToCheck.length} markets / ${reconciled.openIds.length} vivos / ` +
-      `${snapResult.written} snapshots (${requests} req, ${durationMs}ms)`,
+    `[watchlist] ${due.join(',')} — ${snapshotRows.length / 2} markets / ` +
+      `${snapResult.written} snapshots (${Date.now() - nowMs}ms)`,
   );
+
+  await flushWindowLog(Date.now(), occupancy, rosterError);
 }

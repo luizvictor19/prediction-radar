@@ -7,7 +7,20 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { reconcile, buildSnapshotRows } = await import('./watchlist-collector.js');
+const {
+  reconcile,
+  buildSnapshotRows,
+  readCadence,
+  classifyBand,
+  isPrimaryMarket,
+  bucketOf,
+  intervalMsFor,
+  isBucketDue,
+} = await import('./watchlist-collector.js');
+
+const cadence = readCadence({});
+const NOW = Date.parse('2026-08-06T12:00:00.000Z');
+const inMinutes = (minutes: number): string => new Date(NOW + minutes * 60_000).toISOString();
 
 type GammaMarket = Parameters<typeof buildSnapshotRows>[1];
 
@@ -139,4 +152,102 @@ test('outcomes malformado não derruba o chunk do insert', () => {
 test('volume_24h cai para o valor do CLOB quando o principal falta', () => {
   const rows = buildSnapshotRows('ev1', market({ volume24hrClob: 1234 }), 'now');
   assert.equal(rows[0]?.['volume_24h'], 1234);
+});
+
+// ---------------------------------------------------------------------------
+// Cadência por estado da partida (spec 000, itens 3b e 7)
+// ---------------------------------------------------------------------------
+
+test('a faixa sai da distância até game_start_time', () => {
+  // Default: faixa "falta pouco" nos 360 min antes do jogo.
+  assert.equal(classifyBand(inMinutes(361), NOW, cadence), 'far');
+  assert.equal(classifyBand(inMinutes(359), NOW, cadence), 'soon');
+  assert.equal(classifyBand(inMinutes(1), NOW, cadence), 'soon');
+});
+
+test('partida começada é ao vivo até o teto, não até o end_date', () => {
+  // A âncora antiga (180 min antes do end_date) só abriria o ao vivo em
+  // game_start_time + 3h — medido: end_date cai ~6h depois do jogo.
+  assert.equal(classifyBand(inMinutes(0), NOW, cadence), 'live');
+  assert.equal(classifyBand(inMinutes(-1), NOW, cadence), 'live');
+  assert.equal(classifyBand(inMinutes(-359), NOW, cadence), 'live');
+});
+
+test('passado o teto sem resolver, cai para a faixa lenta', () => {
+  // Partida adiada com âncora velha, ou resolução travada na UMA: o preço ainda
+  // se move, mas não a 12s. Quem tira da lista é a janela de 24h do roster.
+  assert.equal(classifyBand(inMinutes(-361), NOW, cadence), 'far');
+  assert.equal(classifyBand(inMinutes(-6000), NOW, cadence), 'far');
+});
+
+test('sem âncora, ou com âncora inválida, fica na faixa lenta em vez de virar NaN', () => {
+  // É o estado do roster inteiro antes do apply da migration e do backfill —
+  // degradação segura, medida pelo `null_game_start_time` no log.
+  assert.equal(classifyBand(null, NOW, cadence), 'far');
+  assert.equal(classifyBand('não é data', NOW, cadence), 'far');
+});
+
+test('o teto do ao vivo é configurável', () => {
+  const curto = readCadence({ watchlist_live_max_minutes: 120 });
+  assert.equal(classifyBand(inMinutes(-119), NOW, curto), 'live');
+  assert.equal(classifyBand(inMinutes(-121), NOW, curto), 'far');
+});
+
+test('só o tipo listado em config conta como mercado da série', () => {
+  assert.equal(isPrimaryMarket('moneyline', cadence), true);
+  assert.equal(isPrimaryMarket('spread', cadence), false);
+  assert.equal(isPrimaryMarket(null, cadence), false);
+  // Lista vazia trata todo mundo como derivado — some a faixa rápida, e é o
+  // `occupancy_by_bucket` no log que denuncia.
+  assert.equal(isPrimaryMarket('moneyline', readCadence({ watchlist_primary_market_types: [] })), false);
+});
+
+test('o multiplicador só atrasa o derivado, e vale nas três faixas', () => {
+  assert.equal(intervalMsFor('live:primary', cadence), 12_000);
+  assert.equal(intervalMsFor('live:derived', cadence), 60_000);
+  assert.equal(intervalMsFor('soon:primary', cadence), 60_000);
+  assert.equal(intervalMsFor('soon:derived', cadence), 300_000);
+  assert.equal(intervalMsFor('far:primary', cadence), 300_000);
+  assert.equal(intervalMsFor('far:derived', cadence), 1_500_000);
+
+  // multiplicador 1 = todo mercado tratado igual, que é o volume que a spec
+  // aponta como inaceitável (~4,3M linhas/dia).
+  const flat = readCadence({ watchlist_derived_interval_multiplier: 1 });
+  assert.equal(intervalMsFor('live:derived', flat), 12_000);
+});
+
+test('o bucket combina faixa e classe', () => {
+  const entry = {
+    id: 'e1',
+    polymarket_id: 'p1',
+    // Partida rolando há 30 min, com o end_date lá na frente (~6h depois do
+    // jogo, como a Gamma manda). É o caso que a âncora antiga classificava como
+    // 'soon' e esta como 'live'.
+    end_date: inMinutes(330),
+    game_start_time: inMinutes(-30),
+    sports_market_type: 'moneyline',
+  };
+  assert.equal(bucketOf(entry, NOW, cadence), 'live:primary');
+  assert.equal(bucketOf({ ...entry, sports_market_type: 'total' }, NOW, cadence), 'live:derived');
+  assert.equal(bucketOf({ ...entry, game_start_time: inMinutes(600) }, NOW, cadence), 'far:primary');
+  assert.equal(bucketOf({ ...entry, game_start_time: null }, NOW, cadence), 'far:primary');
+});
+
+test('a tolerância do tick impede o aliasing de 12s virar 15s', () => {
+  // O tick é de 5s. Sem tolerância, o vencimento aos 12s só seria atendido aos
+  // 15s — fora da faixa de 10-15s que a spec pede.
+  assert.equal(isBucketDue('live:primary', NOW, cadence, undefined), true);
+  assert.equal(isBucketDue('live:primary', NOW + 5_000, cadence, NOW), false);
+  assert.equal(isBucketDue('live:primary', NOW + 10_000, cadence, NOW), true);
+});
+
+test('config zerada ou negativa cai no default em vez de refrescar todo tick', () => {
+  const broken = readCadence({
+    watchlist_interval_live_seconds: 0,
+    watchlist_interval_far_seconds: -1,
+    watchlist_derived_interval_multiplier: 0,
+  });
+  assert.equal(broken.liveSeconds, 12);
+  assert.equal(broken.farSeconds, 300);
+  assert.equal(broken.derivedMultiplier, 5);
 });

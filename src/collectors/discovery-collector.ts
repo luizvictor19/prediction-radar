@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { fetchActiveMarkets, GammaHttpError } from '../lib/polymarket-api.js';
 import { gammaToEvent } from '../lib/normalize.js';
+import { ColumnProbe } from '../lib/column-probe.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
 import { batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
@@ -195,36 +196,14 @@ function buildSnapshotPair(
 }
 
 /**
- * `events.discovered_via` só existe depois da migration 20260804165019.
+ * Duas colunas que o código usa antes de a migration ser aplicada à mão:
+ * `discovered_via` (20260804165019) e `game_start_time` (20260806015533).
  *
- * A descoberta não pode depender dela para gravar: entre o deploy e o apply,
- * mandar a coluna no payload derrubaria todo chunk de `events`. Daí a sondagem.
- *
- * O resultado negativo tem validade curta de propósito — a migration é aplicada
- * à mão, sem redeploy, e um cache negativo eterno faria o carimbo nunca começar.
+ * A descoberta não pode depender de nenhuma das duas para gravar — mandar coluna
+ * inexistente no payload derruba todo chunk de `events`. Daí a sondagem.
  */
-const PROBE_RETRY_MS = 10 * 60_000;
-
-let discoveredViaSupported: boolean | null = null;
-let discoveredViaProbedAt = 0;
-
-async function supportsDiscoveredVia(): Promise<boolean> {
-  const now = Date.now();
-  if (discoveredViaSupported === true) return true;
-  if (discoveredViaSupported === false && now - discoveredViaProbedAt < PROBE_RETRY_MS) return false;
-
-  const { error } = await supabase.from('events').select('discovered_via').limit(1);
-  discoveredViaProbedAt = now;
-  discoveredViaSupported = !error;
-
-  if (error) {
-    console.warn(`[discovery] events.discovered_via indisponível (${error.message}) — gravando sem o carimbo`);
-  } else {
-    console.log('[discovery] events.discovered_via disponível — carimbando markets novos');
-  }
-
-  return discoveredViaSupported;
-}
+const discoveredViaProbe = new ColumnProbe('events', 'discovered_via', 'discovery');
+const gameStartTimeProbe = new ColumnProbe('events', 'game_start_time', 'discovery');
 
 /**
  * Separa as linhas que levam `discovered_via` das que não levam.
@@ -447,13 +426,17 @@ async function _collect(): Promise<void> {
     .filter((p): p is PreparedMarket => p !== null);
 
   const writeErrors: string[] = [];
-  const stampDiscoveredVia = await supportsDiscoveredVia();
+  const stampDiscoveredVia = await discoveredViaProbe.isSupported();
+  const stampGameStartTime = await gameStartTimeProbe.isSupported();
 
-  const { firstSeen: firstSeenRows, alreadyKnown: alreadyKnownRows } = splitForUpsert(
-    prepared,
-    newPolymarketIds,
-    stampDiscoveredVia,
-  );
+  const split = splitForUpsert(prepared, newPolymarketIds, stampDiscoveredVia);
+
+  // `game_start_time` vem de `gammaToEvent` e sai de novo enquanto a coluna não
+  // existir — o carimbo é do item 7, mas a descoberta tem que subir antes dele.
+  const [firstSeenRows, alreadyKnownRows] = await Promise.all([
+    gameStartTimeProbe.strip(split.firstSeen),
+    gameStartTimeProbe.strip(split.alreadyKnown),
+  ]);
 
   const upsertEvents = (rows: Record<string, unknown>[]) =>
     batchUpsert<{ id: string; polymarket_id: string }>('events', rows, {
@@ -527,6 +510,9 @@ async function _collect(): Promise<void> {
       // false = migration 20260804165019 ainda não aplicada; a descoberta grava
       // igual, só não carimba.
       stamped_discovered_via: stampDiscoveredVia,
+      // false = migration 20260806015533 ainda não aplicada. Sem o carimbo, todo
+      // market novo entra na watchlist sem âncora e fica na faixa lenta.
+      stamped_game_start_time: stampGameStartTime,
       first_seen_upserted: firstSeenResult.rows.length,
       rejected_no_match_shape: rejectedShape,
       missing_start_date: missingStartDate,
