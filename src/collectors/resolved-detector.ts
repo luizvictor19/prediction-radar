@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { beat } from '../lib/heartbeat.js';
 import { adjustCash } from '../lib/bankroll.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
 import { getSystemConfig } from '../lib/config.js';
@@ -409,6 +410,7 @@ async function _detectResolvedMarkets(): Promise<void> {
       status: 'success',
       message: 'no candidates to check',
     });
+    await beat('resolved_detector', 'success', 'sem candidatos');
     return;
   }
 
@@ -630,4 +632,10 @@ async function _detectResolvedMarkets(): Promise<void> {
       duration_ms: durationMs,
     },
   });
+
+  await beat(
+    'resolved_detector',
+    lookupFailedIds.size > 0 ? 'partial' : 'success',
+    `${resolvedCount} resolvidos, ${stillOpenCount} abertos`,
+  );
 }

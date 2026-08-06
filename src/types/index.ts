@@ -88,6 +88,12 @@ export interface SystemConfig {
   min_confidence_alert: number;
   drawdown_stop_pct: number;
   telegram_chat_id: string | null;
+  /**
+   * Destino dos alertas operacionais (coletor parado). Separado de
+   * `telegram_chat_id` porque este vira por usuário na A6 da spec 001 e o alerta
+   * de saúde continua sendo do operador. Null cai no `telegram_chat_id`.
+   */
+  ops_telegram_chat_id: string | null;
   daily_report_hour: number;
   cross_market_log_threshold: number;
   cross_market_high_confidence_threshold: number;
@@ -136,6 +142,20 @@ export interface SystemConfig {
   watchlist_live_max_minutes: number;
   /** `sports_market_type` que identifica o mercado da série. */
   watchlist_primary_market_types: string[];
+  /**
+   * Alerta de coletor parado (`src/bot/health-monitor.ts`).
+   *
+   * Cada limiar é "minutos sem completar um ciclo antes de avisar". **0 desliga
+   * a vigilância daquele componente** — é o que se usa quando o coletor foi
+   * desligado de propósito e o silêncio dele é esperado.
+   */
+  health_alerts_enabled: boolean;
+  health_stale_discovery_minutes: number;
+  health_stale_watchlist_minutes: number;
+  health_stale_resolved_detector_minutes: number;
+  health_stale_open_legs_minutes: number;
+  /** Intervalo mínimo entre dois avisos do MESMO componente ainda parado. */
+  health_alert_cooldown_minutes: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;

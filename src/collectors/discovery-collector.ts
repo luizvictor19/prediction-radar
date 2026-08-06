@@ -9,6 +9,7 @@ import { gammaToEvent } from '../lib/normalize.js';
 import { ColumnProbe } from '../lib/column-probe.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { beat } from '../lib/heartbeat.js';
 import { batchUpsert, dedupeByKey, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import {
@@ -456,6 +457,9 @@ async function _collect(): Promise<void> {
       status: 'success',
       message: 'Discovery disabled: discovery_slug_prefixes is empty',
     });
+    // Desligado pela config é ciclo completo, não coletor parado. Sem isto o
+    // desligamento viraria alerta permanente.
+    await beat('discovery_collector', 'success', 'desligado: sem prefixos');
     return;
   }
 
@@ -737,6 +741,8 @@ async function _collect(): Promise<void> {
       write_errors: writeErrors.length > 0 ? writeErrors.slice(0, 10) : null,
     },
   });
+
+  await beat('discovery_collector', status, `${eventsScanned} eventos, ${scanned} markets, stop: ${stopReason}`);
 
   console.log(
     `[discovery] ${eventsScanned} events / ${scanned} scanned / ${candidatesNew} new esports markets / ` +

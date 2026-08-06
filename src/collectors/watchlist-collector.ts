@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent, logDisabled } from '../lib/logger.js';
+import { beat } from '../lib/heartbeat.js';
 import { getSystemConfig } from '../lib/config.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from '../lib/polymarket-api.js';
@@ -713,6 +714,8 @@ async function _collect(): Promise<void> {
     // Lista vazia é o desligamento pela config, não um bug — mesmo contrato da
     // descoberta, e é o que permite religar a vertical sem deploy.
     await logDisabled(COMPONENT, 'Watchlist disabled: discovery_slug_prefixes is empty');
+    // Ver a nota da descoberta: desligado pela config é ciclo completo.
+    await beat(COMPONENT, 'success', 'desligado: sem prefixos');
     return;
   }
 
@@ -743,6 +746,9 @@ async function _collect(): Promise<void> {
 
   if (due.length === 0) {
     await flushWindowLog(nowMs, occupancy, rosterError);
+    // Nenhuma faixa vencida é o caso comum com tick de 5s — o ciclo rodou,
+    // decidiu que não havia o que refrescar, e terminou. Isso é saúde.
+    await beat(COMPONENT, 'success', `nada vencido, ${roster.length} no roster`);
     return;
   }
 
@@ -768,4 +774,10 @@ async function _collect(): Promise<void> {
   );
 
   await flushWindowLog(Date.now(), occupancy, rosterError);
+
+  await beat(
+    COMPONENT,
+    stats.writeErrors.length > 0 ? 'partial' : 'success',
+    `${due.join(',')} — ${snapResult.written} snapshots`,
+  );
 }

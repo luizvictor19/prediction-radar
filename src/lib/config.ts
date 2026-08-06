@@ -13,6 +13,7 @@ const DEFAULTS: SystemConfig = {
   min_confidence_alert: 0.75,
   drawdown_stop_pct: 0.20,
   telegram_chat_id: null,
+  ops_telegram_chat_id: null,
   daily_report_hour: 9,
   cross_market_log_threshold: 0.03,
   cross_market_high_confidence_threshold: 0.08,
@@ -51,6 +52,18 @@ const DEFAULTS: SystemConfig = {
   watchlist_soon_window_minutes: 360,
   watchlist_live_max_minutes: 360,
   watchlist_primary_market_types: ['moneyline'],
+  // Espelham os defaults da migration do alerta de saúde. Valem enquanto as
+  // colunas não existirem — e o fallback aqui LIGA a vigilância, ao contrário
+  // das flags de coletor. Um monitor que nasce desligado por falta de coluna
+  // reproduziria exatamente o problema que ele existe para resolver: silêncio
+  // que parece saúde. Os limiares são folgados o bastante para não gerar falso
+  // positivo enquanto isso.
+  health_alerts_enabled: true,
+  health_stale_discovery_minutes: 15,
+  health_stale_watchlist_minutes: 10,
+  health_stale_resolved_detector_minutes: 20,
+  health_stale_open_legs_minutes: 10,
+  health_alert_cooldown_minutes: 60,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

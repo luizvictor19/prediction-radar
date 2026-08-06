@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
+import { beat } from '../lib/heartbeat.js';
 import { batchInsert } from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import type { GammaMarket } from '../types/index.js';
@@ -65,7 +66,13 @@ async function _collect(): Promise<void> {
   }
 
   const legs = (legsData ?? []) as unknown as Array<{ event_id: string; events: { polymarket_id: string } }>;
-  if (legs.length === 0) return;
+  if (legs.length === 0) {
+    // Sem aposta aberta este coletor não loga nada — é o estado normal na maior
+    // parte do tempo. O batimento é o que impede o monitor de ler esse silêncio
+    // como coletor morto, que é a razão de ele existir e não usar `system_logs`.
+    await beat('open_legs_collector', 'success', 'nenhuma leg aberta');
+    return;
+  }
 
   // O join já traz o event_id: dispensa um SELECT em events por market.
   const eventIdByPolymarketId = new Map(legs.map(l => [l.events.polymarket_id, l.event_id]));
@@ -149,4 +156,10 @@ async function _collect(): Promise<void> {
     message: `collected ${snapshotsInserted} snapshots from ${polymarketIds.length} markets (${fetchErrors} errors) in ${durationMs}ms`,
     metadata: snapResult.errors.length > 0 ? { write_errors: snapResult.errors.slice(0, 10) } : undefined,
   });
+
+  await beat(
+    'open_legs_collector',
+    snapResult.errors.length > 0 || fetchErrors > 0 ? 'partial' : 'success',
+    `${snapshotsInserted} snapshots de ${polymarketIds.length} markets`,
+  );
 }
