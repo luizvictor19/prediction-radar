@@ -587,7 +587,13 @@ async function ensureRoster(prefixes: string[], nowMs: number): Promise<string |
  * a exigência do item 2b e continuam valendo por bucket — ausência no primeiro
  * lote é ambígua entre "resolveu" e "lote truncado", e só a segunda separa.
  */
-async function refreshBucket(entries: WatchlistEvent[]): Promise<EsportsSnapshotRow[]> {
+interface BucketRefresh {
+  rows: EsportsSnapshotRow[];
+  /** Ids sem leitura NESTE refresh. O acumulado da janela vive em `stats`. */
+  lookupFailedIds: number;
+}
+
+async function refreshBucket(entries: WatchlistEvent[]): Promise<BucketRefresh> {
   const eventIdByPolymarketId = new Map(entries.map(e => [e.polymarket_id, e.id]));
   const idsToCheck = [...eventIdByPolymarketId.keys()];
 
@@ -630,7 +636,73 @@ async function refreshBucket(entries: WatchlistEvent[]): Promise<EsportsSnapshot
   stats.unaccounted += reconciled.unaccounted;
   stats.divergences.push(...open.divergences, ...closed.divergences);
 
-  return snapshotRows;
+  return { rows: snapshotRows, lookupFailedIds: reconciled.failedIds.length };
+}
+
+/**
+ * O que ESTE ciclo encontrou de falha — não a janela.
+ *
+ * A distinção existe porque o batimento é por ciclo e o log é por janela de 5
+ * min. Misturar os dois foi o bug: o batimento lia `stats.writeErrors`, que é
+ * acumulador de janela, então um único erro de escrita carimbava `partial` em
+ * todos os ciclos seguintes até o flush — até 5 min de batimentos mentindo
+ * sobre ciclos que correram limpos.
+ */
+export interface CycleOutcome {
+  rosterError: string | null;
+  writeErrors: number;
+  lookupFailedIds: number;
+}
+
+/**
+ * Status do batimento: `partial` só quando algo deste ciclo de fato falhou.
+ *
+ * Os três casos são falha real e nenhum é rotina:
+ *   - `rosterError`: a lista de quem acompanhar não recarregou. O ciclo rodou
+ *     em cima de roster velho (ou nenhum), o que é trabalho degradado.
+ *   - `writeErrors`: linha de série que não foi gravada. É dado perdido.
+ *   - `lookupFailedIds`: chunk que não respondeu. Aqueles markets ficaram sem
+ *     leitura neste ciclo.
+ *
+ * O que deliberadamente NÃO entra aqui é ausência de market no lote — ver a
+ * nota em `windowStatus`.
+ */
+export function cycleStatus(outcome: CycleOutcome): 'success' | 'partial' {
+  return outcome.rosterError !== null || outcome.writeErrors > 0 || outcome.lookupFailedIds > 0
+    ? 'partial'
+    : 'success';
+}
+
+export interface WindowOutcome extends CycleOutcome {
+  unaccounted: number;
+  rosterTruncated: boolean;
+}
+
+/**
+ * Status da linha agregada de 5 min.
+ *
+ * `divergences` saiu da conta, e é essa a correção. Divergência é chunk em que
+ * "enviados != recebidos", e o próprio `fetchMarketsByIds` documenta que o
+ * filtro `id=` aplica `closed=false`: o market que resolveu SEMPRE falta no
+ * primeiro lote. Ou seja, a divergência é a forma esperada de "esse market
+ * acabou" — e como a watchlist segura o market até 24h depois do `end_date`
+ * (ENDED_GRACE_MS), praticamente toda janela tem alguma. Com ela no cálculo, o
+ * status era `partial` em regime permanente, sem nada ter falhado.
+ *
+ * O que a divergência poderia esconder de verdade — lote truncado — não some
+ * com essa remoção: o id que falta nos DOIS lotes cai em `unknownIds`, e a
+ * aritmética que não fecha cai em `unaccounted`, que continua sendo `partial`.
+ * As divergências seguem no metadata como diagnóstico; o que elas deixam de
+ * fazer é reprovar um ciclo saudável.
+ *
+ * `rosterTruncated` continua `partial` porque é cobertura incompleta de fato:
+ * há market de esports ativo fora da watchlist.
+ */
+export function windowStatus(outcome: WindowOutcome): 'success' | 'partial' | 'error' {
+  if (outcome.rosterError !== null || outcome.writeErrors > 0 || outcome.lookupFailedIds > 0) {
+    return 'error';
+  }
+  return outcome.unaccounted !== 0 || outcome.rosterTruncated ? 'partial' : 'success';
 }
 
 /** Uma linha a cada LOG_INTERVAL_MS, agregando os ciclos do período. */
@@ -642,12 +714,13 @@ async function flushWindowLog(
   if (nowMs - stats.startedAt < LOG_INTERVAL_MS) return;
 
   const windowMinutes = (nowMs - stats.startedAt) / 60_000;
-  const status =
-    rosterError !== null || stats.writeErrors.length > 0 || stats.lookupFailedIds > 0
-      ? 'error'
-      : stats.unaccounted !== 0 || stats.divergences.length > 0 || rosterTruncated
-        ? 'partial'
-        : 'success';
+  const status = windowStatus({
+    rosterError,
+    writeErrors: stats.writeErrors.length,
+    lookupFailedIds: stats.lookupFailedIds,
+    unaccounted: stats.unaccounted,
+    rosterTruncated,
+  });
 
   const refreshSummary = Object.entries(stats.refreshes)
     .map(([bucket, n]) => `${bucket}=${n}`)
@@ -696,6 +769,8 @@ async function flushWindowLog(
       lookup_failed_ids: stats.lookupFailedIds,
       // != 0 é bug de contagem no reconcile, não mercado resolvendo.
       unaccounted: stats.unaccounted,
+      // Diagnóstico, NÃO status: chunk com "enviados != recebidos" é a forma
+      // esperada de market resolvido no lote `closed=false` (ver windowStatus).
       batch_divergences: stats.divergences.length > 0 ? stats.divergences.slice(0, 5) : null,
       write_errors: stats.writeErrors.length > 0 ? stats.writeErrors.slice(0, 5) : null,
     },
@@ -748,18 +823,33 @@ async function _collect(): Promise<void> {
     await flushWindowLog(nowMs, occupancy, rosterError);
     // Nenhuma faixa vencida é o caso comum com tick de 5s — o ciclo rodou,
     // decidiu que não havia o que refrescar, e terminou. Isso é saúde.
-    await beat(COMPONENT, 'success', `nada vencido, ${roster.length} no roster`);
+    //
+    // Passa pelo `cycleStatus` mesmo assim porque roster que não recarrega é
+    // falha inclusive quando não havia o que refrescar: carimbar `success` fixo
+    // aqui seria o mesmo erro do `partial` permanente, na direção oposta.
+    await beat(
+      COMPONENT,
+      cycleStatus({ rosterError, writeErrors: 0, lookupFailedIds: 0 }),
+      rosterError !== null
+        ? `roster não recarregou: ${rosterError}`
+        : `nada vencido, ${roster.length} no roster`,
+    );
     return;
   }
 
   stats.cycles++;
 
   const snapshotRows: EsportsSnapshotRow[] = [];
+  // Do ciclo, não da janela: é o que o batimento pode olhar sem herdar falha de
+  // cinco minutos atrás.
+  let cycleLookupFailed = 0;
   for (const bucket of due) {
     const entries = grouped.get(bucket)!;
     lastRefreshAt.set(bucket, nowMs);
     stats.refreshes[bucket] = (stats.refreshes[bucket] ?? 0) + entries.length;
-    snapshotRows.push(...(await refreshBucket(entries)));
+    const refreshed = await refreshBucket(entries);
+    snapshotRows.push(...refreshed.rows);
+    cycleLookupFailed += refreshed.lookupFailedIds;
   }
 
   const snapResult = await writeEsportsSnapshots(snapshotRows, 'watchlist');
@@ -775,9 +865,21 @@ async function _collect(): Promise<void> {
 
   await flushWindowLog(Date.now(), occupancy, rosterError);
 
+  // `snapResult.errors` e não `stats.writeErrors`: o segundo é acumulador da
+  // janela de 5 min, e lê-lo aqui carimbava `partial` em todo ciclo posterior a
+  // um erro de escrita, inclusive nos que correram limpos.
+  const outcome: CycleOutcome = {
+    rosterError,
+    writeErrors: snapResult.errors.length,
+    lookupFailedIds: cycleLookupFailed,
+  };
+
   await beat(
     COMPONENT,
-    stats.writeErrors.length > 0 ? 'partial' : 'success',
-    `${due.join(',')} — ${snapResult.written} snapshots`,
+    cycleStatus(outcome),
+    `${due.join(',')} — ${snapResult.written} snapshots` +
+      (cycleLookupFailed > 0 ? `, ${cycleLookupFailed} ids sem leitura` : '') +
+      (snapResult.errors.length > 0 ? `, ${snapResult.errors.length} erros de escrita` : '') +
+      (rosterError !== null ? `, roster: ${rosterError}` : ''),
   );
 }

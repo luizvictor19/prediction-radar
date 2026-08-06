@@ -16,6 +16,8 @@ const {
   bucketOf,
   intervalMsFor,
   isBucketDue,
+  cycleStatus,
+  windowStatus,
 } = await import('./watchlist-collector.js');
 
 const cadence = readCadence({});
@@ -239,6 +241,56 @@ test('a tolerância do tick impede o aliasing de 12s virar 15s', () => {
   assert.equal(isBucketDue('live:primary', NOW, cadence, undefined), true);
   assert.equal(isBucketDue('live:primary', NOW + 5_000, cadence, NOW), false);
   assert.equal(isBucketDue('live:primary', NOW + 10_000, cadence, NOW), true);
+});
+
+// ---------------------------------------------------------------------------
+// Status: `partial` só quando algo falhou
+// ---------------------------------------------------------------------------
+
+const cleanCycle = { rosterError: null, writeErrors: 0, lookupFailedIds: 0 };
+const cleanWindow = { ...cleanCycle, unaccounted: 0, rosterTruncated: false };
+
+test('ciclo sem falha nenhuma bate success', () => {
+  assert.equal(cycleStatus(cleanCycle), 'success');
+});
+
+test('cada falha real do ciclo, sozinha, rebaixa para partial', () => {
+  assert.equal(cycleStatus({ ...cleanCycle, writeErrors: 1 }), 'partial');
+  assert.equal(cycleStatus({ ...cleanCycle, lookupFailedIds: 3 }), 'partial');
+  assert.equal(cycleStatus({ ...cleanCycle, rosterError: 'roster query: timeout' }), 'partial');
+});
+
+test('janela com divergência de lote continua success', () => {
+  // A regressão que motivou isto: divergência é "enviados != recebidos" num
+  // chunk, e o filtro `id=` da Gamma aplica closed=false — todo market que
+  // resolveu falta no primeiro lote. Como a watchlist segura o market por 24h
+  // depois do end_date, quase toda janela tem alguma, e o status vivia em
+  // `partial` sem nada ter falhado.
+  //
+  // O contrato agora é: divergência não aparece na assinatura de windowStatus.
+  // O que ela poderia esconder de verdade tem contador próprio (unaccounted).
+  assert.equal(windowStatus(cleanWindow), 'success');
+});
+
+test('aritmética que não fecha e roster truncado continuam partial', () => {
+  // unaccounted != 0 é bug de contagem no reconcile; roster truncado é market
+  // de esports ativo fora da watchlist. Os dois são degradação de fato.
+  assert.equal(windowStatus({ ...cleanWindow, unaccounted: 2 }), 'partial');
+  assert.equal(windowStatus({ ...cleanWindow, unaccounted: -1 }), 'partial');
+  assert.equal(windowStatus({ ...cleanWindow, rosterTruncated: true }), 'partial');
+});
+
+test('falha de escrita, de lookup ou de roster na janela é error', () => {
+  assert.equal(windowStatus({ ...cleanWindow, writeErrors: 1 }), 'error');
+  assert.equal(windowStatus({ ...cleanWindow, lookupFailedIds: 1 }), 'error');
+  assert.equal(windowStatus({ ...cleanWindow, rosterError: 'boom' }), 'error');
+});
+
+test('erro pesa mais que degradação quando os dois aparecem na mesma janela', () => {
+  assert.equal(
+    windowStatus({ ...cleanWindow, writeErrors: 1, rosterTruncated: true, unaccounted: 5 }),
+    'error',
+  );
 });
 
 test('config zerada ou negativa cai no default em vez de refrescar todo tick', () => {
