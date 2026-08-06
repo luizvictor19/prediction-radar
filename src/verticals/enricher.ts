@@ -256,6 +256,42 @@ export function fragmentRejection(
 }
 
 // ---------------------------------------------------------------------------
+// Leitura do próprio registro
+// ---------------------------------------------------------------------------
+
+/**
+ * O `as_of` do último fragmento gravado para este par (partida, enricher).
+ *
+ * Serve a um caso específico: fonte que publica o próprio carimbo de mudança —
+ * `context_updated_at` da Polymarket é o exemplo. Quando esse carimbo não mudou,
+ * o texto não mudou, e regravá-lo a cada ciclo produz linhas idênticas de 1-2 KB
+ * que não acrescentam nada ao que a linha anterior já diz. Não é o caso de
+ * `market-history`, onde cada execução traz preço novo — por isso a checagem é
+ * do enricher que precisa dela, e não do runner.
+ *
+ * `null` quando não há fragmento, quando a tabela não existe, ou quando a
+ * leitura falha. As três respostas levam ao mesmo lugar: gravar. Duplicar uma
+ * linha é barato; perder uma observação por causa de um erro de leitura, não.
+ */
+export async function lastFragmentAsOf(matchId: string, enricherId: string): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from('context_fragments')
+    .select('as_of')
+    .eq('match_id', matchId)
+    .eq('enricher_id', enricherId)
+    .order('observed_at', { ascending: false })
+    .limit(1);
+
+  if (error) return null;
+
+  const raw = data?.[0]?.['as_of'];
+  if (typeof raw !== 'string') return null;
+
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+// ---------------------------------------------------------------------------
 // Escrita
 // ---------------------------------------------------------------------------
 
