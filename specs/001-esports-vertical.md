@@ -229,8 +229,23 @@ Onde isso pode estar errado: os ~54% sem `serie` são o campo ausente no payload
 a coluna não distingue "a competição não tem split" de "a Gamma não preencheu". Estamos
 escolhendo a primeira leitura. Se aparecer uma liga que às vezes traz `serie` e às vezes
 não, para o mesmo split, a leitura estava errada — e o sintoma será uma edição `''`
-convivendo com edições nomeadas sob a mesma liga. A segunda query de verificação
+convivendo com edições nomeadas sob a mesma liga. A terceira query de verificação
 (final desta spec) é o que detecta isso.
+
+**Verificado em 2026-08-06: 0 linhas.** Nenhuma liga tem série nomeada e vazia
+convivendo, e o desenho `serie text not null default ''` entra na migration como está.
+
+**Ressalva sobre essa verificação, e ela não é formalidade.** `events.event_metadata` só
+passou a ser gravado em 2026-08-06 — a amostra é de **horas, não de meses**. Nenhuma liga
+teve tempo de mudar de formato dentro dela, então o que a query mediu foi "nenhuma liga
+mudou hoje", que é bem mais fraco que "nenhuma liga muda". **Repetir a query quando houver
+semanas acumuladas.** Uma liga pode passar a ter split — um campeonato que ganha edição
+regional, um circuito que se divide em stages — e o sintoma seria exatamente uma linha ali.
+
+Se ela voltar com linha, o conserto **não** é relaxar a constraint. É passar a tratar o
+vazio como desconhecido: `needs_review` nessas edições, fila no `/review`, e outra
+estratégia de chave única (o vazio deixa de poder colidir com o vazio de outra edição
+real). Isso muda o resolver, e pede migration própria.
 
 ```sql
 create table esports_matches (
@@ -723,6 +738,10 @@ A terceira é a contraprova de `serie = ''`. **Resultado vazio é o esperado** e
 desenho. Qualquer linha que aparecer é uma liga em que o vazio e o nomeado convivem — o
 que derruba a leitura de "edição sem série nomeada" e obriga a tratar o vazio como
 desconhecido, com fila de revisão. Rodar antes do item 3, não depois.
+
+> **Rodada em 2026-08-06: 0 linhas.** Desenho confirmado, migration do item 1 escrita.
+> A amostra tinha horas de `event_metadata`, não meses — **esta query fica em aberto** e
+> deve ser repetida com semanas acumuladas. Ver a ressalva no A3.
 
 Rodar antes do item 5 — determina se há série temporal utilizável:
 
