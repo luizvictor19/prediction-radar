@@ -5,6 +5,7 @@ import {
   resetLearnedRoles,
   emptyStats,
   combinedCounts,
+  writtenCounts,
   type ResolveStats,
   type PathCounts,
 } from '../src/verticals/resolver.js';
@@ -103,11 +104,13 @@ function merge(total: ResolveStats, page: ResolveStats): void {
     if (total.samples.unmatched.length < 20) total.samples.unmatched.push(sample);
   }
 
-  total.written.teams += page.written.teams;
-  total.written.leagues += page.written.leagues;
-  total.written.tournaments += page.written.tournaments;
-  total.written.matches += page.written.matches;
-  total.written.links += page.written.links;
+  // União, não soma: a mesma partida aparece em várias páginas — uma por market
+  // dela — e somar foi exatamente o que reportou 4.139 partidas onde há 2.557.
+  for (const key of Object.keys(total.written) as Array<keyof typeof total.written>) {
+    for (const value of page.written[key]) total.written[key].add(value);
+  }
+
+  total.writeFailedRows += page.writeFailedRows;
   // Teto no acumulado: 14k eventos com o banco fora do ar encheriam a memória de
   // string de erro antes de alguém ler a primeira.
   if (total.errors.length < 50) {
@@ -151,10 +154,13 @@ async function main(): Promise<void> {
 
     // As amostras só no dry-run: são acumuladores em memória, e o objetivo delas
     // é diagnóstico antes da escrita.
+    // `--limit` do script é teto de eventos LIDOS — é um ensaio, e o que se
+    // quer limitar é o quanto ele toca. Por isso vai nos dois parâmetros.
     const page = await resolveUnlinkedEvents(Math.min(BATCH_SIZE, remaining), {
       dryRun,
       collectSamples: dryRun,
       recompute,
+      maxScan: remaining,
     });
 
     if (page.tablesMissing) {
@@ -190,6 +196,14 @@ async function main(): Promise<void> {
   const all = combinedCounts(total);
   const one = total.byPath.eventTeams;
   const two = total.byPath.slugParse;
+  const written = writtenCounts(total.written);
+
+  // A razão que explica a inflação do relatório antigo, e que por si só é um
+  // número útil: a spec mediu ~6,8 markets por partida.
+  const marketsPerMatch =
+    written.matches === 0
+      ? ''
+      : `\n    markets/partida ...... ${(written.links / written.matches).toFixed(1)}`;
 
   /** Uma linha com o total e a quebra pelos dois caminhos. */
   const line = (
@@ -238,13 +252,18 @@ ${line('A: revisão humana', p => p.needsReview, '   <- a fila do /review')}
 ${line('B: recomputável', p => p.recomputable, '   <- --recompute resolve')}
       C: papel desconhecido, agregado por família no fim deste relatório.
 
-  escrito${dryRun ? ' (DRY-RUN: nada foi escrito)' : ''}
-    times ................ ${total.written.teams}
-    ligas ................ ${total.written.leagues}
-    edições .............. ${total.written.tournaments}
-    partidas ............. ${total.written.matches}
-    links ................ ${total.written.links}
+  entidades DISTINTAS tocadas${dryRun ? ' (DRY-RUN: nada foi escrito)' : ''}
+    times ................ ${written.teams}
+    ligas ................ ${written.leagues}
+    edições .............. ${written.tournaments}
+    partidas ............. ${written.matches}
+    links ................ ${written.links}${marketsPerMatch}
+      Chave natural distinta, não operações de upsert: a mesma partida é
+      reenviada em cada página que tenha outro market dela, e metade das
+      escritas é ON CONFLICT DO NOTHING. Com \`linhas perdidas\` em zero, estes
+      números são o que existe no banco.
 
+  linhas perdidas ........ ${total.writeFailedRows}
   erros .................. ${total.errors.length}
   varredura completa ..... ${total.reachedEnd ? 'sim' : 'não (teto atingido)'}
 ==========================================`);

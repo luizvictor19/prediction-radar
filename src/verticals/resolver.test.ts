@@ -7,8 +7,14 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { planEvent, outcomeSideIndex, bestOfFromScore, combinedCounts, emptyStats } =
-  await import('./resolver.js');
+const {
+  planEvent,
+  outcomeSideIndex,
+  bestOfFromScore,
+  combinedCounts,
+  writtenCounts,
+  emptyStats,
+} = await import('./resolver.js');
 
 type ResolvableEvent = Parameters<typeof planEvent>[0];
 type VerticalConfig = Parameters<typeof planEvent>[1][number];
@@ -489,6 +495,41 @@ test('outcomes ausente ou malformado vira unmatched, nunca índice inventado', (
 // ---------------------------------------------------------------------------
 // Instrumentação
 // ---------------------------------------------------------------------------
+
+test('a mesma partida tocada em várias páginas conta uma vez', () => {
+  // A regressão que motivou trocar contador por conjunto: a deduplicação de
+  // escrita é POR PÁGINA, e uma partida com 8 markets é reenviada em cada
+  // página que contenha um deles. Somar as operações reportou 4.139 partidas
+  // onde existiam 2.557 — sem perda nenhuma, só contabilidade errada.
+  const stats = emptyStats();
+
+  for (let pagina = 0; pagina < 8; pagina++) {
+    stats.written.matches.add('cs2-navi-vit-2026-05-03');
+    stats.written.teams.add('cs2|navi');
+    stats.written.teams.add('cs2|vit');
+    stats.written.links.add(`evt-${pagina}`);
+  }
+
+  const counts = writtenCounts(stats.written);
+  assert.equal(counts.matches, 1);
+  assert.equal(counts.teams, 2);
+  // Links são um por market, e esses SÃO distintos entre si.
+  assert.equal(counts.links, 8);
+});
+
+test('linhas perdidas ficam fora da contagem de distintas', () => {
+  // As chaves são as ENVIADAS. Só com `writeFailedRows` em zero elas equivalem
+  // ao que está no banco — por isso os dois números andam juntos no relatório.
+  const stats = emptyStats();
+  assert.equal(stats.writeFailedRows, 0);
+  assert.deepEqual(writtenCounts(stats.written), {
+    teams: 0,
+    leagues: 0,
+    tournaments: 0,
+    matches: 0,
+    links: 0,
+  });
+});
 
 test('combinedCounts soma os dois caminhos sem perder a quebra', () => {
   const stats = emptyStats();

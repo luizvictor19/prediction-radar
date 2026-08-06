@@ -77,6 +77,15 @@ const READ_BACK_CHUNK = 100;
 /** Páginas do aprendizado de papéis. Ver `loadLearnedRoles`. */
 const LEARN_PAGE_SIZE = 1000;
 
+/**
+ * Teto de leitura por chamada quando o chamador não pede outro.
+ *
+ * Generoso de propósito: o custo de ler evento já linkado é uma fração do de
+ * planejá-lo, e é isso que permite ao varredor reatravessar o histórico inteiro
+ * depois de um deploy e ainda alcançar o mercado novo na mesma chamada.
+ */
+const DEFAULT_MAX_SCAN = 50_000;
+
 const EVENT_COLUMNS = 'id, slug, outcomes, event_metadata, sports_market_type, game_start_time';
 
 // ---------------------------------------------------------------------------
@@ -212,6 +221,52 @@ export interface ResolveSamples {
   unmatched: UnmatchedSample[];
 }
 
+/**
+ * Entidades DISTINTAS tocadas, por chave natural — não operações de upsert.
+ *
+ * A primeira versão somava `batchUpsert().written`, que é o número de linhas
+ * ENVIADAS por lote, e enganava em dois eixos ao mesmo tempo:
+ *
+ *   - a deduplicação é por página, então a mesma partida é reenviada em toda
+ *     página que contenha outro market dela — 4.139 "partidas" para 2.557 reais;
+ *   - metade das escritas é `ON CONFLICT DO NOTHING`, então boa parte das linhas
+ *     enviadas não altera nada no banco.
+ *
+ * Nenhuma das duas era perda de dado — só contabilidade errada. Conjunto de
+ * chave natural conta o que a pergunta realmente é: quantas entidades distintas
+ * este backfill tocou.
+ */
+export interface WrittenEntities {
+  /** `vertical|code` */
+  teams: Set<string>;
+  /** `vertical|name` */
+  leagues: Set<string>;
+  /** `leagueId|serie` */
+  tournaments: Set<string>;
+  /** `match_slug` */
+  matches: Set<string>;
+  /** `event_id` */
+  links: Set<string>;
+}
+
+export interface WrittenCounts {
+  teams: number;
+  leagues: number;
+  tournaments: number;
+  matches: number;
+  links: number;
+}
+
+export function writtenCounts(written: WrittenEntities): WrittenCounts {
+  return {
+    teams: written.teams.size,
+    leagues: written.leagues.size,
+    tournaments: written.tournaments.size,
+    matches: written.matches.size,
+    links: written.links.size,
+  };
+}
+
 export interface ResolveStats {
   scanned: number;
   alreadyLinked: number;
@@ -219,7 +274,14 @@ export interface ResolveStats {
   verticalDisabled: number;
   malformedSlug: number;
   byPath: { eventTeams: PathCounts; slugParse: PathCounts };
-  written: { teams: number; leagues: number; tournaments: number; matches: number; links: number };
+  written: WrittenEntities;
+  /**
+   * Linhas em chunks que falharam no PostgREST.
+   *
+   * Fica ao lado de `written` de propósito: as chaves distintas são as
+   * ENVIADAS, e só com este número em zero elas equivalem às gravadas.
+   */
+  writeFailedRows: number;
   /** Formas de sufixo aprendidas dos eventos que têm `sports_market_type`. */
   learnedRoleForms: number;
   errors: string[];
@@ -248,7 +310,14 @@ export function emptyStats(): ResolveStats {
     verticalDisabled: 0,
     malformedSlug: 0,
     byPath: { eventTeams: emptyPathCounts(), slugParse: emptyPathCounts() },
-    written: { teams: 0, leagues: 0, tournaments: 0, matches: 0, links: 0 },
+    written: {
+      teams: new Set(),
+      leagues: new Set(),
+      tournaments: new Set(),
+      matches: new Set(),
+      links: new Set(),
+    },
+    writeFailedRows: 0,
     learnedRoleForms: 0,
     errors: [],
     tablesMissing: false,
@@ -905,6 +974,26 @@ async function loadLearnedRoles(prefixes: readonly string[]): Promise<LearnedRol
 }
 
 /**
+ * Registra o resultado de uma escrita em lote.
+ *
+ * As chaves entram no conjunto de distintas; as linhas perdidas em chunks que
+ * falharam entram no contador que fica ao lado dele. Não dá para saber QUAIS
+ * linhas caíram (o `batchUpsert` reporta faixas, não linhas), e por isso o
+ * relatório apresenta as duas coisas juntas em vez de fingir precisão que não
+ * existe: chaves distintas enviadas, e quantas linhas não passaram.
+ */
+function record(
+  stats: ResolveStats,
+  target: Set<string>,
+  keys: readonly string[],
+  result: { errors: string[]; failedRows: number },
+): void {
+  for (const key of keys) target.add(key);
+  stats.writeFailedRows += result.failedRows;
+  stats.errors.push(...result.errors);
+}
+
+/**
  * Grava um lote de planos.
  *
  * Cada nível é escrito em duas famílias, e a separação impede o histórico de
@@ -943,8 +1032,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       onConflict: 'vertical_id,polymarket_code',
       label: COMPONENT,
     });
-    stats.written.teams += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.teams, authTeams.map(teamKey), result);
   }
 
   if (slugTeams.length > 0) {
@@ -953,8 +1041,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       ignoreDuplicates: true,
       label: COMPONENT,
     });
-    stats.written.teams += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.teams, slugTeams.map(teamKey), result);
   }
 
   const teamRows = await readBack<{ id: string; vertical_id: string; polymarket_code: string }>(
@@ -986,8 +1073,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       leagues.map(l => ({ vertical_id: l.verticalId, name: l.name })),
       { onConflict: 'vertical_id,name', ignoreDuplicates: true, label: COMPONENT },
     );
-    stats.written.leagues += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.leagues, leagues.map(l => `${l.verticalId}|${l.name}`), result);
 
     const rows = await readBack<{ id: string; vertical_id: string; name: string }>(
       'esports_leagues',
@@ -1026,8 +1112,12 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       tournaments.map(t => ({ vertical_id: t.verticalId, league_id: t.leagueId, serie: t.serie })),
       { onConflict: 'vertical_id,league_id,serie', ignoreDuplicates: true, label: COMPONENT },
     );
-    stats.written.tournaments += result.written;
-    stats.errors.push(...result.errors);
+    record(
+      stats,
+      stats.written.tournaments,
+      tournaments.map(t => `${t.leagueId}|${t.serie}`),
+      result,
+    );
 
     const rows = await readBack<{ id: string; league_id: string; serie: string }>(
       'esports_tournaments',
@@ -1073,8 +1163,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       onConflict: 'match_slug',
       label: COMPONENT,
     });
-    stats.written.matches += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.matches, authMatches.map(m => m.matchSlug), result);
   }
 
   if (slugMatches.length > 0) {
@@ -1083,8 +1172,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       ignoreDuplicates: true,
       label: COMPONENT,
     });
-    stats.written.matches += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.matches, slugMatches.map(m => m.matchSlug), result);
   }
 
   const matchRows = await readBack<{ id: string; match_slug: string }>(
@@ -1126,8 +1214,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       onConflict: 'event_id',
       label: COMPONENT,
     });
-    stats.written.links += result.written;
-    stats.errors.push(...result.errors);
+    record(stats, stats.written.links, linkRows.map(r => r.event_id), result);
   }
 }
 
@@ -1255,14 +1342,38 @@ export interface ResolveOptions {
    * isto o varredor pula quem já tem link, que é o certo no dia a dia.
    */
   recompute?: boolean;
+
+  /**
+   * Teto de eventos LIDOS por chamada, contra varredura sem fim.
+   *
+   * Diferente de `limit`, que é o teto de eventos PLANEJADOS. Ler evento que já
+   * tem link é barato — nenhuma escrita, nenhum planejamento, nenhuma consulta
+   * ao registro de times — e é o que o varredor faz para reencontrar o fim da
+   * fila depois de um reinício.
+   */
+  maxScan?: number;
 }
 
 /**
  * O varredor.
  *
  * Percorre `events` em ordem de criação, em páginas, pulando o que já tem link
- * (salvo `recompute`). O cursor é offset e vive em memória: um deploy o zera, e
- * zerar é seguro porque toda escrita aqui é idempotente.
+ * (salvo `recompute`). Ordem crescente significa que o histórico é resolvido
+ * primeiro e, chegando ao fim, o cursor fica lá: os eventos novos entram depois
+ * e são exatamente os próximos a serem lidos. O varredor vira incremental
+ * sozinho, sem marca de "último processado" no banco.
+ *
+ * O cursor é offset e vive em MEMÓRIA. Um deploy o zera, e zerar é seguro por
+ * dois motivos: toda escrita aqui é idempotente, e reencontrar o fim da fila
+ * custa ~3 requisições por 200 eventos já linkados — nenhum planejamento,
+ * nenhuma escrita, nenhuma consulta ao registro de times. Para os ~21,6k
+ * eventos de hoje são ~324 requisições, uma vez por reinício.
+ *
+ * É por isso que `limit` conta evento PLANEJADO e não evento lido: com o teto
+ * sobre leitura, uma chamada logo após o deploy gastaria o orçamento inteiro
+ * pulando histórico e o mercado novo — a única coisa urgente — esperaria dezenas
+ * de ciclos. Se um dia esse custo incomodar, a saída é cursor persistido em
+ * `system_config`, não teto menor.
  */
 let cursor = 0;
 
@@ -1293,8 +1404,24 @@ export async function resolveUnlinkedEvents(
   const learnedRoles = await loadLearnedRoles(prefixes);
   stats.learnedRoleForms = Object.keys(learnedRoles).length;
 
-  while (stats.scanned < limit) {
-    const pageSize = Math.min(PAGE_SIZE, limit - stats.scanned);
+  const maxScan = opts.maxScan ?? DEFAULT_MAX_SCAN;
+  let planned = 0;
+
+  // `limit` conta EVENTO PLANEJADO, não evento lido, e a diferença aparece
+  // depois de todo deploy: o cursor vive em memória, então um processo novo
+  // recomeça do offset 0 e reencontra os ~21,6k eventos que já têm link. Se o
+  // teto contasse leitura, o orçamento inteiro de uma chamada seria gasto
+  // pulando histórico já resolvido, e o mercado novo — a única coisa urgente —
+  // só seria alcançado depois de ~22 ciclos.
+  //
+  // Página inteiramente já linkada custa 3 requisições (a página + duas de
+  // conferência de link) e nenhum planejamento, escrita ou consulta ao registro
+  // de times. Percorrer 21,6k eventos assim são ~324 requisições: caro uma vez
+  // por reinício, barato demais para justificar um cursor persistido.
+  //
+  // `maxScan` é o teto de leitura, para uma chamada nunca varrer sem fim.
+  while (planned < limit && stats.scanned < maxScan) {
+    const pageSize = Math.min(PAGE_SIZE, maxScan - stats.scanned);
 
     const { data, error } = await supabase
       .from('events')
@@ -1332,9 +1459,27 @@ export async function resolveUnlinkedEvents(
           );
     const linkedIds = new Set(linked.map(l => l.event_id));
 
-    // Os códigos da página inteira numa consulta só ao registro de times.
+    const pending = rows.filter(row => {
+      if (!linkedIds.has(row.id)) return true;
+      stats.alreadyLinked++;
+      return false;
+    });
+
+    // Página toda já linkada não custa mais nada: sem registro de times, sem
+    // planejamento, sem escrita. Depois de um deploy é o caso da esmagadora
+    // maioria das páginas, e era daqui que vinham consultas inúteis ao registro
+    // — os códigos saíam de `rows`, não do que sobrou para planejar.
+    if (pending.length === 0) {
+      if (rows.length < pageSize) {
+        stats.reachedEnd = true;
+        break;
+      }
+      continue;
+    }
+
+    // Os códigos do que SERÁ planejado, numa consulta só ao registro de times.
     const pageCodes = new Set<string>();
-    for (const row of rows) {
+    for (const row of pending) {
       if (row.slug === null) continue;
       const parsed = inspectMarketSlug(row.slug, verticals);
       if (parsed.ok) {
@@ -1349,12 +1494,7 @@ export async function resolveUnlinkedEvents(
     };
 
     const plans: EventPlan[] = [];
-    for (const row of rows) {
-      if (linkedIds.has(row.id)) {
-        stats.alreadyLinked++;
-        continue;
-      }
-
+    for (const row of pending) {
       const result = planEvent(row, verticals, ctx);
       if (!result.ok) {
         if (result.reason === 'not_esports') stats.notEsports++;
@@ -1366,6 +1506,7 @@ export async function resolveUnlinkedEvents(
       countPlan(result.plan, stats);
       if (opts.collectSamples === true) collectSample(row, result.plan, stats);
       plans.push(result.plan);
+      planned++;
     }
 
     if (!dryRun) await persistPlans(plans, stats);
