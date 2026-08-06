@@ -511,6 +511,42 @@ Meta realista, agora com duas taxas distintas: **~100% automático** no caminho 
 da API), e o caminho 2 continua sendo o que alimenta a fila. Não perseguir 100% no
 histórico — grande parte dele nunca terá nome de time.
 
+### Os três estados de pendência (revisado em 2026-08-06, após o primeiro dry-run)
+
+A regra original — "caminho 2 ⇒ `needs_review`" — foi medida e reprovada. Sobre 21.615
+markets resolvidos:
+
+| | markets | outcome não casado | pendências |
+|---|---|---|---|
+| caminho 1 (`teams[]`) | 446 | 0 | 0 |
+| caminho 2 (slug) | 21.169 | 9.824 | 21.169 |
+
+**21.169 linhas de fila é o mesmo que não ter fila** — e uma fila que ninguém quita não
+fica só inútil: ela esconde as pendências reais dentro dela.
+
+O erro conceitual: `needs_review` marcava **pobreza** quando deveria marcar **incerteza**.
+O caminho 2 é pobre (código sem nome, sem liga, sem stage) e ao mesmo tempo determinístico
+— 0 slugs fora do padrão em 464 medidos. Pobre não é duvidoso, e quem registra pobreza é
+`confidence`.
+
+Passa a valer:
+
+- **Estado A — `needs_review = true`.** Só onde um humano acrescenta o que nenhuma máquina
+  tem: conflito entre o slug e `teams[]`, casamento ambíguo (o mesmo rótulo casou nos dois
+  outcomes), `teams[]` sem `ordering`, e outcome não casado **no caminho 1** — onde a
+  medição diz que deveria casar, então falhar é anomalia.
+- **Estado B — recomputável, sem flag.** Outcome não casado no caminho 2. A causa é
+  conhecida: compara-se uma contração (`navi`) com um nome (`Natus Vincere`). A cura é
+  `esports_teams.display_name`, que o caminho 1 preenche para o mesmo `polymarket_code`;
+  uma passada nova do resolver resolve sozinha. Pedir isso a um humano seria pedir que ele
+  digitasse o que a API entrega.
+- **Estado C — relatório de família.** Sufixo sem papel mapeável. A pergunta é sobre a
+  família, não sobre a linha: `gameN-round-total-X` sozinha eram 3.692 markets. Uma regra
+  nova resolve todos; 3.692 confirmações no Telegram não resolvem nenhum.
+
+Nada passou a ser adivinhado. `outcome_a_index` que não casou continua `null`, papel
+desconhecido continua `unknown`, e `tier` continua fora do alcance do resolver.
+
 ### Fila de revisão no Telegram
 
 - `/review` — lista pendências de `esports_teams`, `esports_tournaments` e
@@ -519,8 +555,9 @@ histórico — grande parte dele nunca terá nome de time.
 - Confirmar limpa a flag; para `esports_tournaments`, é onde o `tier` consolidado é
   definido (o resolver nunca o escreve).
 
-Continua valendo, com volume muito menor: o caminho 1 não gera fila. O que sobra é
-histórico, divergência entre slug e `teams[]`, e consolidação de tier.
+Com o critério acima, o que sobra na fila é conflito entre slug e `teams[]`, ambiguidade de
+casamento e consolidação de tier. O caminho 1 não gera fila, e o caminho 2 só gera quando
+há conflito de verdade.
 
 ---
 
