@@ -288,7 +288,17 @@ export async function collectAll(): Promise<void> {
           }
 
           const { category, sub_category } = categorizeMarket(market);
-          const event = { ...gammaToEvent(market, category), sub_category };
+          const event: Record<string, unknown> = {
+            ...gammaToEvent(market, category),
+            sub_category,
+          };
+
+          // Esta varredura lê `/markets`, e ali o evento embutido não tem
+          // `teams[]` nem `sport` — só `/events` traz. Mandar o que ela enxerga
+          // apagaria no upsert o que a descoberta escreveu. Mesmo motivo pelo
+          // qual a descoberta remove `sub_category` e `resolved_outcome`: quem
+          // não tem o que dizer sobre uma coluna não a manda.
+          delete event['event_metadata'];
 
           const best_bid = market.bestBid || null;
           const best_ask = market.bestAsk || null;

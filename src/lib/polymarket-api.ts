@@ -1,4 +1,4 @@
-import type { GammaMarket, ClobOrderbook } from '../types/index.js';
+import type { GammaMarket, GammaEvent, ClobOrderbook } from '../types/index.js';
 
 const GAMMA_URL = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
 const CLOB_URL = process.env['POLYMARKET_CLOB_URL'] ?? 'https://clob.polymarket.com';
@@ -90,6 +90,94 @@ export async function fetchMarketsByIds(
   const query = ids.map(id => `id=${encodeURIComponent(id)}`).join('&');
   const url = `${GAMMA_URL}/markets?limit=${ids.length}&closed=${opts.closed}&${query}`;
   return get<GammaMarket[]>(url);
+}
+
+/** Tag da Gamma que delimita o universo de esports. */
+export const ESPORTS_TAG_SLUG = 'esports';
+
+/**
+ * Teto de itens por chamada ao `/events` (medido 2026-08-06). Vale tanto para a
+ * paginação quanto para o filtro por slug.
+ */
+export const MAX_EVENTS_PER_REQUEST = 100;
+
+/**
+ * O universo de esports pelo endpoint de eventos.
+ *
+ * Quatro diferenças em relação a `/markets`, todas medidas em 2026-08-06:
+ *
+ * 1. `limit` satura em 100. Pedir 500 devolve 100 — sem erro, sem aviso.
+ * 2. O teto de offset é o mesmo 2000, mas a borda é diferente: offset 2000
+ *    devolve lista vazia e 2500 responde 422. Quem pagina trata os dois como
+ *    fim de paginação (ver GammaHttpError).
+ * 3. Cada evento traz `markets[]` completo. O market aninhado é idêntico ao de
+ *    `/markets`: pareei 90 markets pelos dois caminhos e os 15 campos que o
+ *    normalizador lê bateram em 90/90, incluindo `negRiskMarketID` e
+ *    `outcomePrices`. O que o aninhado não tem é `events[]` e `series[]` —
+ *    ambos vêm do evento pai (ver `gammaToEvent`).
+ * 4. É aqui, e só aqui, que `teams[]` e `sport` existem.
+ *
+ * Custo medido: 4,2 KB por market contra 6,3 KB em `/markets` — o aninhado sai
+ * mais barato porque `/markets` repete o embed `events[]` em cada market.
+ *
+ * A tag delimita o universo a paginar; ela NÃO decide o que é coletado. Quem
+ * decide continua sendo `discovery_slug_prefixes`, aplicado market a market.
+ */
+export async function fetchEsportsEvents(params: {
+  limit?: number;
+  offset?: number;
+  order?: string;
+  ascending?: boolean;
+  closed?: boolean;
+  tagSlug?: string;
+}): Promise<GammaEvent[]> {
+  const {
+    limit = MAX_EVENTS_PER_REQUEST,
+    offset = 0,
+    order,
+    ascending,
+    closed = false,
+    tagSlug = ESPORTS_TAG_SLUG,
+  } = params;
+
+  let url =
+    `${GAMMA_URL}/events?tag_slug=${encodeURIComponent(tagSlug)}` +
+    `&closed=${closed}&limit=${limit}&offset=${offset}`;
+  if (order) {
+    url += `&order=${encodeURIComponent(order)}`;
+    if (ascending !== undefined) {
+      url += `&ascending=${ascending}`;
+    }
+  }
+  return get<GammaEvent[]>(url);
+}
+
+/**
+ * Eventos por slug, em lote. A chave é `events.event_group_slug`, que já é
+ * gravada — não existe coluna para o id do evento na Gamma.
+ *
+ * As duas armadilhas de `fetchMarketsByIds` valem idênticas aqui, ambas
+ * medidas em 2026-08-06 e ambas silenciosas:
+ *
+ * 1. Sem `limit` explícito, um lote de 50 slugs devolve 20.
+ * 2. O filtro aplica `closed=false` por padrão — daí `closed` ser obrigatório.
+ *
+ * O teto por chamada é 100: com 200 slugs a Gamma responde 422.
+ */
+export async function fetchEventsBySlugs(
+  slugs: readonly string[],
+  opts: { closed: boolean },
+): Promise<GammaEvent[]> {
+  if (slugs.length === 0) return [];
+  if (slugs.length > MAX_EVENTS_PER_REQUEST) {
+    throw new Error(
+      `fetchEventsBySlugs: ${slugs.length} slugs excede o máximo de ${MAX_EVENTS_PER_REQUEST}`,
+    );
+  }
+
+  const query = slugs.map(slug => `slug=${encodeURIComponent(slug)}`).join('&');
+  const url = `${GAMMA_URL}/events?limit=${slugs.length}&closed=${opts.closed}&${query}`;
+  return get<GammaEvent[]>(url);
 }
 
 /**

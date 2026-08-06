@@ -274,14 +274,111 @@ export interface GammaMarket {
   negRiskMarketID?: string | null;
   feeType?: string | null;
   feeSchedule?: { rate: number; exponent: number; takerOnly: boolean; rebateRate: number } | null;
-  series?: Array<{ id: string; slug: string; seriesType?: string; recurrence?: string }> | null;
-  events?: Array<{ id: string; slug: string; title?: string; category?: string | null; eventMetadata?: Record<string, unknown> | null; startTime?: string | null }> | null;
+  series?: Array<GammaSeries> | null;
+  /**
+   * Só o embed de `/markets`. Vem sem `teams`, sem `sport` e sem `markets` —
+   * ver `GammaEvent`. No market aninhado em `/events` este campo não existe.
+   */
+  events?: GammaEvent[] | null;
+  /**
+   * Nunca preenchido. Medido em 2026-08-06: 0 de 464 markets de esports trazem
+   * o campo na raiz. O metadado real mora em `GammaEvent.eventMetadata`.
+   * Mantido só para documentar a ausência — não ler daqui.
+   */
   eventMetadata?: Record<string, unknown> | null;
   sportsMarketType?: string | null;
   line?: number | null;
   /** 'resolved' quando o oráculo UMA já fechou o mercado. */
   umaResolutionStatus?: string;
   umaEndDate?: string;
+}
+
+export interface GammaSeries {
+  id: string;
+  slug: string;
+  seriesType?: string;
+  recurrence?: string;
+}
+
+/**
+ * Time de esports do evento.
+ *
+ * Existe **apenas** em `/events`: o embed `events[0]` de `/markets` não traz
+ * `teams` nem `sport`. É o que torna a resolução de entidade exata em vez de
+ * inferida do slug.
+ */
+export interface GammaTeam {
+  id: number;
+  name: string;
+  /**
+   * Vocabulário do provedor — 'csgo', 'lol', 'valorant', 'dota2'. NÃO é o
+   * prefixo do slug ('cs2-'). A chave estável de um time é
+   * `(league, abbreviation)`: medido em 2026-08-06, 972 chaves, 0 colisões.
+   */
+  league: string;
+  /**
+   * O mesmo código que aparece no slug do market. Medido sobre 2307 eventos no
+   * formato de partida: 2307 casaram, na ordem do slug, 0 invertidos.
+   */
+  abbreviation: string;
+  /** Id do time na PandaScore. */
+  providerId?: number;
+  logo?: string;
+  color?: string;
+  /**
+   * 'home' | 'away' — a ordem do slug. Não confundir com a ordem de
+   * `outcomes.values`, que diverge: medido, 19 de 79 eventos têm markets
+   * irmãos com os outcomes em ordens diferentes.
+   */
+  ordering?: string;
+  /** Sempre '0-0' na amostra medida. Sem conteúdo útil hoje. */
+  record?: string;
+}
+
+/**
+ * O evento da Gamma — a série, no vocabulário de esports.
+ *
+ * Dois formatos com o mesmo nome: o embed de `/markets` (id, slug, title,
+ * startTime, eventMetadata) e o objeto completo de `/events`, que acrescenta
+ * `teams`, `sport`, `series` e `markets[]`. Um tipo só, com o que é exclusivo
+ * de `/events` opcional.
+ */
+export interface GammaEvent {
+  id: string;
+  slug: string;
+  /** Igual a `slug` em 464/464 medidos. */
+  ticker?: string;
+  title?: string;
+  category?: string | null;
+  startDate?: string;
+  /** Horário da partida em ISO. Rede final de `gammaGameStartTime`. */
+  startTime?: string | null;
+  /** Igual a `eventMetadata.pandascoreMatchId` em 464/464 medidos. */
+  gameId?: string | number | null;
+  /** Placar da série ao vivo: '0-0|1-2|Bo3'. O 'BoN' final é o best-of. */
+  score?: string | null;
+  /** Mapa atual sobre o total: '3/3'. */
+  period?: string | null;
+  live?: boolean;
+  ended?: boolean;
+  closed?: boolean;
+  /**
+   * league, leagueTier, serie, tournament, pandascoreMatchId, gridSeriesId e o
+   * bloco `context_*` gerado pela própria Polymarket. Presente nos dois
+   * formatos do evento.
+   */
+  eventMetadata?: Record<string, unknown> | null;
+  /** Só em `/events`. */
+  teams?: GammaTeam[] | null;
+  /** Só em `/events`. `{ id, sport: 'cs2', resolution, ... }`. */
+  sport?: Record<string, unknown> | null;
+  /**
+   * Só em `/events`. O market de esports vem sem `series` em `/markets` — é
+   * daqui que `series_id`/`series_slug`/`series_recurrence` passam a sair.
+   */
+  series?: GammaSeries[] | null;
+  /** Só em `/events`. Todos os markets do evento, idênticos aos de `/markets`. */
+  markets?: GammaMarket[];
 }
 
 export interface ClobOrderbook {

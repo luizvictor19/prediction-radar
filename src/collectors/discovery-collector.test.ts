@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { hasMatchShape, matchedPrefix, resolveCutoffMs, splitForUpsert } = await import(
+const { hasMatchShape, matchedPrefix, resolveCutoffMs, splitForUpsert, harvestEvents } = await import(
   './discovery-collector.js'
 );
 
@@ -101,4 +101,73 @@ test('marca d\'água velha não faz o ciclo furar o teto de offset', () => {
   const now = Date.parse('2026-08-04T16:00:00Z');
   const { cutoffMs } = resolveCutoffMs(now, '2026-08-04T13:00:00Z', 20);
   assert.equal(new Date(cutoffMs).toISOString(), '2026-08-04T15:40:00.000Z');
+});
+
+// --- colheita por evento ---------------------------------------------------
+
+type HarvestEvent = Parameters<typeof harvestEvents>[0][number];
+
+function evt(slug: string, marketSlugs: string[]): HarvestEvent {
+  return {
+    id: `ev-${slug}`,
+    slug,
+    markets: marketSlugs.map((s, i) => ({ id: `${slug}#${i}`, slug: s })),
+  } as HarvestEvent;
+}
+
+function harvest(events: HarvestEvent[], seen = new Set<string>()) {
+  const capturedAt = new Map<string, string>();
+  const out = harvestEvents(events, PREFIXES, seen, capturedAt, '2026-08-06T12:00:00Z');
+  return { ...out, capturedAt, seen };
+}
+
+test('o filtro de prefixo continua sendo por market, não pela tag do evento', () => {
+  // A tag só delimita o universo a paginar. Um evento de esports pode carregar
+  // markets de jogos que a config não pediu, e eles não entram.
+  const { candidates } = harvest([
+    evt('cs2-vita-bw-2026-08-06', ['cs2-vita-bw-2026-08-06', 'cs2-vita-bw-2026-08-06-game1']),
+    evt('val-gx-sge-2026-08-06', ['val-gx-sge-2026-08-06']),
+  ]);
+
+  assert.deepEqual(
+    candidates.map(c => c.market.slug),
+    ['cs2-vita-bw-2026-08-06', 'cs2-vita-bw-2026-08-06-game1'],
+  );
+});
+
+test('cada candidato carrega o evento de onde veio', () => {
+  // É o pai que tem teams[] e sport; perder o vínculo aqui é perder o dado.
+  const { candidates } = harvest([evt('cs2-vita-bw-2026-08-06', ['cs2-vita-bw-2026-08-06-game1'])]);
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.parent.slug, 'cs2-vita-bw-2026-08-06');
+});
+
+test('market sem dois times é rejeitado mesmo dentro de evento de esports', () => {
+  const { candidates, rejectedShape } = harvest([evt('cs2-major', ['cs2-major'])]);
+
+  assert.equal(candidates.length, 0);
+  assert.equal(rejectedShape, 1);
+});
+
+test('evento sem markets não quebra a colheita', () => {
+  const noMarkets = { id: 'e', slug: 'cs2-a-b-2026-08-06' } as HarvestEvent;
+  assert.equal(harvest([noMarkets]).candidates.length, 0);
+});
+
+test('seenIds atravessa as duas varreduras — pendente não duplica a linha', () => {
+  // A varredura de pendentes revisita eventos que a paginação acabou de ver. Sem
+  // o conjunto compartilhado, a mesma linha entraria duas vezes no upsert.
+  const seen = new Set<string>();
+  const events = [evt('cs2-vita-bw-2026-08-06', ['cs2-vita-bw-2026-08-06'])];
+
+  assert.equal(harvest(events, seen).candidates.length, 1);
+  assert.equal(harvest(events, seen).candidates.length, 0);
+});
+
+test('o instante da colheita é carimbado por market', () => {
+  // Um timestamp único no fim do ciclo empilharia todas as páginas no mesmo
+  // ponto da série temporal.
+  const { capturedAt } = harvest([evt('cs2-a-b-2026-08-06', ['cs2-a-b-2026-08-06'])]);
+  assert.equal(capturedAt.get('cs2-a-b-2026-08-06#0'), '2026-08-06T12:00:00Z');
 });

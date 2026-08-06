@@ -1,5 +1,10 @@
 import { supabase } from '../lib/supabase.js';
-import { fetchActiveMarkets, GammaHttpError } from '../lib/polymarket-api.js';
+import {
+  fetchEsportsEvents,
+  fetchEventsBySlugs,
+  GammaHttpError,
+  MAX_EVENTS_PER_REQUEST,
+} from '../lib/polymarket-api.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { ColumnProbe } from '../lib/column-probe.js';
 import { getSystemConfig } from '../lib/config.js';
@@ -12,7 +17,7 @@ import {
   writeEsportsSnapshots,
   type EsportsSnapshotRow,
 } from '../lib/esports-snapshots.js';
-import type { GammaMarket } from '../types/index.js';
+import type { GammaMarket, GammaEvent } from '../types/index.js';
 
 /**
  * Descoberta por startDate (spec 000, item 2a).
@@ -27,15 +32,73 @@ import type { GammaMarket } from '../types/index.js';
  *
  * Sem filtro de volume ou liquidez: filtrar por isso é exatamente o que cega os
  * outros coletores para o mercado no minuto em que ele nasce.
+ *
+ * ## Por que `/events` e não `/markets`
+ *
+ * A paginação é por evento, não por market. Três razões, medidas em 2026-08-06:
+ *
+ * 1. `teams[]` e `sport` só existem em `/events`. São a resolução de entidade
+ *    exata — `abbreviation` bate com o código do slug em 2307/2307 — e o embed
+ *    de `/markets` não traz nenhum dos dois.
+ * 2. O teto de offset deixa de ser recurso compartilhado. Paginando `/markets`
+ *    as 20 páginas atravessam política e cripto para achar esports; com
+ *    `tag_slug=esports` o universo paginado já é só esports — 790 eventos
+ *    abertos cabem em 8 chamadas.
+ * 3. Sai mais barato por market: 4,2 KB contra 6,3 KB, porque `/markets` repete
+ *    o embed `events[]` em cada linha.
+ *
+ * A tag delimita o universo; quem decide o que é coletado continua sendo
+ * `discovery_slug_prefixes`, aplicado market a market. Trocar o filtro pela tag
+ * transferiria a decisão para um vocabulário da Polymarket que não controlamos.
  */
 
 const PAGE_SIZE = 100;
 
 /**
  * Teto de offset da Gamma é 2000 (spec 000, item 2). 20 páginas encostam nele —
- * mais que isso é requisição garantida em 422.
+ * mais que isso é requisição garantida em 422. Em `/events` a borda é um pouco
+ * diferente: offset 2000 devolve lista vazia e 2500 responde 422. Os dois casos
+ * são fim de paginação.
  */
 const MAX_PAGES = 20;
+
+/**
+ * Tamanho do lote na consulta de ids já conhecidos.
+ *
+ * Uma página de 100 eventos carrega ~1000 markets (mediana de 11 por evento,
+ * máximo observado 64). Um `in` com mil valores vira URL de ~10 KB e é rejeitada
+ * antes de chegar ao Postgres.
+ */
+const KNOWN_IDS_CHUNK = 200;
+
+/**
+ * Parada por sequência de eventos já conhecidos, em eventos e não em markets.
+ *
+ * O limiar era 500 markets consecutivos, quando a página tinha 100 markets.
+ * Página de evento traz ~1000, e manter a contagem em markets faria a parada
+ * disparar no meio da primeira página — dez vezes mais cedo, em cobertura.
+ * 50 eventos são da mesma ordem de grandeza que os 500 markets de antes.
+ */
+const KNOWN_EVENT_STREAK_STOP = 50;
+
+/**
+ * Intervalo mínimo entre varreduras de eventos pendentes.
+ *
+ * A janela sai da distribuição medida do atraso de criação: 8 de 288 markets
+ * nascem mais de 10 min depois do evento pai. Rodar a cada ciclo (3 min) não
+ * acharia praticamente nada de novo entre uma e outra.
+ */
+const PENDING_SWEEP_INTERVAL_MS = 10 * 60_000;
+
+/**
+ * Teto de linhas lidas de `events` para montar a lista de pendentes.
+ *
+ * São ~10 markets por evento, então mil linhas cobrem com folga os ~214 eventos
+ * com jogo no futuro medidos em 2026-08-06. A ordenação por `game_start_time`
+ * ascendente faz o corte, quando houver, cair sempre no jogo mais distante —
+ * que é o que menos urge e reaparece nos ciclos seguintes.
+ */
+const PENDING_ROW_LIMIT = 1000;
 
 /**
  * A ordenação por startDate não é estritamente monótona entre páginas (medido:
@@ -43,12 +106,6 @@ const MAX_PAGES = 20;
  * evita que um degrau desses corte a paginação cedo demais.
  */
 const WATERMARK_OVERLAP_MS = 2 * 60_000;
-
-/**
- * Parada do spec: N markets consecutivos já presentes em `events`. Na prática
- * dispara em período calmo — em rajada de criação a parada que vale é a de tempo.
- */
-const KNOWN_STREAK_STOP = 500;
 
 const CYCLE_TIMEOUT_MS = 120_000;
 
@@ -65,6 +122,13 @@ type StopReason =
  * ciclo cai no lookback frio, que é o comportamento correto para um processo novo.
  */
 let watermarkStartDate: string | null = null;
+
+/**
+ * Quando a varredura de pendentes rodou pela última vez. Em memória pelo mesmo
+ * motivo da marca d'água: um deploy zera e o próximo ciclo varre, que é o
+ * comportamento correto para um processo novo.
+ */
+let lastPendingSweepMs = 0;
 
 const cycleLock = new CycleLock();
 
@@ -120,10 +184,10 @@ interface PreparedMarket {
   } | null;
 }
 
-function prepareMarket(market: GammaMarket): PreparedMarket | null {
+function prepareMarket(market: GammaMarket, parent: GammaEvent | null): PreparedMarket | null {
   try {
     const event: Record<string, unknown> = {
-      ...gammaToEvent(market),
+      ...gammaToEvent(market, 'other', parent),
       start_date: market.startDate ?? null,
     };
 
@@ -235,24 +299,105 @@ export function splitForUpsert(
   return { firstSeen, alreadyKnown };
 }
 
-/** Quais destes polymarket_ids já estão em `events`. Uma query por página. */
-async function fetchKnownIds(polymarketIds: string[]): Promise<Set<string>> {
+/** Quais destes polymarket_ids já estão em `events`. */
+async function fetchKnownIds(polymarketIds: readonly string[]): Promise<Set<string>> {
   if (polymarketIds.length === 0) return new Set();
+
+  const known = new Set<string>();
+
+  for (let i = 0; i < polymarketIds.length; i += KNOWN_IDS_CHUNK) {
+    const chunk = polymarketIds.slice(i, i + KNOWN_IDS_CHUNK);
+    const { data, error } = await supabase
+      .from('events')
+      .select('polymarket_id')
+      .in('polymarket_id', chunk);
+
+    if (error) {
+      // Sem a resposta não dá para afirmar que algo é conhecido. Tratar tudo como
+      // novo mantém a paginação andando (a parada de tempo continua valendo) em
+      // vez de encerrar o ciclo por uma falha de leitura. O conjunto sai vazio, e
+      // não parcial, para que a sequência de conhecidos não pare a paginação com
+      // base num lote que faltou.
+      console.error(`[discovery] known-ids lookup failed: ${error.message}`);
+      return new Set();
+    }
+
+    for (const row of data ?? []) known.add(row.polymarket_id as string);
+  }
+
+  return known;
+}
+
+/** Um market candidato junto do evento de onde ele veio. */
+interface Candidate {
+  market: GammaMarket;
+  parent: GammaEvent;
+}
+
+/**
+ * Extrai de uma lista de eventos os markets que a config manda coletar.
+ *
+ * `seenIds` atravessa as duas varreduras do ciclo de propósito: a de pendentes
+ * revisita eventos que a paginação pode ter acabado de ver, e sem isso a mesma
+ * linha entraria duas vezes no upsert.
+ */
+export function harvestEvents(
+  events: readonly GammaEvent[],
+  prefixes: readonly string[],
+  seenIds: Set<string>,
+  capturedAtById: Map<string, string>,
+  capturedAt: string,
+): { candidates: Candidate[]; rejectedShape: number } {
+  const candidates: Candidate[] = [];
+  let rejectedShape = 0;
+
+  for (const event of events) {
+    for (const market of event.markets ?? []) {
+      const prefix = matchedPrefix(market.slug, prefixes);
+      if (prefix === null) continue;
+
+      if (!hasMatchShape(market.slug, prefix)) {
+        rejectedShape++;
+        continue;
+      }
+
+      if (seenIds.has(market.id)) continue;
+      seenIds.add(market.id);
+      capturedAtById.set(market.id, capturedAt);
+
+      candidates.push({ market, parent: event });
+    }
+  }
+
+  return { candidates, rejectedShape };
+}
+
+/**
+ * Slugs de evento cujo jogo ainda não começou.
+ *
+ * `null` significa "não dá para montar a lista" — coluna ausente ou leitura que
+ * falhou — e é diferente de lista vazia, que é uma resposta legítima.
+ */
+async function fetchPendingEventSlugs(): Promise<string[] | null> {
+  // Sem `game_start_time` não há como saber qual jogo ainda não começou, e
+  // revisitar todo evento aberto seria varrer o universo inteiro a cada 10 min.
+  if (!(await gameStartTimeProbe.isSupported())) return null;
 
   const { data, error } = await supabase
     .from('events')
-    .select('polymarket_id')
-    .in('polymarket_id', polymarketIds);
+    .select('event_group_slug')
+    .eq('status', 'active')
+    .not('event_group_slug', 'is', null)
+    .gt('game_start_time', new Date().toISOString())
+    .order('game_start_time', { ascending: true })
+    .limit(PENDING_ROW_LIMIT);
 
   if (error) {
-    // Sem a resposta não dá para afirmar que algo é conhecido. Tratar tudo como
-    // novo mantém a paginação andando (a parada de tempo continua valendo) em
-    // vez de encerrar o ciclo por uma falha de leitura.
-    console.error(`[discovery] known-ids lookup failed: ${error.message}`);
-    return new Set();
+    console.error(`[discovery] pending-events lookup failed: ${error.message}`);
+    return null;
   }
 
-  return new Set((data ?? []).map(row => row.polymarket_id as string));
+  return [...new Set((data ?? []).map(row => row.event_group_slug as string))];
 }
 
 export async function collectDiscovery(): Promise<void> {
@@ -320,7 +465,8 @@ async function _collect(): Promise<void> {
   let offset = 0;
   let pageCount = 0;
   let scanned = 0;
-  let knownStreak = 0;
+  let eventsScanned = 0;
+  let knownEventStreak = 0;
   let candidatesNew = 0;
   let candidatesKnown = 0;
   let rejectedShape = 0;
@@ -331,19 +477,32 @@ async function _collect(): Promise<void> {
 
   const seenIds = new Set<string>();
   const newPolymarketIds = new Set<string>();
-  const candidates: GammaMarket[] = [];
+  const candidates: Candidate[] = [];
   // O instante da resposta da página em que o market apareceu. Um timestamp
   // único no fim do ciclo empilharia até 20 páginas no mesmo ponto da série.
   const capturedAtById = new Map<string, string>();
 
+  /** Classifica em novo/conhecido e acumula. Comum às duas varreduras. */
+  const absorb = (found: Candidate[], known: ReadonlySet<string>): void => {
+    for (const candidate of found) {
+      if (known.has(candidate.market.id)) candidatesKnown++;
+      else {
+        candidatesNew++;
+        newPolymarketIds.add(candidate.market.id);
+      }
+      candidates.push(candidate);
+    }
+  };
+
   while (pageCount < MAX_PAGES) {
-    let page: GammaMarket[];
+    let page: GammaEvent[];
     try {
-      page = await fetchActiveMarkets({
+      page = await fetchEsportsEvents({
         limit: PAGE_SIZE,
         offset,
         order: 'startDate',
         ascending: false,
+        closed: false,
       });
     } catch (err) {
       // 422 em offset alto é o teto da API, não falha do ciclo (item 0).
@@ -365,50 +524,43 @@ async function _collect(): Promise<void> {
       break;
     }
 
-    scanned += page.length;
+    eventsScanned += page.length;
+    const pageMarkets = page.flatMap(event => event.markets ?? []);
+    scanned += pageMarkets.length;
 
-    const known = await fetchKnownIds(page.map(m => m.id));
+    const known = await fetchKnownIds(pageMarkets.map(m => m.id));
     let oldestOnPage: number | null = null;
 
-    for (const market of page) {
-      if (known.has(market.id)) knownStreak++;
-      else knownStreak = 0;
+    for (const event of page) {
+      // A sequência conta eventos inteiramente conhecidos: o eixo da paginação
+      // agora é o evento, e um evento sem market nenhum não diz nada sobre a
+      // fronteira — não quebra a sequência nem a alimenta.
+      const eventMarkets = event.markets ?? [];
+      if (eventMarkets.length > 0 && eventMarkets.every(m => known.has(m.id))) {
+        knownEventStreak++;
+      } else if (eventMarkets.length > 0) {
+        knownEventStreak = 0;
+      }
 
-      const startMs = market.startDate ? Date.parse(market.startDate) : NaN;
+      const startMs = event.startDate ? Date.parse(event.startDate) : NaN;
       if (Number.isNaN(startMs)) {
         missingStartDate++;
       } else {
         if (oldestOnPage === null || startMs < oldestOnPage) oldestOnPage = startMs;
         if (newestStartDate === null || startMs > Date.parse(newestStartDate)) {
-          newestStartDate = market.startDate ?? null;
+          newestStartDate = event.startDate ?? null;
         }
       }
-
-      const prefix = matchedPrefix(market.slug, prefixes);
-      if (prefix === null) continue;
-
-      if (!hasMatchShape(market.slug, prefix)) {
-        rejectedShape++;
-        continue;
-      }
-
-      // A mesma página pode reaparecer no offset seguinte: a lista se desloca a
-      // cada market criado. Sem isso, o upsert recebe a mesma linha duas vezes.
-      if (seenIds.has(market.id)) continue;
-      seenIds.add(market.id);
-      capturedAtById.set(market.id, pageCapturedAt);
-
-      if (known.has(market.id)) {
-        candidatesKnown++;
-      } else {
-        candidatesNew++;
-        newPolymarketIds.add(market.id);
-      }
-
-      candidates.push(market);
     }
 
-    if (knownStreak >= KNOWN_STREAK_STOP) {
+    // A mesma página pode reaparecer no offset seguinte: a lista se desloca a
+    // cada evento criado. `seenIds` dentro de `harvestEvents` é o que impede a
+    // mesma linha de entrar duas vezes no upsert.
+    const harvest = harvestEvents(page, prefixes, seenIds, capturedAtById, pageCapturedAt);
+    rejectedShape += harvest.rejectedShape;
+    absorb(harvest.candidates, known);
+
+    if (knownEventStreak >= KNOWN_EVENT_STREAK_STOP) {
       stopReason = 'known_streak';
       break;
     }
@@ -421,8 +573,59 @@ async function _collect(): Promise<void> {
     offset += page.length;
   }
 
-  const prepared = dedupeByKey(candidates, m => m.id)
-    .map(prepareMarket)
+  // --- Varredura de eventos pendentes -------------------------------------
+  //
+  // A paginação por `startDate` do evento só o enxerga no minuto em que nasce.
+  // Medido em 2026-08-06 sobre 288 markets: a mediana nasce junto do pai (lag
+  // zero), mas o p99 é de 411 min e o maior observado, 491. Um mercado derivado
+  // aberto 8h depois entra num evento que a marca d'água já ultrapassou — sem
+  // esta varredura ele nunca seria descoberto.
+  //
+  // O conjunto a revisitar é pequeno e bem definido: evento cujo jogo ainda não
+  // começou. Medido: 214 de 790 eventos abertos, 3 chamadas de 100 slugs.
+  let pendingEvents = 0;
+  let pendingRequests = 0;
+  let pendingError: string | null = null;
+  let pendingSkipped: string | null = null;
+
+  if (startedAt - lastPendingSweepMs < PENDING_SWEEP_INTERVAL_MS) {
+    pendingSkipped = 'interval';
+  } else {
+    const slugs = await fetchPendingEventSlugs();
+
+    if (slugs === null) {
+      // Coluna ausente ou leitura falha. Não é erro de ciclo: a paginação já
+      // rodou e grava normalmente. Mas a marca não avança, para que a próxima
+      // tentativa seja imediata em vez de esperar o intervalo.
+      pendingSkipped = 'unavailable';
+    } else {
+      lastPendingSweepMs = startedAt;
+
+      for (let i = 0; i < slugs.length; i += MAX_EVENTS_PER_REQUEST) {
+        const chunk = slugs.slice(i, i + MAX_EVENTS_PER_REQUEST);
+        try {
+          const events = await fetchEventsBySlugs(chunk, { closed: false });
+          pendingRequests++;
+          pendingEvents += events.length;
+
+          const capturedAt = new Date().toISOString();
+          const harvest = harvestEvents(events, prefixes, seenIds, capturedAtById, capturedAt);
+          rejectedShape += harvest.rejectedShape;
+
+          const known = await fetchKnownIds(harvest.candidates.map(c => c.market.id));
+          absorb(harvest.candidates, known);
+        } catch (err) {
+          // Um lote que falha não derruba os outros nem o ciclo — mesma
+          // disciplina da watchlist. O que ele traria reaparece na próxima
+          // varredura, porque o evento continua pendente.
+          pendingError ??= `${err instanceof Error ? err.message : String(err)} no lote ${i}`;
+        }
+      }
+    }
+  }
+
+  const prepared = dedupeByKey(candidates, c => c.market.id)
+    .map(c => prepareMarket(c.market, c.parent))
     .filter((p): p is PreparedMarket => p !== null);
 
   const writeErrors: string[] = [];
@@ -491,11 +694,13 @@ async function _collect(): Promise<void> {
     component: 'discovery_collector',
     status,
     message:
-      `Discovery: ${scanned} markets em ${pageCount} páginas, ${candidatesNew} novos + ` +
+      `Discovery: ${eventsScanned} eventos / ${scanned} markets em ${pageCount} páginas` +
+      `${pendingEvents > 0 ? ` + ${pendingEvents} pendentes` : ''}, ${candidatesNew} novos + ` +
       `${candidatesKnown} já conhecidos, ${eventsResult.rows.length} upserted, ` +
       `${snapResult.written} snapshots (stop: ${stopReason})`,
     metadata: {
       scanned,
+      events_scanned: eventsScanned,
       pages: pageCount,
       stop_reason: stopReason,
       pagination_error: paginationError,
@@ -507,6 +712,13 @@ async function _collect(): Promise<void> {
       // de volume nunca tinha visto.
       candidates_new: candidatesNew,
       candidates_known: candidatesKnown,
+      // Varredura de pendentes. `pending_skipped = 'unavailable'` significa que
+      // `game_start_time` ainda não foi aplicada — sem ela o market criado horas
+      // depois do evento pai continua invisível.
+      pending_events: pendingEvents,
+      pending_requests: pendingRequests,
+      pending_skipped: pendingSkipped,
+      pending_error: pendingError,
       // false = migration 20260804165019 ainda não aplicada; a descoberta grava
       // igual, só não carimba.
       stamped_discovered_via: stampDiscoveredVia,
@@ -527,7 +739,7 @@ async function _collect(): Promise<void> {
   });
 
   console.log(
-    `[discovery] ${scanned} scanned / ${candidatesNew} new esports markets / ` +
+    `[discovery] ${eventsScanned} events / ${scanned} scanned / ${candidatesNew} new esports markets / ` +
       `${eventsResult.rows.length} upserted (stop: ${stopReason}, ${durationMs}ms)`,
   );
 }

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchMarketsByIds, MAX_IDS_PER_REQUEST } from './polymarket-api.js';
+import {
+  fetchMarketsByIds,
+  fetchEsportsEvents,
+  fetchEventsBySlugs,
+  MAX_IDS_PER_REQUEST,
+  MAX_EVENTS_PER_REQUEST,
+} from './polymarket-api.js';
 
 /**
  * As duas armadilhas do filtro `id=` falham em silêncio: sem `limit` explícito a
@@ -50,4 +56,52 @@ test('lote acima de 100 ids é erro, não truncamento calado', async () => {
 test('lote vazio não vira requisição', async () => {
   const url = await captureUrl(() => fetchMarketsByIds([], { closed: false }));
   assert.equal(url, '');
+});
+
+/**
+ * `/events` repete as duas armadilhas do filtro por id e acrescenta uma
+ * terceira: `limit` satura em 100 e pedir 500 devolve 100 sem erro. Como todas
+ * falham em silêncio, o teste é sobre a URL montada.
+ */
+
+test('a paginação de eventos carrega a tag e o closed explícito', async () => {
+  const url = await captureUrl(() => fetchEsportsEvents({ offset: 300, order: 'startDate', ascending: false }));
+
+  assert.match(url, /\/events\?/);
+  assert.match(url, /[?&]tag_slug=esports(&|$)/);
+  assert.match(url, /[?&]closed=false(&|$)/);
+  assert.match(url, /[?&]offset=300(&|$)/);
+  assert.match(url, /[?&]order=startDate(&|$)/);
+  assert.match(url, /[?&]ascending=false(&|$)/);
+});
+
+test('o limit default não passa do teto de 100 da Gamma', async () => {
+  // Pedir mais devolve 100 calado — o default tem que já ser o teto.
+  const url = await captureUrl(() => fetchEsportsEvents({}));
+  assert.match(url, new RegExp(`[?&]limit=${MAX_EVENTS_PER_REQUEST}(&|$)`));
+});
+
+test('busca por slug manda limit explícito igual ao tamanho do lote', async () => {
+  const slugs = Array.from({ length: 37 }, (_, i) => `cs2-a${i}-b-2026-08-06`);
+  const url = await captureUrl(() => fetchEventsBySlugs(slugs, { closed: false }));
+
+  assert.match(url, /[?&]limit=37(&|$)/);
+  assert.equal(url.match(/[&?]slug=/g)?.length, 37);
+});
+
+test('busca por slug leva closed nos dois sentidos', async () => {
+  const open = await captureUrl(() => fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: false }));
+  assert.match(open, /[?&]closed=false(&|$)/);
+
+  const closed = await captureUrl(() => fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: true }));
+  assert.match(closed, /[?&]closed=true(&|$)/);
+});
+
+test('lote de slugs acima de 100 é erro, não 422 na cara da Gamma', async () => {
+  const slugs = Array.from({ length: MAX_EVENTS_PER_REQUEST + 1 }, (_, i) => `cs2-a${i}-b-2026-08-06`);
+  await assert.rejects(() => fetchEventsBySlugs(slugs, { closed: false }), /excede o máximo/);
+});
+
+test('lote de slugs vazio não vira requisição', async () => {
+  assert.equal(await captureUrl(() => fetchEventsBySlugs([], { closed: false })), '');
 });
