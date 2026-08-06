@@ -1,280 +1,316 @@
 # Panorama dos processos automáticos — Prediction Radar
 
+> Estado de **agosto/2026**, depois da Spec 000 (contenção). O que mudou desde a
+> versão anterior deste arquivo: a varredura por volume e o early-markets foram
+> desligados por flag, os 5 detectores genéricos também, entraram descoberta +
+> watchlist de esports, o auto-resolver virou componente com cron próprio e a
+> retenção passou a ter dois caminhos (DELETE para o legado, DROP PARTITION para
+> esports).
+>
+> Fonte de verdade sobre o que fazer adiante: `specs/`. Este arquivo descreve o
+> que roda hoje, não a direção.
+
+---
+
 ## Conceitos rápidos
 
-**Snapshot** — foto do preço de um mercado num instante (Yes, No, volume, liquidez). Sistema tira fotos a cada poucos minutos.
+**Snapshot** — foto do preço de um mercado num instante (bid, ask, mid, volume,
+liquidez). Hoje vão para duas tabelas diferentes: esports em `esports_snapshots`
+(particionada por dia), o resto em `polymarket_snapshots`.
 
-**Signal (sinal)** — quando um detector encontra oportunidade, cria um signal. É a notificação que aparece no Telegram.
+**Signal (sinal)** — quando um detector encontra oportunidade, cria um signal. É
+a notificação que aparece no Telegram.
 
-**TTL (Time To Live)** — quanto tempo um signal vive antes de expirar. Tipo prazo de validade.
+**TTL** — quanto tempo um signal vive antes de expirar.
 
-**Cooldown** — período de espera após um signal ser dispensado, durante o qual o detector NÃO cria outro signal pro mesmo mercado.
+**Cooldown** — espera após um signal ser dispensado, durante a qual o detector
+NÃO cria outro pro mesmo mercado.
 
-**Cron** — agendamento automático. "A cada X minutos, faz Y."
+**Cron** — agendamento automático. "A cada X, faz Y."
+
+**Flag** — coluna booleana em `system_config` que liga/desliga um componente sem
+deploy. O cron continua disparando; o componente sai logo na primeira linha e
+registra que está desligado.
+
+**Faixa (banda)** — na watchlist, o quão perto a partida está (`live` / `soon` /
+`far`). Cada faixa tem seu próprio intervalo de refresh.
+
+**Watchlist** — a lista de mercados de esports ativos que o coletor refresca por
+`id=` em lote, em vez de varrer o Polymarket inteiro atrás deles.
 
 ---
 
-## Os "fotógrafos" (collectors)
+## Os dois processos
+
+| Processo | Comando | O que roda |
+|---|---|---|
+| Motor | `npm start` (`src/index.ts`) | todos os coletores, detectores e jobs abaixo |
+| Bot | `npm run bot` (`src/bot/index.ts`) | Telegram + loop de notificação (60s) |
+
+---
+
+## Tabela mestra — o que dispara, quando, e se está ligado
+
+| Componente | Cron | Estado | Flag |
+|---|---|---|---|
+| `open_legs_collector` | `*/10 * * * * *` (10s) | **ligado** | — |
+| `watchlist_collector` | `*/5 * * * * *` (5s) + start | **ligado** | `discovery_slug_prefixes` vazio desliga |
+| `discovery_collector` | `*/3 * * * *` + start | **ligado** | `discovery_slug_prefixes` vazio desliga |
+| `resolved_detector` | `*/5 * * * *` + start | **ligado** | — |
+| `detector_runner` | `*/15 * * * *` | **ligado** (só manutenção) | `generic_detectors_enabled` |
+| `esports_partitions` | `30 2 * * *` + start | **ligado** | — |
+| `retention_job` | `0 3 * * *` + start | **ligado** | — |
+| `collector` (varredura por volume) | `*/3 * * * *` + start | **DESLIGADO** | `volume_scan_enabled = false` |
+| `early_markets_collector` | `*/10 * * * *` + start | **DESLIGADO** | `early_markets_enabled = false` |
+| 5 detectores genéricos | dentro do runner, 15min | **DESLIGADOS** | `generic_detectors_enabled = false` |
+| notify loop (Telegram) | `setInterval` 60s | **ligado** (processo do bot) | — |
+
+"+ start" = também roda uma vez no boot, para um deploy no meio do intervalo não
+deixar buraco.
+
+Todos os crons são UTC. Sintaxe de 5 campos: `min hora dia mês dow`. Sintaxe de 6
+campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro campo
+é **segundo**.
+
+---
+
+## Os que estão ligados
+
+### Watchlist collector — tick de 5s, cadência por faixa
+- Refresca por `id=` em lote os mercados de esports ativos (até 1000, ordenados
+  pelo horário da partida). Sem paginação, sem teto de offset.
+- **O tick de 5s não é a cadência de coleta.** Quem decide o que é refrescado é a
+  faixa de cada mercado, e a faixa sai da distância até `events.game_start_time`
+  (o horário real do jogo, não o `end_date` — que cai ~6h depois da partida).
+
+  | Estado | Mercado da série | Derivados |
+  |---|---|---|
+  | falta > 6h para o jogo | 5 min | 25 min |
+  | falta < 6h | 1 min | 5 min |
+  | partida rolando | **12 s** | 60 s |
+  | passou de 6h rolando sem resolver | 5 min | 25 min |
+
+- Derivado = tudo que não é o moneyline da série (handicap, total, por game,
+  first blood). É o multiplicador que segura o volume: ~231k linhas/dia em vez de
+  ~734k sem ele.
+- Escreve em `esports_snapshots`. Não escreve em `events`.
+- Código: `src/collectors/watchlist-collector.ts` — Logs: `watchlist_collector`
+- Uma linha de log a cada 5 min, agregando os ~60 ciclos. Olhar em `metadata`:
+  `occupancy_by_bucket` (quantos mercados em cada faixa agora),
+  `null_game_start_time` (sem âncora = presos na faixa lenta), `anchor_column`.
+
+### Discovery collector — a cada 3min
+- Pagina `order=startDate` desc e persiste o que bate os prefixos de slug.
+  Encontra o mercado de esports no minuto em que ele abre, com volume 0 e
+  liquidez ~US$ 17 — que é exatamente o que a varredura por volume nunca via.
+- Carimba `discovered_via='discovery'` no que vê primeiro e `game_start_time`.
+- 3min não é arbitrário: o teto de offset 2000 da Gamma cobre ~36min de criação
+  de mercados. A cada 3min a janela é de ~5min, com folga de ~10x.
+- Código: `src/collectors/discovery-collector.ts` — Logs: `discovery_collector`
 
 ### Open legs collector — a cada 10s
-- Coleta preços APENAS dos mercados onde tu tem leg aberta
-- Garante que /positions e /status sempre mostram preço fresquíssimo
-- Configurado em: src/index.ts (cron `*/10 * * * * *`)
-- Código: src/collectors/open-legs-collector.ts
-- Tempo médio: 750-900ms por ciclo
-- Logs: component='open_legs_collector'
-- Lock isRunning previne overlap, timeout 25s
+- Coleta preço APENAS dos mercados onde tu tem leg aberta, para `/positions` e
+  `/status` nunca mostrarem preço velho.
+- Escreve em `polymarket_snapshots` (não em `esports_snapshots`), porque é de lá
+  que `signal-context`, `bankroll`, `positions` e o auto-resolver leem o preço
+  das posições. Isso põe série de esports na tabela legada de propósito — e é a
+  retenção que sabe não apagar (ver item 8 abaixo).
+- Código: `src/collectors/open-legs-collector.ts` — Logs: `open_legs_collector`
 
-### Collector geral — a cada 3min
-- Busca todos os ~46k mercados ativos do Polymarket
-- Filtra os relevantes (volume>10k, liquidez>20k) e salva no banco
-- Alimenta tabela polymarket_snapshots que serve os detectores
-- No fim, dispara o auto-resolver
-- Configurado em: src/index.ts (cron `*/3 * * * *`)
-- Código: src/collectors/polymarket.ts (collectAll)
-- Tempo médio: 10-11min (ciclos sobrepostos com proteção)
-- Logs: component='collector'
-
-### Early markets collector — a cada 5min
-- Busca mercados recém-abertos (<24h) no Polymarket
-- Persiste em events com is_new_market=true
-- Alimenta especificamente o detector early_market
-- Configurado em: src/index.ts (cron `*/5 * * * *`)
-- Código: src/collectors/early-markets-collector.ts
-- Tempo médio: 5-10s
-- Logs: component='early_markets_collector'
-
----
-
-## Os "detectores" (rodam dentro do detector_runner)
+### Auto-resolver (resolved_detector) — a cada 5min
+- Fecha tua leg quando o mercado resolve no Polymarket: atualiza cash, registra
+  PnL, marca o event como resolved.
+- **Mudou:** antes era chamado no fim do `collectAll`. Virou componente próprio,
+  com cron e lock próprios, justamente para não morrer junto com a varredura por
+  volume. Candidatos restritos a esports e a mercados com aposta.
+- Custo: ~2 requisições por 100 candidatos (lote por `id=`).
+- Código: `src/collectors/resolved-detector.ts` — Logs: `resolved_detector`
 
 ### Detector runner — a cada 15min
-- Chefe que coordena 6 detectores em sequência
-- Lock isRunning previne overlap entre ciclos
-- Configurado em: src/index.ts (cron `*/15 * * * *`)
-- Código: src/detectors/runner.ts
-- Tempo médio: 7min por ciclo
-- Logs: component='detector_runner'
+- Hoje roda só a manutenção: `cleanup_stale_signals` e, no fim,
+  `dismissStaleSignals`. Os 5 detectores estão atrás da flag.
+- A manutenção fica FORA da flag de propósito: com os detectores parados, ninguém
+  renova `last_seen_at`, então todo sinal genérico ainda ativo vence e precisa ser
+  dispensado — senão a fila do bot fica com sinal morto para sempre.
+- Código: `src/detectors/runner.ts` — Logs: `detector_runner`
 
-### Os 6 detectores executados:
+### Esports partitions — 1x/dia às 02:30 UTC + no start
+- Cria a partição de `esports_snapshots` dos próximos dias e dropa as vencidas.
+  Limpeza por DROP TABLE: o índice vai junto, instantâneo e sem bloat.
+- Retenção lida de `esports_snapshot_retention_days`, com piso de 30 dias
+  embutido na função e teto de 16 drops por execução.
+- Roda ANTES da retenção às 03:00 porque são coisas opostas: aqui DROP PARTITION,
+  lá DELETE em lote.
+- Código: `src/jobs/esports-partitions.ts` — Logs: `esports_partitions`
+- Olhar: `default_rows_at_least` > 0 = linha caiu fora de qualquer partição de
+  dia (o job ficou parado, ou chegou `captured_at` com data absurda).
 
-**1. cross_market_intra**
-- Procura: arbitragem em mercados multi-outcome (raríssimo no Polymarket)
-- Cooldown: cross_market_dedup_window_minutes (60min, no banco)
-- Resultado típico: 0 sinais (Polymarket raramente oferece esse tipo)
-- Logs: component='cross_market_detector'
+### Retention job — 1x/dia às 03:00 UTC + no start
+- Deleta de `polymarket_snapshots`: mais velho que `snapshot_retention_days`, e
+  tudo de event finalizado (sem filtro de idade).
+- Deleta `system_logs` mais velho que `system_logs_retention_days`.
+- **Nunca apaga snapshot de esports.** A exclusão por prefixo de slug vive dentro
+  da função SQL (`run_snapshot_retention_batch`), não neste job — assim protege o
+  que qualquer produtor escrever, inclusive o `open_legs`.
+- NÃO toca `esports_snapshots`: aquela tabela é do job de partições.
+- Código: `src/jobs/retention.ts` — Logs: `retention_job`
+- Olhar: `legacy_esports_events` > 0 = ainda há série de esports na tabela
+  legada. Protegida, mas no lugar errado.
 
-**2. cross_market_inter**
-- Procura: baskets — vários mercados relacionados com soma de preços ≠ 1.0
-- Ex: "Aston Villa wins UEFA?" + "Freiburg wins?" + ... — soma deveria ser 100%
-- Cooldown: 60min
-- Logs: component='cross_market_inter_detector'
-
-**3. calendar_driven**
-- Procura: mercados próximos da resolução com preço estável
-- Lógica de dedup própria
-- Logs: component='calendar_driven_detector'
-
-**4. hype_reality_gap**
-- Procura: movimento brusco de preço + aumento de volume
-- TTL signal: signal_ttl_minutes (30min, configurável no banco)
-- Cooldown: 1h
-- Logs: component='hype_reality_gap_detector'
-
-**5. early_market**
-- Procura: mercados recém-abertos com smart money calibrando
-- TTL signal: signal_ttl_minutes (30min, configurável)
-- Cooldown: signal_cooldown_minutes (60min, configurável)
-- Filtros: cauda 5%-95%, spread<5pp, vol>3k, liq>5k
-- Logs: component='early_market_detector'
-
-**6. cleanup_stale_signals**
-- Não detecta — limpa
-- Dispensa signals onde event não recebe snapshot há tempo definido
-- Threshold: stale_cleanup_threshold_hours (1h, configurável)
-- Logs: component='cleanup_stale_signals'
+### Notify loop — a cada 60s (processo do bot)
+- Envia signals com `alerted=false` pro Telegram, filtrando por
+  `notify_min_edge_pct`. Marca `alerted=true` depois de enviar.
+- Código: `src/bot/notify.ts` (`startNotifyLoop`)
 
 ---
 
-## Os "guardiões" automáticos
+## Os que estão desligados (e o que acontece se religar)
 
-### Auto-resolver (resolved_detector) — a cada 3min (no fim do collector geral)
-- Quando mercado resolve no Polymarket, fecha tua leg automaticamente
-- Atualiza cash, registra PnL, marca event como resolved
-- Validado em produção (Bitcoin May 7, Forest, Braga)
-- Limites hardcoded:
-  - MAX_PER_CYCLE = 50
-  - FETCH_TIMEOUT_MS = 8000
-  - RESOLVED_DETECTOR_TIMEOUT_MS = 60000
-- Código: src/collectors/resolved-detector.ts
-- Logs: component='resolved_detector'
+O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
+... desligado` no console a cada tick e grava UMA linha em `system_logs` a cada
+6h — sem isso seriam milhares de linhas/dia dizendo a mesma coisa.
 
-### dismissStaleSignals — a cada 15min (fim do detector_runner)
-- Dispensa signals com metadata.last_seen_at velho
-- Cutoff: dismiss_stale_cutoff_minutes (15min, configurável)
-- Configurado em: src/detectors/runner.ts (função dismissStaleSignals)
-- Logs: component='detector_runner' mensagem "Dismissed N stale"
+### `volume_scan_enabled = false` — varredura por volume (`collector`)
+- Era `GET /markets?order=volume24hr` paginado até o teto de offset 2000.
+- Por que saiu: numa hora de produção trouxe 1 mercado de esports contra 60 da
+  descoberta — e esse 1 era derivado de uma partida que a descoberta já tinha
+  capturado 20min antes. Redundância cara. O que sobra do que ela traz é
+  `crypto_fees_v2` e `weather_fees`, 61% das linhas de `events` e alvo da poda.
+- Religar: `update system_config set volume_scan_enabled = true where id = 1;`
+- Consequência de religar: volta a alimentar `events` e `polymarket_snapshots`
+  com não-esports — ou seja, volta a encher o que a poda existe para esvaziar.
 
-### Notify loop (Telegram) — verifica a cada 10s
-- Envia signals com alerted=false pro Telegram
-- Filtra por notify_min_edge_pct (2.5% no banco)
-- Configurado em: src/bot/notify.ts (startNotifyLoop)
-- Marca alerted=true após enviar
+### `early_markets_enabled = false` — early-markets collector
+- Nunca alcançava a própria janela de 24h (teto de offset), e o piso de liquidez
+  de US$ 500 excluía por construção o mercado de esports recém-nascido (~US$ 17).
+- **Efeito colateral que o nome da flag não diz:** ele é o único escritor de
+  `events.is_new_market`, e só o detector `early_market` lê essa coluna. Com ele
+  parado, aquele detector não tem entrada nova nem que seja religado sozinho.
+- Religar: `update system_config set early_markets_enabled = true where id = 1;`
 
-### Retention job — 1x por dia às 03:00 UTC + no startup
-- Deleta snapshots > snapshot_retention_days (1 dia)
-- Deleta logs > system_logs_retention_days (30 dias)
-- Snapshots de events finalizados: deletados imediatamente via SQL function
-- Configurado em: src/index.ts (cron `0 3 * * *`)
-- Código: src/jobs/retention.ts
-- Logs: component='retention_job'
+### `generic_detectors_enabled = false` — os 5 detectores genéricos
+`cross_market_intra`, `cross_market_inter`, `calendar_driven`,
+`hype_reality_gap`, `early_market`.
+- Todos leem `events` + `polymarket_snapshots`. Com a varredura desligada, o lado
+  não-esports dessas tabelas parou de receber dado novo: rodavam a cada 15min
+  sobre uma foto congelada. A série que ainda cresce mora em `esports_snapshots`,
+  e nenhum deles lê de lá.
+- Uma flag para o grupo, não uma por detector — a direção é que saiam juntos.
+- Religar: `update system_config set generic_detectors_enabled = true where id = 1;`
+  Só faz sentido junto com `volume_scan_enabled`, senão continuam sem entrada.
+
+### `discovery_slug_prefixes` vazio — descoberta + watchlist
+- Não é booleano, mas é a chave de desligamento das duas: lista vazia = a
+  vertical inteira para. Default: `{cs2-,lol-,dota2-}`.
+- A retenção NÃO usa essa lista como autorização para apagar: se ela vier vazia,
+  a função SQL cai numa lista embutida. Desligar a coleta não pode autorizar
+  apagar o histórico dela.
 
 ---
 
 ## Cadeia de dependências (causa → efeito)
 
-### Quando tu opera uma posição
+### Um mercado de esports, do nascimento à resolução
 ```
-1. Tu clica Track no Telegram
+1. Partida entra no calendário; Polymarket cria ~7 mercados (1 série + derivados)
    ↓
-2. Conversation pede stake
+2. Discovery (3min) acha por order=startDate, com volume 0 e liquidez ~US$ 17
+   - grava em events com game_start_time (horário real do jogo)
+   - primeiro ponto da série em esports_snapshots
    ↓
-3. INSERT em my_bets + my_bet_legs
+3. Watchlist assume o refresh, na faixa que o relógio manda:
+   - > 6h para o jogo: 5 min
+   - < 6h: 1 min
+   - partida rolando: 12 s
    ↓
-4. UPDATE cash (subtrai stake)
+4. Partida acaba; Polymarket fecha o mercado
    ↓
-5. /positions mostra a leg nova imediatamente
+5. Auto-resolver (5min) vê closed=true + UMA resolved:
+   - fecha a leg se houver, ajusta cash, marca events.status=resolved
    ↓
-6. Open_legs_collector passa a coletar snapshots dessa leg a cada 10s
+6. Mercado sai da watchlist (status != active)
    ↓
-7. Auto-resolver passa a "priorizar" esse event (sempre incluído nos candidatos)
+7. A série fica em esports_snapshots por esports_snapshot_retention_days
 ```
 
-### Quando uma leg resolve
+### Quando tu opera uma posição
 ```
-1. Polymarket: mercado vira closed=true + UMA proposed
+1. Track no Telegram → conversation pede stake
    ↓
-2. ~24-48h depois: UMA confirma, status vira "resolved"
+2. INSERT em my_bets + my_bet_legs → UPDATE cash
    ↓
-3. Próximo ciclo do collector geral (3min):
-   - Mercado retornado pela API com closed=true
-   - NÃO entra em seenPolymarketIds
+3. /positions mostra a leg imediatamente
    ↓
-4. Auto-resolver roda no fim do collector:
-   - Vê event no banco como "active" mas sumido do feed
-   - É priorizado (tem leg aberta)
-   - Fetcha API direto: closed=true, umaResolutionStatus=resolved
+4. Open_legs_collector passa a coletar essa leg a cada 10s
    ↓
-5. Auto-resolver fecha leg:
-   - UPDATE my_bet_legs (result, pnl_usd, closed_at)
-   - UPDATE events (status=resolved, resolved_outcome)
-   - adjustCash (+payout se win, +0 se loss)
-   ↓
-6. /positions não mostra mais essa leg
-   ↓
-7. /status reflete novo cash + portfolio
+5. Auto-resolver passa a priorizar esse event
 ```
 
 ### Quando um signal é gerado
 ```
-1. Cron do runner dispara (a cada 15min)
-   ↓
-2. Lock isRunning ativa
-   ↓
-3. Detectores rodam em sequência:
-   - Busca dados em events + polymarket_snapshots
-   - Aplica critérios (volume, spread, edge, etc)
-   - Pra cada match: verifica se signal anterior existe
-     - Se ativo: ATUALIZA expires_at + last_seen_at
-     - Se dispensado dentro do cooldown: PULA
-     - Se não: INSERT novo signal
-   ↓
-4. dismissStaleSignals roda no fim
-   ↓
-5. Notify loop (a cada 10s) envia signals com alerted=false:
-   - Filtra por notify_min_edge_pct
-   - Envia mensagem no Telegram
-   - Marca alerted=true
-   ↓
-6. Tu vê notificação, decide track/dismiss
-```
-
-### Quando tu dispensa um signal
-```
-1. Tu clica Dismiss no Telegram
-   ↓
-2. UPDATE detected_signals:
-   - dismissed=true
-   - user_dismissed_at=NOW()
-   - user_action_type='dismissed'
-   ↓
-3. Mensagem no Telegram editada pra "❌ DISMISSED"
-   ↓
-4. Próximo ciclo do detector vê signal dispensado:
-   - Verifica recentDismiss (cooldown 60min)
-   - Se dentro do cooldown: PULA
-   - Se fora: pode criar novo signal
+Hoje só sinais que já existiam continuam vivos — nenhum detector cria signal
+novo enquanto generic_detectors_enabled = false. O runner de 15min roda a
+manutenção (cleanup + dismissStale) e o notify loop segue enviando o que
+estiver com alerted=false.
 ```
 
 ---
 
 ## Pontos de falha cascata
 
-**Open legs collector quebra:**
-- Preço atual no /positions fica velho
-- /status mostra valores defasados
-- Operações continuam funcionando
+**Watchlist quebra:**
+- A série de esports para. É o dado que o backtest e o agente analista vão usar,
+  e o buraco não é recuperável depois — o preço passado não volta.
+- `/positions` não é afetado (quem serve preço de posição é o open_legs).
 
-**Collector geral quebra:**
-- Detectores ficam sem dados novos
-- Signals param de aparecer
-- Auto-resolver não é mais chamado
-- Sistema "congela" no estado atual
+**Discovery quebra:**
+- Mercado novo de esports não entra em `events`, então a watchlist não o vê.
+- O buraco é da janela em que ficou parado: o teto de offset só alcança ~36min
+  para trás, então mais que isso não é recuperável na volta.
+
+**Open legs collector quebra:**
+- `/positions` e `/status` ficam com preço velho. Operações continuam.
 
 **Auto-resolver quebra:**
-- Legs continuam abertas mesmo após resolver no Polymarket
-- Cash não é atualizado
-- Tu precisa fechar manualmente via /close
+- Legs continuam abertas mesmo após resolver. Cash não atualiza. Fechar via
+  `/close`. Mercado resolvido também não sai da watchlist.
 
-**Detector runner quebra:**
-- Nenhum signal novo
-- Mas legs e cash continuam funcionando
-
-**Notify loop quebra:**
-- Signals criados mas não enviados pro Telegram
-- Tu pode ver via /signals manualmente
+**Job de partições quebra:**
+- Por 2 dias não dá nada (a folga cria partições à frente). Depois disso, todo
+  snapshot cai na partição default — que nada esvazia, e onde o dado fica sem
+  prazo. `default_rows_at_least` > 0 é o aviso.
 
 **Retention quebra:**
-- Banco enche aos poucos
-- Sistema fica lento em semanas
-- Pode dar timeout em queries grandes
+- `polymarket_snapshots` e `system_logs` crescem. Foi o que inflou um índice para
+  1492 MB sobre 80 MB de dado real.
+
+**Notify loop quebra:**
+- Signals criados mas não enviados. Dá para ver com `/signals`.
 
 ---
 
 ## Tempos típicos
 
 ```
-Tu fecha posição via Telegram
-└─ Resposta imediata (1-2s)
+Mercado de esports novo aparece no Polymarket
+└─ Discovery pega em até 3min
 
-Tu cria nova leg
-└─ Aparece em /positions imediatamente
+Preço mexe num mercado de esports
+└─ Partida rolando: até 12s (série) / 60s (derivado)
+└─ Falta menos de 6h: até 1min
+└─ Falta mais de 6h: até 5min
+
+Preço mexe num mercado onde tu tem leg
+└─ Até 10s, sempre
 
 Mercado resolve no Polymarket
-└─ Auto-resolver pega em até 3-5min
-└─ /positions atualizado em até 3-5min
-
-Mercado novo aparece no Polymarket
-└─ Coletor pega em 3-5min
-└─ Detector early_market avalia em 15min
-└─ Notificação no Telegram em ~20min total
-
-Preço mexe no Polymarket
-└─ Snapshot atualizado em até 10s (se tu tem leg) ou 3min
-└─ /positions reflete
+└─ Auto-resolver pega em até 5min
 
 Tu muda config no banco
-└─ Reflete em código em até 60s (cache)
+└─ Reflete em até 60s (cache)
+
+Tu fecha posição via Telegram
+└─ Resposta imediata (1-2s)
 ```
 
 ---
@@ -285,57 +321,101 @@ Tu muda config no banco
 SELECT * FROM system_config WHERE id = 1;
 ```
 
-Principais campos:
+Flags de liga/desliga:
+```
+volume_scan_enabled            (false — varredura por volume)
+early_markets_enabled          (false — early-markets collector)
+generic_detectors_enabled      (false — os 5 detectores genéricos)
+discovery_slug_prefixes        ({cs2-,lol-,dota2-} — vazio desliga descoberta+watchlist)
+```
 
+Cadência da watchlist:
+```
+watchlist_interval_live_seconds        (12)
+watchlist_interval_soon_seconds        (60)
+watchlist_interval_far_seconds         (300)
+watchlist_derived_interval_multiplier  (5  — quantas vezes mais lento o derivado)
+watchlist_soon_window_minutes          (360 — quando a faixa de 1min começa)
+watchlist_live_max_minutes             (360 — teto do ao vivo sem resolver)
+watchlist_primary_market_types         ({moneyline} — o que é o mercado da série)
+discovery_lookback_minutes             (20)
+```
+
+Retenção:
+```
+esports_snapshot_retention_days  (365 — DROP PARTITION; piso de 30 na função)
+snapshot_retention_days          (1   — DELETE em polymarket_snapshots)
+system_logs_retention_days       (30)
+```
+
+Sinais e operação (sem mudança):
 ```
 max_stake_pct                 (3% do bankroll por trade)
 cross_market_max_stake_pct    (10% pra basket)
 min_confidence_alert          (0.75)
 notify_min_edge_pct           (2.5%)
-collector_min_volume_24h      (10k filtro do collector)
-collector_min_liquidity       (20k filtro)
 signal_ttl_minutes            (30min)
 signal_cooldown_minutes       (60min)
 dismiss_stale_cutoff_minutes  (15min)
 stale_cleanup_threshold_hours (1h)
-snapshot_retention_days       (1)
-system_logs_retention_days    (30)
+collector_min_volume_24h      (10k — só a varredura desligada usa)
+collector_min_liquidity       (20k — idem)
 ```
 
 Pra mudar:
 ```sql
 UPDATE system_config SET <campo> = <valor> WHERE id = 1;
 ```
-
-Cache de 60s, mudanças refletem em ~1min sem deploy.
+Cache de 60s.
 
 ---
 
 ## Crons em código (precisam deploy pra mudar)
 
-Tudo em src/index.ts:
+Tudo em `src/index.ts`:
 
 ```typescript
-cron.schedule('*/3 * * * *', () => collectAll());           // collector geral
-cron.schedule('*/10 * * * * *', () => collectOpenLegs());   // open_legs (10s)
-cron.schedule('*/5 * * * *', () => collectEarlyMarkets());  // early_markets
-cron.schedule('*/15 * * * *', () => runAllDetectors());     // detector_runner
-cron.schedule('0 3 * * *', () => runRetentionJob());        // retention diário 03:00 UTC
+cron.schedule('*/10 * * * * *', () => collectOpenLegMarkets());  // 10s
+cron.schedule('*/5 * * * * *',  () => collectWatchlist());       // 5s (tick, não cadência)
+cron.schedule('*/3 * * * *',    () => collectDiscovery());       // 3min
+cron.schedule('*/3 * * * *',    () => collectAll());             // 3min — desligado por flag
+cron.schedule('*/5 * * * *',    () => detectResolvedMarkets());  // 5min
+cron.schedule('*/10 * * * *',   () => collectEarlyMarkets());    // 10min — desligado por flag
+cron.schedule('*/15 * * * *',   () => runAllDetectors());        // 15min
+cron.schedule('30 2 * * *',     () => runEsportsPartitionJob()); // 02:30 UTC
+cron.schedule('0 3 * * *',      () => runRetentionJob());        // 03:00 UTC
 ```
 
-Sintaxe do cron: `min hour day month dow`.
+No processo do bot: `setInterval` de 60s no notify loop (`src/bot/notify.ts`).
 
 ---
 
 ## Hardcodes no código (precisam deploy)
 
-- MAX_PER_CYCLE = 50 (resolved-detector.ts)
-- FETCH_TIMEOUT_MS = 8000 (resolved-detector.ts)
-- ELIMINATED_THRESHOLD = 0.01 (positions.ts) — mostra "mercado eliminado"
-- CACHE_TTL_MS = 60000 (config.ts)
-- Filtros do early_market (min_volume_24h: 3000, etc) — em early-market.ts
+- `MAX_WATCHLIST = 1000` (watchlist-collector.ts) — teto do roster
+- `ENDED_GRACE_MS = 24h` (watchlist-collector.ts) — quanto tempo depois do
+  `end_date` o mercado ainda fica na watchlist
+- `MAX_PER_CYCLE = 50`, `FETCH_TIMEOUT_MS = 8000` (resolved-detector.ts)
+- `MAX_IDS_PER_REQUEST = 100` (polymarket-api.ts) — limite da Gamma
+- `EVENTS_CHUNK_SIZE = 200`, `DEFAULT_CHUNK_SIZE = 500` (batch-write.ts)
+- `CACHE_TTL_MS = 60000` (config.ts)
+- `ELIMINATED_THRESHOLD = 0.01` (positions.ts)
 
-São detalhes operacionais que raramente precisam ajustar.
+---
+
+## Migrations aplicadas à mão — como saber se já foram
+
+O deploy do código é automático; a migration é aplicada por ti. No intervalo, o
+código sobe e degrada em vez de quebrar. Onde isso aparece:
+
+| Log | Campo | O que significa |
+|---|---|---|
+| `discovery_collector` | `snapshot_table = 'polymarket_snapshots'` | `esports_snapshots` ainda não existe — a série está indo para a tabela legada |
+| `discovery_collector` | `stamped_game_start_time = false` | coluna `events.game_start_time` ainda não existe |
+| `watchlist_collector` | `anchor_column = false` | idem — tudo cai na faixa lenta de 5min |
+| `watchlist_collector` | `null_game_start_time` alto e estável | coluna existe, mas o backfill não rodou (`npm run backfill:game-start-time`) |
+| `esports_partitions` | mensagem "manage_esports_partitions ainda não existe" | migration das partições não aplicada |
+| `retention_job` | `legacy_esports_events = null` | função de sondagem do item 8 não aplicada |
 
 ---
 
@@ -343,7 +423,7 @@ São detalhes operacionais que raramente precisam ajustar.
 
 ```sql
 -- Atividade dos últimos 30min
-SELECT 
+SELECT
   component,
   count(*) as execs,
   to_char(max(created_at), 'HH24:MI:SS') as ultima
@@ -353,10 +433,12 @@ GROUP BY component
 ORDER BY ultima DESC;
 ```
 
-Se todos os componentes esperados aparecem com `success`, sistema saudável.
+Esperado hoje: `watchlist_collector` (1 linha a cada 5min, agregada),
+`discovery_collector`, `open_legs_collector`, `resolved_detector`,
+`detector_runner`. Os desligados aparecem no máximo 1x a cada 6h.
 
 ```sql
--- Verifica se há erros recentes
+-- Erros recentes
 SELECT to_char(created_at, 'HH24:MI:SS') as quando, component, message
 FROM system_logs
 WHERE status = 'error'
@@ -364,4 +446,19 @@ WHERE status = 'error'
 ORDER BY created_at DESC LIMIT 10;
 ```
 
-Esperado: 0 linhas (sem erros).
+Esperado: 0 linhas.
+
+```sql
+-- A watchlist está mesmo pegando partida ao vivo?
+SELECT to_char(created_at, 'HH24:MI') as quando,
+       metadata->'occupancy_by_bucket' as ocupacao,
+       metadata->>'null_game_start_time' as sem_ancora
+FROM system_logs
+WHERE component = 'watchlist_collector'
+  AND created_at > NOW() - INTERVAL '2 hours'
+ORDER BY created_at DESC;
+```
+
+`live:primary = 0` com partida rolando significa uma de duas coisas: o
+`sports_market_type` não bate com `watchlist_primary_market_types`, ou o
+`game_start_time` não foi carimbado.

@@ -1,5 +1,28 @@
 # Prediction Radar — Sistema Pessoal
 
+> ⚠️ **Este documento descreve o estado de maio/2026 (v7). Está desatualizado como
+> direção.** A Spec 000 (contenção, agosto/2026) mudou três coisas que atravessam
+> quase tudo abaixo:
+>
+> - **Coleta** — a varredura por volume e o early-markets estão desligados por
+>   flag em `system_config`. Quem coleta hoje é a descoberta por `startDate` mais
+>   a watchlist de esports, com cadência por proximidade da partida.
+> - **Detectores** — os cinco genéricos (`cross_market_intra`,
+>   `cross_market_inter`, `calendar_driven`, `hype_reality_gap`, `early_market`)
+>   estão desligados por flag. Serão desligados de vez, não expandidos.
+> - **Retenção** — a série de esports vive em `esports_snapshots`, particionada
+>   por dia, limpa por DROP PARTITION e nunca apagada pela retenção antiga.
+>
+> O foco estreitou para esports (CS2 primeiro, depois LoL e futebol), com o
+> objetivo de acumular série temporal de qualidade para backtest e, depois, um
+> agente analista.
+>
+> **Fonte de verdade sobre o que fazer agora: `specs/`.** Este arquivo continua
+> valendo como registro histórico — para entender como o sistema foi construído
+> (tabelas, detectores, coletores, comandos do bot), salvaguardas de operação e
+> as decisões que levaram até aqui. Para o que roda hoje e com que cron, ver
+> `scheduled_jobs_overview.txt`.
+
 > v7 — atualizado pós-sessão de bugs do auto-resolver, cleanup truncation, fix de cauda no early_market, padronização de formato de data, refactor de hardcodes pra config-driven, open_legs collector de 30s pra 10s, validações reais em produção (Bitcoin May 7, Aston Villa, Forest, Braga). Sistema agora rodando sólido. Próxima fase: validar com volume real (30+ trades) antes de Fase 5 (IA).
 
 ## Contexto e propósito
