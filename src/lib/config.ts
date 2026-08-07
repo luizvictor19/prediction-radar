@@ -81,6 +81,21 @@ const DEFAULTS: SystemConfig = {
   esports_enricher_lookbehind_minutes: 360,
   esports_enricher_min_interval_minutes: 30,
   esports_enricher_batch_size: 50,
+  // Espelham os defaults da migration 20260807033753. O fallback aqui DESLIGA,
+  // ao contrário do resolver e do enricher, e pelo mesmo motivo que a migration
+  // nasce com `false`: este é o único componente que gasta dinheiro por ciclo.
+  // Um componente que se liga sozinho porque a coluna ainda não existe é
+  // aceitável quando o custo do engano é CPU; aqui o custo é fatura.
+  esports_analyst_enabled: false,
+  analyst_model: 'claude-opus-5',
+  analyst_prompt_version: 'v1',
+  analyst_effort: 'medium',
+  analyst_daily_budget_usd: 5.0,
+  analyst_checkpoints_minutes: [360, 60],
+  analyst_min_liquidity_usd: 5000,
+  analyst_max_spread: 0.15,
+  analyst_min_fragments: 3,
+  analyst_timeout_ms: 90_000,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

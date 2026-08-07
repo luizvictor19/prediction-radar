@@ -11,6 +11,7 @@ import { runRetentionJob } from './jobs/retention.js';
 import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
 import { runEsportsResolver, runEsportsResolverRecompute } from './jobs/esports-resolver.js';
 import { runEsportsEnricher } from './jobs/esports-enricher.js';
+import { runEsportsAnalyst } from './jobs/esports-analyst.js';
 
 async function main(): Promise<void> {
   console.log('[main] Prediction Radar starting...');
@@ -133,6 +134,23 @@ async function main(): Promise<void> {
   // 5 minutos um fragmento cuja cadência é de 30.
   cron.schedule('*/5 * * * *', () => {
     void runEsportsEnricher().catch(err => console.error('[cron esports_enricher]', err));
+  });
+
+  // Agente analista (spec 001): probabilidade e tese para as partidas que
+  // chegaram a um checkpoint. Roda depois do enricher na ordem natural — analisa
+  // o contexto que ele gravou — mas sem acoplamento: lê `context_fragments` com
+  // o filtro de point-in-time, independente de quem escreveu.
+  //
+  // O tick de 5 min NÃO é a cadência de análise. Quem decide são os checkpoints
+  // em `analyst_checkpoints_minutes` (T-6h e T-1h por padrão): poucas análises
+  // por partida, porque analisar tudo a cada 30 min daria ~840/dia e custo
+  // inviável. O tick só precisa ser mais rápido que a tolerância do checkpoint.
+  //
+  // Nasce desligado (`esports_analyst_enabled = false`): é o único componente
+  // que gasta dinheiro por ciclo, e ligar é decisão do dono, não consequência de
+  // aplicar migration.
+  cron.schedule('*/5 * * * *', () => {
+    void runEsportsAnalyst().catch(err => console.error('[cron esports_analyst]', err));
   });
 
   // Partições de `esports_snapshots` (spec 000, item 3): cria as dos próximos

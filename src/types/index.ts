@@ -178,6 +178,26 @@ export interface SystemConfig {
   esports_enricher_min_interval_minutes: number;
   /** Teto de partidas por ciclo. O job reporta quando o teto corta. */
   esports_enricher_batch_size: number;
+  /**
+   * Agente analista (spec 001). Único componente que gasta dinheiro por ciclo —
+   * daí o default `false` na migration.
+   */
+  esports_analyst_enabled: boolean;
+  /** Modelo e versão de prompt: config e não constante, para rollback sem deploy. */
+  analyst_model: string;
+  analyst_prompt_version: string;
+  /** low | medium | high | xhigh | max. Principal controle de custo. */
+  analyst_effort: string;
+  /** Teto de gasto por dia UTC. Parada dura ao atingir. */
+  analyst_daily_budget_usd: number;
+  /** Minutos antes de `scheduled_at`. Negativo = depois do início (ao vivo). */
+  analyst_checkpoints_minutes: number[];
+  /** Os três critérios de abstenção de portão. Ver a migration. */
+  analyst_min_liquidity_usd: number;
+  analyst_max_spread: number;
+  analyst_min_fragments: number;
+  /** Prazo de UMA chamada, via AbortSignal. O cliente roda sem retry. */
+  analyst_timeout_ms: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;
