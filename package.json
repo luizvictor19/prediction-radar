@@ -28,7 +28,8 @@
     "backfill:polymarket-category": "tsx scripts/backfill-polymarket-category.ts",
     "backfill:game-start-time": "tsx scripts/backfill-game-start-time.ts",
     "backfill:esports-matches": "tsx scripts/backfill-esports-matches.ts",
-    "backfill:match-outcomes": "tsx scripts/backfill-match-outcomes.ts"
+    "backfill:match-outcomes": "tsx scripts/backfill-match-outcomes.ts",
+    "liquipedia:probe": "tsx scripts/probe-liquipedia.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

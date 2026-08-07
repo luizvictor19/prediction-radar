@@ -1,6 +1,7 @@
 import { registerEnricher } from '../enricher.js';
 import { marketHistoryEnricher } from './market-history.js';
 import { polymarketContextEnricher } from './polymarket-context.js';
+import { liquipediaEnricher } from './liquipedia.js';
 
 /**
  * Os enrichers embutidos (spec 001, item 5).
@@ -17,7 +18,16 @@ import { polymarketContextEnricher } from './polymarket-context.js';
 export function registerBuiltInEnrichers(): void {
   registerEnricher(marketHistoryEnricher);
   registerEnricher(polymarketContextEnricher);
+  // Registrado SEMPRE, e desligado por dentro. O registry é síncrono e a decisão
+  // de ligar depende de `system_config` (leitura assíncrona) e de duas variáveis
+  // de ambiente; registrar condicionalmente exigiria await no boot e deixaria o
+  // conjunto de enrichers dependendo de quando o processo subiu. Quem decide se
+  // ele faz alguma coisa é o próprio `fetch`, que devolve vazio sem tocar a rede
+  // enquanto `esports_enricher_liquipedia_enabled` for false ou faltar
+  // credencial.
+  registerEnricher(liquipediaEnricher);
 }
 
 export { marketHistoryEnricher } from './market-history.js';
 export { polymarketContextEnricher } from './polymarket-context.js';
+export { liquipediaEnricher } from './liquipedia.js';

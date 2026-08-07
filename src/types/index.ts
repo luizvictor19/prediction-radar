@@ -179,6 +179,14 @@ export interface SystemConfig {
   /** Teto de partidas por ciclo. O job reporta quando o teto corta. */
   esports_enricher_batch_size: number;
   /**
+   * Enricher da Liquipedia. Default `false` nos dois lugares (migration e
+   * fallback), e é o único enricher assim: os outros dois leem dado que já é
+   * nosso, este chama fonte externa com termos de uso, chave aprovada por gente
+   * e teto de 60 requisições/hora. Ligar é decisão do dono, não consequência de
+   * um deploy.
+   */
+  esports_enricher_liquipedia_enabled: boolean;
+  /**
    * Agente analista (spec 001). Único componente que gasta dinheiro por ciclo —
    * daí o default `false` na migration.
    */

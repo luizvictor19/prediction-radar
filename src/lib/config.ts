@@ -81,6 +81,13 @@ const DEFAULTS: SystemConfig = {
   esports_enricher_lookbehind_minutes: 360,
   esports_enricher_min_interval_minutes: 30,
   esports_enricher_batch_size: 50,
+  // Espelha o default da migration do enricher da Liquipedia. DESLIGA no
+  // fallback, ao contrário dos outros dois enrichers e pelo mesmo motivo do
+  // analista: aqui a coluna faltando não pode significar "pode começar". A
+  // fonte é externa, os termos exigem chave aprovada, User-Agent identificável
+  // e no máximo 60 requisições/hora — e o acesso é negado a projeto de aposta,
+  // o que é decisão a tomar antes de a primeira requisição sair, não depois.
+  esports_enricher_liquipedia_enabled: false,
   // Espelham os defaults da migration 20260807033753. O fallback aqui DESLIGA,
   // ao contrário do resolver e do enricher, e pelo mesmo motivo que a migration
   // nasce com `false`: este é o único componente que gasta dinheiro por ciclo.
