@@ -47,54 +47,53 @@ export async function runRetentionJob(): Promise<void> {
   const BATCH_SIZE = 5000;
   const MAX_BATCHES = 200; // safety cap: 1M rows máximo por job
 
-  let oldDeleted = 0;
-  let finalizedDeleted = 0;
+  /**
+   * Um ramo da retenção, em lotes até secar.
+   *
+   * Devolve o erro em vez de abortar o job. O `return` que estava aqui fazia um
+   * ramo quebrado levar junto o resto da execução — inclusive a limpeza de
+   * `system_logs`, que é o que mantém aquela tabela longe dos 2,7M de linhas da
+   * spec 000. Enquanto o ramo `old` esteve falhando por timeout, nenhum log foi
+   * podado: a falha barata alimentava a cara.
+   *
+   * Os dois ramos são independentes por construção — filtros distintos sobre a
+   * mesma tabela, sem ordem entre eles — então um cair não invalida o outro.
+   */
+  async function runBranch(
+    deleteType: 'old' | 'finalized',
+  ): Promise<{ deleted: number; error: string | null }> {
+    let total = 0;
 
-  // Deleta snapshots antigos em batches
-  for (let i = 0; i < MAX_BATCHES; i++) {
-    const { data, error } = await supabase.rpc('run_snapshot_retention_batch', {
-      delete_type: 'old',
-      retention_hours: retentionHours,
-      batch_size: BATCH_SIZE,
-    });
-
-    if (error) {
-      await logEvent({
-        component: 'retention_job',
-        status: 'error',
-        message: `Batch 'old' failed at iteration ${i}: ${error.message}`,
+    for (let i = 0; i < MAX_BATCHES; i++) {
+      const { data, error } = await supabase.rpc('run_snapshot_retention_batch', {
+        delete_type: deleteType,
+        retention_hours: retentionHours,
+        batch_size: BATCH_SIZE,
       });
-      return;
+
+      if (error) {
+        return { deleted: total, error: `Batch '${deleteType}' failed at iteration ${i}: ${error.message}` };
+      }
+
+      const deleted = (data as number) ?? 0;
+      total += deleted;
+      if (deleted < BATCH_SIZE) break;
     }
 
-    const deleted = (data as number) ?? 0;
-    oldDeleted += deleted;
-    if (deleted < BATCH_SIZE) break;
+    return { deleted: total, error: null };
   }
 
-  // Deleta snapshots de events finalizados em batches
-  for (let i = 0; i < MAX_BATCHES; i++) {
-    const { data, error } = await supabase.rpc('run_snapshot_retention_batch', {
-      delete_type: 'finalized',
-      retention_hours: retentionHours,
-      batch_size: BATCH_SIZE,
-    });
+  const oldBranch = await runBranch('old');
+  const finalizedBranch = await runBranch('finalized');
 
-    if (error) {
-      await logEvent({
-        component: 'retention_job',
-        status: 'error',
-        message: `Batch 'finalized' failed at iteration ${i}: ${error.message}`,
-      });
-      return;
-    }
+  const branchErrors = [oldBranch.error, finalizedBranch.error].filter(
+    (e): e is string => e !== null,
+  );
 
-    const deleted = (data as number) ?? 0;
-    finalizedDeleted += deleted;
-    if (deleted < BATCH_SIZE) break;
-  }
-
-  const result = { old_deleted: oldDeleted, finalized_deleted: finalizedDeleted };
+  const result = {
+    old_deleted: oldBranch.deleted,
+    finalized_deleted: finalizedBranch.deleted,
+  };
 
   // Logs: client delete is fine (no UUID list, just timestamp filter)
   const logCutoff = new Date(
@@ -107,23 +106,24 @@ export async function runRetentionJob(): Promise<void> {
     .lt('created_at', logCutoff)
     .neq('component', 'retention_job');
 
-  if (logError) {
-    await logEvent({
-      component: 'retention_job',
-      status: 'error',
-      message: `Failed to delete logs: ${logError.message}`,
-    });
-    return;
-  }
+  // Mesmo motivo do `runBranch`: falha aqui é registrada, não aborta o relatório
+  // final. O que se perde ao voltar cedo é a única linha que diz quanto as
+  // outras etapas apagaram e quantos events de esports seguem na tabela errada.
+  const errors = logError
+    ? [...branchErrors, `Failed to delete logs: ${logError.message}`]
+    : branchErrors;
 
   const legacyEsportsEvents = await probeLegacyEsports();
 
   const durationMs = Date.now() - startedAt;
   await logEvent({
     component: 'retention_job',
-    status: 'success',
-    message: `Deleted ${result.old_deleted ?? 0} old (>${retentionHours}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms`,
+    status: errors.length > 0 ? 'error' : 'success',
+    message:
+      `Deleted ${result.old_deleted ?? 0} old (>${retentionHours}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms` +
+      (errors.length > 0 ? ` — ${errors.join('; ')}` : ''),
     metadata: {
+      errors: errors.length > 0 ? errors : undefined,
       old_deleted: result.old_deleted ?? 0,
       finalized_deleted: result.finalized_deleted ?? 0,
       logs_deleted: logCount ?? 0,
