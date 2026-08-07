@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import { anthropicClient } from '../llm/anthropic.js';
+import type { CompletionResult, LlmClient, TokenUsage } from '../llm/client.js';
 import {
   ANALYSIS_SCHEMA,
   getPrompt,
@@ -19,7 +20,8 @@ import {
  * chamada já faz.
  *
  * Este arquivo é o contrato e a chamada. Quem decide QUANDO analisar, e se vale
- * o gasto, é `src/jobs/esports-analyst.ts`.
+ * o gasto, é `src/jobs/esports-analyst.ts`. Quem fala com o fornecedor é
+ * `src/llm/` — aqui não há nada específico da Anthropic além da tabela de preço.
  */
 
 const COMPONENT = 'esports_analyst';
@@ -33,15 +35,6 @@ const COMPONENT = 'esports_analyst';
  * perde a chamada inteira, que é o gasto sem o produto.
  */
 const MAX_TOKENS = 8_000;
-
-/**
- * O pensamento fica LIGADO, e o controle de custo é o `effort`.
- *
- * Desligá-lo tem dois modos de falha conhecidos nos modelos atuais — texto
- * interno vazando para a resposta e chamadas de ferramenta escritas como texto —
- * e economiza menos que baixar o esforço. Como não passamos `thinking`, vale o
- * padrão do modelo, que é adaptativo.
- */
 
 // ---------------------------------------------------------------------------
 // Preço
@@ -74,13 +67,6 @@ const MODEL_PRICING: Record<string, ModelPrice> = {
 
 export function knownModel(model: string): boolean {
   return model in MODEL_PRICING;
-}
-
-export interface TokenUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
 }
 
 /**
@@ -300,26 +286,20 @@ function readClaims(raw: unknown, knownLabels: ReadonlySet<string>): AnalysisCla
 // A chamada
 // ---------------------------------------------------------------------------
 
-/**
- * Criado sob demanda, não no topo do módulo.
- *
- * `new Anthropic()` lança quando não há credencial, e o topo do módulo roda no
- * import — o que derrubaria o processo inteiro por causa de um componente que
- * nasce desligado. Aqui a falta de chave falha só esta chamada.
- */
-let client: Anthropic | null = null;
-
-function anthropic(): Anthropic {
-  client ??= new Anthropic();
-  return client;
-}
-
 export interface AnalysisRequest {
   model: string;
   promptVersion: string;
   effort: string;
   timeoutMs: number;
   input: PromptInput;
+  /**
+   * O cliente do modelo. Omitido, usa a Anthropic.
+   *
+   * Existe para o teste poder exercer esta função sem rede — não para escolher
+   * fornecedor em produção. Essa escolha, quando houver duas, é de configuração
+   * e vai nascer em `system_config`, junto com `analyst_model`.
+   */
+  client?: LlmClient;
 }
 
 export interface AnalysisResult {
@@ -332,15 +312,10 @@ export interface AnalysisResult {
 }
 
 /**
- * Uma chamada, um prazo, nenhum retry.
+ * Uma chamada, um prazo, nenhum retry — ver `src/llm/anthropic.ts` para o porquê
+ * de não retentar.
  *
- * `maxRetries: 0` é deliberado e é a parte que mais importa deste arquivo. O
- * padrão do SDK é 2 tentativas, e como timeouts também são retentados, um prazo
- * de 90s vira 4,5 minutos de relógio na pior hipótese — dentro de um ciclo de
- * cron com lock. É a mesma forma de falha do fetch da Gamma sem timeout que
- * custou 48h de coleta parada, só que mais cara.
- *
- * O que se perde: um 429 ou um 500 transitório derruba esta análise. É
+ * O que se perde com isso: um 429 ou um 500 transitório derruba esta análise. É
  * aceitável, e não por resignação — o checkpoint É um instante. Retentá-lo
  * depois produziria uma análise rotulada "T-6h" feita com o que se sabia em
  * T-5h, que é exatamente a mentira que o `as_of` existe para impedir. A perda
@@ -366,62 +341,45 @@ export async function runAnalysis(request: AnalysisRequest): Promise<AnalysisRes
   const labels = new Set(request.input.fragments.map(f => f.label));
   const startedAt = Date.now();
 
-  let message: Anthropic.Message;
+  let completion: CompletionResult;
   try {
-    message = await anthropic().messages.create(
-      {
-        model: request.model,
-        max_tokens: MAX_TOKENS,
-        system: prompt.system,
-        messages: [{ role: 'user', content: prompt.user }],
-        output_config: {
-          effort: request.effort as Anthropic.OutputConfig['effort'],
-          format: {
-            type: 'json_schema',
-            schema: ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
-          },
-        },
-      },
-      { signal: AbortSignal.timeout(request.timeoutMs), maxRetries: 0 },
-    );
+    completion = await (request.client ?? anthropicClient).complete({
+      model: request.model,
+      system: prompt.system,
+      user: prompt.user,
+      schema: ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
+      effort: request.effort,
+      maxTokens: MAX_TOKENS,
+      timeoutMs: request.timeoutMs,
+    });
   } catch (err) {
     throw new AnalystError('api_error', err instanceof Error ? err.message : String(err));
   }
 
   const latencyMs = Date.now() - startedAt;
 
-  // Antes de ler `content`: uma recusa devolve HTTP 200 com content vazio, e
-  // truncagem devolve JSON pela metade. Os dois passariam por "resposta ok" num
-  // código que indexa content[0] direto.
-  if (message.stop_reason === 'refusal') {
+  // Recusa e truncagem antes de qualquer leitura do texto: as duas custam a
+  // chamada e nenhuma delas é uma resposta. Colapsá-las em "veio vazio"
+  // esconderia que uma não adianta retentar e a outra pede teto maior.
+  if (completion.stop === 'refusal') {
     throw new AnalystError('refusal', 'a chamada foi recusada pelos classificadores');
   }
-  if (message.stop_reason === 'max_tokens') {
+  if (completion.stop === 'truncated') {
     throw new AnalystError('truncated', `resposta truncada em max_tokens (${MAX_TOKENS})`);
   }
-
-  const text = message.content.find(
-    (block): block is Anthropic.TextBlock => block.type === 'text',
-  );
-  if (text === undefined) {
+  if (completion.text === null) {
     throw new AnalystError('no_text', 'resposta sem bloco de texto');
   }
 
   let raw: unknown;
   try {
-    raw = JSON.parse(text.text);
+    raw = JSON.parse(completion.text);
   } catch (err) {
     throw new AnalystError('not_json', `resposta não é JSON: ${String(err)}`);
   }
 
   const output = parseAnalysis(raw, labels);
-
-  const usage: TokenUsage = {
-    input: message.usage.input_tokens,
-    output: message.usage.output_tokens,
-    cacheRead: message.usage.cache_read_input_tokens ?? 0,
-    cacheWrite: message.usage.cache_creation_input_tokens ?? 0,
-  };
+  const usage = completion.usage;
 
   return {
     output,
@@ -434,3 +392,6 @@ export async function runAnalysis(request: AnalysisRequest): Promise<AnalysisRes
 
 export { COMPONENT as ANALYST_COMPONENT };
 export type { PromptFragment, PromptInput };
+// Reexportado: `TokenUsage` é o tipo de `estimateCostUsd`, e quem usa a conta
+// não precisa saber que ela nasce em `src/llm/`.
+export type { TokenUsage };

@@ -1,14 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-// O módulo importa o SDK da Anthropic, mas o cliente é criado sob demanda —
-// nada aqui toca rede. O que se testa é o guardrail: a validação que decide se
-// uma resposta vira linha ou vira erro.
+// Nada aqui toca rede: as funções de validação são puras, e `runAnalysis` recebe
+// um cliente falso pela interface de `src/llm/client.ts`. O que se testa é o
+// guardrail — a validação que decide se uma resposta vira linha ou vira erro.
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { parseAnalysis, estimateCostUsd, fingerprintFragments, knownModel, AnalystError } =
-  await import('./analyst.js');
+const {
+  parseAnalysis,
+  estimateCostUsd,
+  fingerprintFragments,
+  knownModel,
+  runAnalysis,
+  AnalystError,
+} = await import('./analyst.js');
+
+type LlmClient = import('../llm/client.js').LlmClient;
+type CompletionResult = import('../llm/client.js').CompletionResult;
 
 const LABELS = new Set(['F1', 'F2', 'F3']);
 
@@ -165,4 +174,143 @@ test('fragmento novo muda o fingerprint; conjunto igual mantém', () => {
 
 test('conjunto vazio tem fingerprint estável', () => {
   assert.equal(fingerprintFragments([]), fingerprintFragments([]));
+});
+
+// ---------------------------------------------------------------------------
+// A chamada, com um cliente falso no lugar do fornecedor
+// ---------------------------------------------------------------------------
+
+const NO_TOKENS = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+/** Cliente que devolve o que se mandar e conta quantas vezes foi chamado. */
+function fakeClient(result: CompletionResult): LlmClient & { calls: number } {
+  const client = {
+    calls: 0,
+    async complete(): Promise<CompletionResult> {
+      client.calls += 1;
+      return result;
+    },
+  };
+  return client;
+}
+
+/** Cliente que falha no transporte — prazo estourado, 429, conexão caída. */
+function failingClient(message: string): LlmClient & { calls: number } {
+  const client = {
+    calls: 0,
+    async complete(): Promise<CompletionResult> {
+      client.calls += 1;
+      throw new Error(message);
+    },
+  };
+  return client;
+}
+
+function analysisRequest(client: LlmClient, overrides: Record<string, unknown> = {}) {
+  return {
+    model: 'claude-opus-5',
+    promptVersion: 'v1',
+    effort: 'medium',
+    timeoutMs: 90_000,
+    client,
+    input: {
+      matchSlug: 'navi-vs-faze-2026-08-07',
+      verticalId: 'cs2',
+      teamA: 'NAVI',
+      teamB: 'FaZe',
+      bestOf: 3,
+      stage: 'quartas',
+      league: null,
+      scheduledAt: '2026-08-07T18:00:00.000Z',
+      asOf: '2026-08-07T12:00:00.000Z',
+      minutesToStart: 360,
+      market: { mid: 0.55, liquidity: 12_000, spread: 0.02 },
+      fragments: [
+        {
+          label: 'F1',
+          enricherId: 'market-history',
+          kind: 'price_move',
+          asOf: '2026-08-07T12:00:00.000Z',
+          observedAt: '2026-08-07T11:58:00.000Z',
+          confidence: 0.9,
+          summary: 'o preço subiu 8pp em 24h',
+          payload: { delta: 0.08 },
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+async function asyncCodeOf(fn: () => Promise<unknown>): Promise<string> {
+  try {
+    await fn();
+  } catch (err) {
+    return err instanceof AnalystError ? err.code : 'not-an-AnalystError';
+  }
+  return 'no-throw';
+}
+
+test('resposta do cliente vira análise, com custo somado dos tokens', async () => {
+  const client = fakeClient({
+    text: JSON.stringify(response()),
+    stop: 'ok',
+    usage: { input: 3000, output: 500, cacheRead: 0, cacheWrite: 0 },
+  });
+
+  const result = await runAnalysis(analysisRequest(client));
+
+  assert.equal(client.calls, 1);
+  assert.equal(result.output.probability, 0.62);
+  assert.equal(result.costUsd, 0.0275);
+  // O prompt de fato enviado volta no resultado — é o que se lê quando a
+  // resposta sai estranha.
+  assert.match(result.prompt.user, /NAVI/);
+});
+
+test('recusa e truncagem são falhas distintas, não "veio vazio"', async () => {
+  // Uma custa a chamada e não adianta retentar; a outra custa e pede teto maior.
+  assert.equal(
+    await asyncCodeOf(() =>
+      runAnalysis(analysisRequest(fakeClient({ text: null, stop: 'refusal', usage: NO_TOKENS }))),
+    ),
+    'refusal',
+  );
+  assert.equal(
+    await asyncCodeOf(() =>
+      runAnalysis(analysisRequest(fakeClient({ text: null, stop: 'truncated', usage: NO_TOKENS }))),
+    ),
+    'truncated',
+  );
+  assert.equal(
+    await asyncCodeOf(() =>
+      runAnalysis(analysisRequest(fakeClient({ text: null, stop: 'ok', usage: NO_TOKENS }))),
+    ),
+    'no_text',
+  );
+});
+
+test('falha de transporte do cliente vira api_error, não exceção crua', async () => {
+  const client = failingClient('signal is aborted without reason');
+
+  assert.equal(await asyncCodeOf(() => runAnalysis(analysisRequest(client))), 'api_error');
+  assert.equal(client.calls, 1);
+});
+
+test('modelo sem preço e prompt inexistente barram ANTES de gastar a chamada', async () => {
+  const unknownModel = fakeClient({ text: '{}', stop: 'ok', usage: NO_TOKENS });
+  assert.equal(
+    await asyncCodeOf(() =>
+      runAnalysis(analysisRequest(unknownModel, { model: 'modelo-inventado' })),
+    ),
+    'unknown_model',
+  );
+  assert.equal(unknownModel.calls, 0);
+
+  const unknownPrompt = fakeClient({ text: '{}', stop: 'ok', usage: NO_TOKENS });
+  assert.equal(
+    await asyncCodeOf(() => runAnalysis(analysisRequest(unknownPrompt, { promptVersion: 'v99' }))),
+    'unknown_prompt',
+  );
+  assert.equal(unknownPrompt.calls, 0);
 });
