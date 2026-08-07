@@ -832,7 +832,13 @@ export function resetResolverProbe(): void {
   probedAt = 0;
 }
 
-async function entityTablesAvailable(): Promise<boolean> {
+/**
+ * Exportada porque a propagação de desfecho (`match-outcome.ts`) depende das
+ * MESMAS tabelas e da mesma migration. Duplicar a sonda lá dobraria as
+ * requisições de verificação e daria duas respostas diferentes durante os
+ * segundos do apply.
+ */
+export async function entityTablesAvailable(): Promise<boolean> {
   const now = Date.now();
   if (tablesAvailable === true) return true;
   if (tablesAvailable === false && now - probedAt < PROBE_RETRY_MS) return false;

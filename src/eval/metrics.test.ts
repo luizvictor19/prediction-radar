@@ -217,42 +217,101 @@ const NAVI = '11111111-1111-1111-1111-111111111111';
 const FAZE = '22222222-2222-2222-2222-222222222222';
 const G2 = '33333333-3333-3333-3333-333333333333';
 
+const RESOLVED_AT = '2026-08-06T20:15:00.000Z';
+
 test('o desfecho é do ponto de vista do time A da ANÁLISE', () => {
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: NAVI }), {
-    outcome: 1,
-  });
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: FAZE }), {
-    outcome: 0,
-  });
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: NAVI,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { outcome: 1 },
+  );
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: FAZE,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { outcome: 0 },
+  );
 });
 
 test('lados trocados na partida depois da análise não invertem o desfecho', () => {
   // O recompute semanal do resolver pode reescrever team_a_id/team_b_id. A conta
   // é contra o team_a_id que a ANÁLISE gravou; comparar com o lado A de hoje
   // trocaria o sinal de toda análise anterior à troca.
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: FAZE, teamBId: NAVI, winnerTeamId: NAVI }), {
-    outcome: 1,
-  });
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: FAZE,
+      teamBId: NAVI,
+      winnerTeamId: NAVI,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { outcome: 1 },
+  );
 });
 
-test('sem desfecho, sem lado ou com lado incoerente, o ponto sai da amostra', () => {
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: null }), {
-    excluded: 'sem_desfecho',
-  });
-  assert.deepEqual(resolveOutcome(null, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: NAVI }), {
-    excluded: 'analise_sem_lado',
-  });
+test('void e "ainda sem desfecho" são exclusões DIFERENTES', () => {
+  // O par (winner_team_id, resolved_at) é o que separa os dois, e a diferença
+  // não é cosmética: void nunca vai entrar na amostra, pendente vai.
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: null,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { excluded: 'partida_void' },
+  );
+  assert.deepEqual(
+    resolveOutcome(NAVI, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: null, resolvedAt: null }),
+    { excluded: 'sem_desfecho' },
+  );
+});
+
+test('sem lado ou com lado incoerente, o ponto sai da amostra', () => {
+  assert.deepEqual(
+    resolveOutcome(null, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: NAVI,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { excluded: 'analise_sem_lado' },
+  );
   // A análise aponta para um time que não é lado desta partida: adivinhar aqui
   // inverteria o sinal, então não se adivinha.
-  assert.deepEqual(resolveOutcome(G2, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: NAVI }), {
-    excluded: 'lado_incoerente',
-  });
+  assert.deepEqual(
+    resolveOutcome(G2, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: NAVI,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { excluded: 'lado_incoerente' },
+  );
   // Vencedor que não é nenhum dos dois lados.
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: NAVI, teamBId: FAZE, winnerTeamId: G2 }), {
-    excluded: 'lado_incoerente',
-  });
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: NAVI,
+      teamBId: FAZE,
+      winnerTeamId: G2,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { excluded: 'lado_incoerente' },
+  );
   // Partida com os dois lados iguais daria desfecho 1 sempre.
-  assert.deepEqual(resolveOutcome(NAVI, { teamAId: NAVI, teamBId: NAVI, winnerTeamId: NAVI }), {
-    excluded: 'lado_incoerente',
-  });
+  assert.deepEqual(
+    resolveOutcome(NAVI, {
+      teamAId: NAVI,
+      teamBId: NAVI,
+      winnerTeamId: NAVI,
+      resolvedAt: RESOLVED_AT,
+    }),
+    { excluded: 'lado_incoerente' },
+  );
 });

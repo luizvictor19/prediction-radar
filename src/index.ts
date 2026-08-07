@@ -10,6 +10,7 @@ import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
 import { runEsportsResolver, runEsportsResolverRecompute } from './jobs/esports-resolver.js';
+import { runEsportsMatchOutcome } from './jobs/esports-match-outcome.js';
 import { runEsportsEnricher } from './jobs/esports-enricher.js';
 import { runEsportsAnalyst } from './jobs/esports-analyst.js';
 
@@ -117,6 +118,22 @@ async function main(): Promise<void> {
     void runEsportsResolverRecompute().catch(err =>
       console.error('[cron esports_resolver_recompute]', err),
     );
+  });
+
+  // Propagação de desfecho: traduz `events.resolved_outcome` (um rótulo) em
+  // `esports_matches.winner_team_id` (uma entidade), via o `outcome_a_index` do
+  // moneyline da partida.
+  //
+  // Passo próprio, e não um pedaço do auto-resolver nem do resolver de esports —
+  // o porquê está inteiro em `src/verticals/match-outcome.ts`. Em resumo: os dois
+  // fatos (o desfecho e o link) chegam em ordens diferentes, e só uma
+  // reconciliação alcança o que chegou fora de ordem. Sem ela, `winner_team_id`
+  // ficou nulo em 106 de 106 partidas passadas e o eval nunca teve amostra
+  // pontuável.
+  //
+  // Deslocado 5 minutos do resolver de propósito: ele escreve o link, este lê.
+  cron.schedule('5-59/10 * * * *', () => {
+    void runEsportsMatchOutcome().catch(err => console.error('[cron esports_outcome]', err));
   });
 
   // Enriquecimento de esports (spec 001, item 5): grava em `context_fragments` o

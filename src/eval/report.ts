@@ -343,6 +343,7 @@ function coverage(data: EvalDataset): string {
   const rows: Array<[string, number]> = [
     ['sem probabilidade (abstida ou sem mudança)', excluded.sem_probabilidade],
     ['partida ainda sem desfecho', excluded.sem_desfecho],
+    ['partida void (resolveu sem vencedor)', excluded.partida_void],
     ['análise sem team_a_id', excluded.analise_sem_lado],
     ['lado incoerente com a partida', excluded.lado_incoerente],
     ['fora do filtro de vertical', excluded.fora_do_filtro],

@@ -75,6 +75,12 @@ export type ExclusionReason =
   | 'sem_probabilidade'
   /** A partida ainda não foi resolvida — entra na amostra quando for. */
   | 'sem_desfecho'
+  /**
+   * A partida resolveu SEM vencedor (void). Nunca vai entrar na amostra, e é por
+   * isso que tem contador próprio: contada como "sem desfecho" ela ficaria para
+   * sempre parecendo uma pendência que um dia se resolve.
+   */
+  | 'partida_void'
   /** A análise não gravou `team_a_id`; sem lado, a probabilidade é ambígua. */
   | 'analise_sem_lado'
   /** O lado da análise não é nenhum dos dois lados da partida, ou o vencedor não é. */
@@ -90,6 +96,7 @@ function emptyExclusions(): ExclusionCounts {
   return {
     sem_probabilidade: 0,
     sem_desfecho: 0,
+    partida_void: 0,
     analise_sem_lado: 0,
     lado_incoerente: 0,
     fora_do_filtro: 0,
@@ -309,9 +316,22 @@ async function loadFailures(options: EvalOptions): Promise<FailureStats> {
  */
 export function resolveOutcome(
   analysisTeamA: string | null,
-  match: { teamAId: string | null; teamBId: string | null; winnerTeamId: string | null },
+  match: {
+    teamAId: string | null;
+    teamBId: string | null;
+    winnerTeamId: string | null;
+    /**
+     * `esports_matches.resolved_at`. É o segundo membro do par que codifica o
+     * void: carimbo presente e vencedor nulo significa "resolveu sem vencedor",
+     * e é a única leitura que distingue void de partida ainda em aberto — não há
+     * coluna de status. Quem grava o par é `verticals/match-outcome.ts`.
+     */
+    resolvedAt: string | null;
+  },
 ): { outcome: 0 | 1 } | { excluded: ExclusionReason } {
-  if (match.winnerTeamId === null) return { excluded: 'sem_desfecho' };
+  if (match.winnerTeamId === null) {
+    return { excluded: match.resolvedAt === null ? 'sem_desfecho' : 'partida_void' };
+  }
   if (analysisTeamA === null) return { excluded: 'analise_sem_lado' };
 
   const sides = [match.teamAId, match.teamBId].filter((id): id is string => id !== null);
@@ -381,6 +401,7 @@ export async function loadEvalDataset(options: EvalOptions = {}): Promise<EvalDa
       teamAId: asString(match['team_a_id']),
       teamBId: asString(match['team_b_id']),
       winnerTeamId: asString(match['winner_team_id']),
+      resolvedAt: asString(match['resolved_at']),
     });
 
     if ('excluded' in resolved) {
