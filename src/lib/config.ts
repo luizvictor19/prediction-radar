@@ -42,6 +42,12 @@ const DEFAULTS: SystemConfig = {
   // Fallback dos prefixos da descoberta: a coluna só existe depois da migration
   // 20260804163956_discovery_config. Sem isso o coletor não sobe antes dela.
   discovery_slug_prefixes: ['cs2-', 'lol-', 'dota2-'],
+  // Espelha o default da migration 20260808002747, e é o único fallback deste
+  // arquivo que existe para SILENCIAR e não para ligar: sem a coluna, os dois
+  // prefixos que hoje são coletados de propósito já contam como declarados. O
+  // contrário faria o aviso de prefixo sem vertical disparar a cada resweep
+  // entre o deploy e o apply, por um estado que é decisão.
+  collect_only_prefixes: ['lol-', 'dota2-'],
   discovery_lookback_minutes: 20,
   // Espelham os defaults da migration 20260806015533. Valem enquanto as colunas
   // não existirem — sem eles o coletor cairia em NaN e não refrescaria nada.

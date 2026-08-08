@@ -132,6 +132,11 @@ export function cycleStatus(stats: ResolveStats): 'success' | 'partial' {
     // Prefixo coletado e não coberto é estado degradado, não normal: há mercado
     // entrando em `events` que ninguém vai linkar. Chamar isso de `success` foi
     // o que deixou os órfãos de `lol-` crescerem de 23 para 81 sem um aviso.
+    //
+    // `collectOnlyPrefixes` NÃO entra: tecnicamente é a mesma situação, e é a
+    // estratégia em curso. Um `partial` permanente por um estado declarado seria
+    // o mesmo ruído por outro caminho — e ruído constante é como se perde a
+    // capacidade de notar o degradado de verdade. O volume continua no metadata.
     stats.uncoveredPrefixes.length > 0
     ? 'partial'
     : 'success';
@@ -147,6 +152,23 @@ function summary(stats: ResolveStats): string {
     `${written.matches} partidas e ${written.links} links distintos, ` +
     `${all.needsReview} para revisão, ${all.recomputable} recomputáveis`
   );
+}
+
+/**
+ * `lol-=81, dota2-=12` — ou só os prefixos, quando a contagem não foi feita.
+ *
+ * Sem contagem não inventa zero: `orphans_by_prefix` só é medido de hora em hora
+ * e pode faltar (migration 20260808002747 ainda não aplicada). Um zero aqui
+ * seria lido como "parou de acumular", que é a leitura que este número não pode
+ * dar errada.
+ */
+function brief(prefixes: readonly string[], counts: Record<string, number> | null): string {
+  return prefixes
+    .map((p) => {
+      const n = counts?.[p];
+      return n === undefined ? p : `${p}=${n}`;
+    })
+    .join(', ');
 }
 
 function metadataOf(stats: ResolveStats): Record<string, unknown> {
@@ -171,8 +193,19 @@ function metadataOf(stats: ResolveStats): Record<string, unknown> {
     reached_end: stats.reachedEnd,
     reswept_from_start: stats.resweptFromStart,
     // Não vazio = a descoberta coleta um prefixo que nenhuma vertical habilitada
-    // resolve. Órfão por configuração: o varredor não erra, ele nem enxerga.
+    // resolve E que ninguém declarou. Órfão por esquecimento: o varredor não
+    // erra, ele nem enxerga.
     uncovered_prefixes: stats.uncoveredPrefixes,
+    // Mesma situação técnica, decisão oposta: coletado de propósito enquanto a
+    // série temporal acumula (`system_config.collect_only_prefixes`). Fica no
+    // metadata para o estado ser legível, não para ser alarme.
+    collect_only_prefixes: stats.collectOnlyPrefixes,
+    // O volume acumulando, prefixo a prefixo, para os DOIS conjuntos. É o número
+    // que diz se habilitar uma vertical vale o trabalho — e ele só existe se for
+    // registrado mesmo quando não há nada de errado. Medido de hora em hora;
+    // `orphans_counted_at` diz de quando é.
+    orphans_by_prefix: stats.orphansByPrefix,
+    orphans_counted_at: stats.orphanCountsAt,
     tables_missing: stats.tablesMissing,
     errors: stats.errors.slice(0, 5),
   };
@@ -233,8 +266,10 @@ export async function runEsportsResolver(): Promise<void> {
           (uncovered.length > 0
             ? `. ATENÇÃO: a descoberta coleta ${uncovered.join(', ')} e nenhuma vertical ` +
               `habilitada cobre esses prefixos — esses mercados nascem órfãos. ` +
-              `Habilitar a vertical em \`verticals\` ou tirar o prefixo de ` +
-              `\`discovery_slug_prefixes\`; as duas são decisão do dono.`
+              `Habilitar a vertical em \`verticals\`, tirar o prefixo de ` +
+              `\`discovery_slug_prefixes\`, ou declará-lo em ` +
+              `\`collect_only_prefixes\` se a coleta sem análise for intencional; ` +
+              `as três são decisão do dono.`
             : ''),
         metadata: metadataOf(stats),
       });
@@ -244,12 +279,22 @@ export async function runEsportsResolver(): Promise<void> {
 
     // "nada novo" só quando é verdade. Com prefixo descoberto e não coberto, não
     // é: existe pendência, ela só não está no universo que o varredor consulta.
-    const detail =
+    //
+    // O declarado entra como sufixo neutro, nunca como o motivo do batimento: o
+    // status dele é `success`, e o número está ali para ser lido, não notado. O
+    // batimento é upsert de uma linha — carregar isso a cada ciclo não cresce.
+    const base =
       uncovered.length > 0
-        ? `${uncovered.join(', ')} coletado(s) e sem vertical habilitada — órfãos acumulando`
+        ? `${brief(uncovered, stats.orphansByPrefix)} coletado(s) sem vertical habilitada ` +
+          `e sem declaração — órfãos acumulando`
         : all.resolved > 0
           ? `${all.resolved} resolvidos, ${all.needsReview} para revisão`
           : `nada novo, ${stats.scanned} lidos`;
+
+    const detail =
+      stats.collectOnlyPrefixes.length > 0
+        ? `${base}; coleta declarada: ${brief(stats.collectOnlyPrefixes, stats.orphansByPrefix)}`
+        : base;
 
     await beat(COMPONENT, cycleStatus(stats), detail);
   });
@@ -338,6 +383,9 @@ function mergeInto(total: ResolveStats, page: ResolveStats): void {
   total.learnedRoleForms = page.learnedRoleForms;
   total.reachedEnd = page.reachedEnd;
   total.uncoveredPrefixes = page.uncoveredPrefixes;
+  total.collectOnlyPrefixes = page.collectOnlyPrefixes;
+  total.orphansByPrefix = page.orphansByPrefix;
+  total.orphanCountsAt = page.orphanCountsAt;
   total.resweptFromStart = total.resweptFromStart || page.resweptFromStart;
 
   for (const path of ['eventTeams', 'slugParse'] as const) {

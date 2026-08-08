@@ -14,6 +14,7 @@ const {
   combinedCounts,
   writtenCounts,
   emptyStats,
+  classifyDiscoveryPrefixes,
 } = await import('./resolver.js');
 
 type ResolvableEvent = Parameters<typeof planEvent>[0];
@@ -37,8 +38,22 @@ function metadata(overrides: Record<string, unknown> = {}): Record<string, unkno
     polymarket_event_id: '806202',
     polymarket_sport: { sport: 'cs2', resolution: 'https://hltv.org' },
     polymarket_teams: [
-      { id: 3270870, name: 'Nuclear TigeRES', abbreviation: 'ntr', providerId: 135673, league: 'csgo', ordering: 'home' },
-      { id: 138975, name: 'Butterfly', abbreviation: 'btf', providerId: 138975, league: 'csgo', ordering: 'away' },
+      {
+        id: 3270870,
+        name: 'Nuclear TigeRES',
+        abbreviation: 'ntr',
+        providerId: 135673,
+        league: 'csgo',
+        ordering: 'home',
+      },
+      {
+        id: 138975,
+        name: 'Butterfly',
+        abbreviation: 'btf',
+        providerId: 138975,
+        league: 'csgo',
+        ordering: 'away',
+      },
     ],
     ...overrides,
   };
@@ -336,9 +351,7 @@ test('sports_market_type presente é autoritativo e mantém a confiança cheia',
 });
 
 test('C: papel inferido do sufixo rebaixa a confiança e NÃO gera fila', () => {
-  const plan = plannedOf(
-    event({ sports_market_type: null, slug: 'cs2-ntr-btf-2026-08-06-game2' }),
-  );
+  const plan = plannedOf(event({ sports_market_type: null, slug: 'cs2-ntr-btf-2026-08-06-game2' }));
 
   assert.equal(plan.roleSource, 'guess');
   assert.equal(plan.link.marketRole, 'child_moneyline');
@@ -410,7 +423,10 @@ test('outcomeSideIndex: o lado B identifica o A por exclusão só no binário', 
 });
 
 test('outcomeSideIndex por token não casa código dentro de palavra maior', () => {
-  assert.equal(outcomeSideIndex(['Cognitive', 'Alguém'], ['og'], ['xx'], 'token').kind, 'unmatched');
+  assert.equal(
+    outcomeSideIndex(['Cognitive', 'Alguém'], ['og'], ['xx'], 'token').kind,
+    'unmatched',
+  );
   assert.equal(outcomeSideIndex(['OG Esports', 'Alguém'], ['og'], ['xx'], 'token').index, 0);
 });
 
@@ -544,4 +560,73 @@ test('combinedCounts soma os dois caminhos sem perder a quebra', () => {
   assert.equal(all.outcome.unmatched, 9824);
   // A quebra original continua intacta — é ela que separa anomalia de esperado.
   assert.equal(stats.byPath.eventTeams.outcome.unmatched, 0);
+});
+
+test('prefixo declarado sai do aviso e continua contado', () => {
+  // O estado de hoje: `lol-` e `dota2-` coletados de propósito, `cs2-` é o
+  // único domínio analisado. Nada aqui é anomalia, e nada aqui pode virar aviso.
+  const verticais = [
+    { verticalId: 'cs2', slugPrefix: 'cs2-', enabled: true },
+    { verticalId: 'lol', slugPrefix: 'lol-', enabled: false },
+    { verticalId: 'dota2', slugPrefix: 'dota2-', enabled: false },
+  ];
+
+  const split = classifyDiscoveryPrefixes(['cs2-', 'lol-', 'dota2-'], verticais, [
+    'lol-',
+    'dota2-',
+  ]);
+
+  assert.deepEqual(split.uncovered, []);
+  // Continuam visíveis: é neles que a contagem de órfãos é feita.
+  assert.deepEqual(split.collectOnly, ['lol-', 'dota2-']);
+});
+
+test('prefixo esquecido continua virando aviso', () => {
+  // O bug que a detecção pegou, na forma que ela precisa continuar pegando:
+  // alguém acrescenta o prefixo à descoberta e não habilita nem declara.
+  const split = classifyDiscoveryPrefixes(
+    ['cs2-', 'lol-', 'valorant-'],
+    [
+      { verticalId: 'cs2', slugPrefix: 'cs2-', enabled: true },
+      { verticalId: 'lol', slugPrefix: 'lol-', enabled: false },
+    ],
+    ['lol-'],
+  );
+
+  assert.deepEqual(split.uncovered, ['valorant-']);
+  assert.deepEqual(split.collectOnly, ['lol-']);
+});
+
+test('vertical habilitada nunca é órfã, mesmo com declaração obsoleta', () => {
+  // Habilitar a vertical não obriga a limpar `collect_only_prefixes`: a
+  // declaração fica sem efeito, e não pode fazer o prefixo sumir da contagem
+  // como se ainda fosse coleta cega.
+  const split = classifyDiscoveryPrefixes(
+    ['cs2-', 'lol-'],
+    [
+      { verticalId: 'cs2', slugPrefix: 'cs2-', enabled: true },
+      { verticalId: 'lol', slugPrefix: 'lol-', enabled: true },
+    ],
+    ['lol-', 'dota2-'],
+  );
+
+  assert.deepEqual(split.uncovered, []);
+  assert.deepEqual(split.collectOnly, []);
+});
+
+test('sem nenhuma vertical habilitada, todo prefixo coletado é órfão', () => {
+  // O caso em que o varredor não tem universo nenhum para varrer. Ele sai cedo,
+  // mas não antes de classificar — sair antes produziria um ciclo mudo com a
+  // descoberta rodando contra ninguém.
+  const split = classifyDiscoveryPrefixes(
+    ['cs2-', 'lol-'],
+    [
+      { verticalId: 'cs2', slugPrefix: 'cs2-', enabled: false },
+      { verticalId: 'lol', slugPrefix: 'lol-', enabled: false },
+    ],
+    ['lol-'],
+  );
+
+  assert.deepEqual(split.uncovered, ['cs2-']);
+  assert.deepEqual(split.collectOnly, ['lol-']);
 });

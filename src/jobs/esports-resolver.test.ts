@@ -48,3 +48,35 @@ test('migration não aplicada é partial, não error', () => {
 
   assert.equal(cycleStatus(stats), 'partial');
 });
+
+test('prefixo declarado como coleta-só não rebaixa o ciclo', () => {
+  // O estado de hoje, e o que ele tem que produzir: `lol-` e `dota2-` coletados
+  // de propósito para acumular série, análise só em `cs2-`. Tecnicamente são
+  // órfãos entrando em `events`; estrategicamente é a decisão em curso. Um
+  // `partial` permanente por isso seria ruído fixo — e ruído fixo é como se
+  // perde a capacidade de notar o degradado de verdade.
+  const stats = emptyStats();
+  stats.collectOnlyPrefixes = ['lol-', 'dota2-'];
+  stats.orphansByPrefix = { 'lol-': 81, 'dota2-': 12 };
+
+  assert.equal(cycleStatus(stats), 'success');
+});
+
+test('prefixo sem vertical e sem declaração continua sendo partial', () => {
+  // O bug real que a detecção pegou. Silenciar o caso declarado não pode
+  // silenciar este: aqui ninguém escolheu nada, alguém esqueceu.
+  const stats = emptyStats();
+  stats.uncoveredPrefixes = ['valorant-'];
+
+  assert.equal(cycleStatus(stats), 'partial');
+});
+
+test('contagem de órfãos sozinha nunca decide o status', () => {
+  // O contador é observação. Se ele passasse a rebaixar o ciclo por volume,
+  // recriaria o alarme permanente por outro caminho.
+  const stats = emptyStats();
+  stats.collectOnlyPrefixes = ['lol-'];
+  stats.orphansByPrefix = { 'lol-': 50_000 };
+
+  assert.equal(cycleStatus(stats), 'success');
+});

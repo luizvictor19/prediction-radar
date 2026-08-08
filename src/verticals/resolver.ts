@@ -290,13 +290,34 @@ export interface ResolveStats {
   tablesMissing: boolean;
   reachedEnd: boolean;
   /**
-   * Prefixos coletados pela descoberta que nenhuma vertical habilitada cobre.
+   * Prefixos coletados pela descoberta que nenhuma vertical habilitada cobre
+   * E que ninguém declarou em `collect_only_prefixes`.
    *
-   * Não vazio = mercado entrando em `events` sem ninguém para linkar. É órfão
-   * por configuração, não por falha do varredor, e nenhum outro contador daqui
-   * o enxerga.
+   * Não vazio = mercado entrando em `events` sem ninguém para linkar e sem
+   * ninguém tendo dito que era para ser assim. É órfão por esquecimento, não por
+   * escolha, e nenhum outro contador daqui o enxerga.
    */
   uncoveredPrefixes: string[];
+  /**
+   * Prefixos coletados sem vertical habilitada, mas declarados.
+   *
+   * Mesma situação técnica de `uncoveredPrefixes` — órfão entrando em `events` —
+   * e desfecho oposto: é o estado pretendido enquanto a série temporal acumula.
+   * Fica separado em vez de somado para que o número continue visível sem que o
+   * ciclo seja rebaixado.
+   */
+  collectOnlyPrefixes: string[];
+  /**
+   * Órfãos contados por prefixo, para os dois conjuntos acima.
+   *
+   * `null` = não foi medido nesta passada. A medição é hora em hora (ver
+   * `refreshOrphanCounts`) e falha de leitura preserva o último valor conhecido,
+   * então um número aqui pode ser mais velho que o ciclo — `orphanCountsAt` diz
+   * de quando ele é.
+   */
+  orphansByPrefix: Record<string, number> | null;
+  /** ISO de quando `orphansByPrefix` foi medido. `null` enquanto nunca foi. */
+  orphanCountsAt: string | null;
   /** Esta passada recomeçou do zero pelo reciclo periódico do cursor. */
   resweptFromStart: boolean;
   samples: ResolveSamples;
@@ -334,6 +355,9 @@ export function emptyStats(): ResolveStats {
     tablesMissing: false,
     reachedEnd: false,
     uncoveredPrefixes: [],
+    collectOnlyPrefixes: [],
+    orphansByPrefix: null,
+    orphanCountsAt: null,
     resweptFromStart: false,
     samples: { unknownSuffixFamilies: {}, unmatched: [] },
   };
@@ -1486,13 +1510,17 @@ export async function resolveUnlinkedEvents(
   const verticals = (await loadVerticals()) ?? enabledDefaults();
   const prefixes = verticals.filter((v) => v.enabled).map((v) => v.slugPrefix);
 
-  if (prefixes.length === 0) {
-    stats.reachedEnd = true;
-    return stats;
+  // Reciclo do cursor. Ver `RESWEEP_EVERY_CYCLES`.
+  //
+  // O recompute tem o seu próprio `resetResolverCursor()` e não passa por aqui.
+  //
+  // Vem antes da classificação de prefixos porque é ele quem dita a cadência da
+  // contagem de órfãos logo abaixo.
+  if (opts.recompute !== true && cyclesAtEnd >= RESWEEP_EVERY_CYCLES) {
+    cursor = 0;
+    cyclesAtEnd = 0;
+    stats.resweptFromStart = true;
   }
-
-  const learnedRoles = await loadLearnedRoles(prefixes);
-  stats.learnedRoleForms = Object.keys(learnedRoles).length;
 
   // Prefixo que a descoberta coleta e nenhuma vertical habilitada cobre. É
   // comparação de config contra config, sem custo de banco — e é exatamente o
@@ -1504,16 +1532,32 @@ export async function resolveUnlinkedEvents(
   // `stats.verticalDisabled` não pegava isso: ele só conta rejeição em
   // `planEvent`, e o filtro da query já tinha removido a linha antes. O contador
   // que existia para denunciar este caso é inalcançável no caminho incremental.
-  stats.uncoveredPrefixes = await uncoveredDiscoveryPrefixes(verticals);
-
-  // Reciclo do cursor. Ver `RESWEEP_EVERY_CYCLES`.
   //
-  // O recompute tem o seu próprio `resetResolverCursor()` e não passa por aqui.
-  if (opts.recompute !== true && cyclesAtEnd >= RESWEEP_EVERY_CYCLES) {
-    cursor = 0;
-    cyclesAtEnd = 0;
-    stats.resweptFromStart = true;
+  // O que a declaração muda é só o DESFECHO. Os dois conjuntos são o mesmo fato
+  // técnico — órfão entrando em `events` — e os dois são medidos; um vira aviso,
+  // o outro vira número.
+  const config = await getSystemConfig();
+  const split = classifyDiscoveryPrefixes(
+    safeSlugPrefixes(config.discovery_slug_prefixes ?? [], COMPONENT),
+    verticals,
+    safeSlugPrefixes(config.collect_only_prefixes ?? [], COMPONENT),
+  );
+  stats.uncoveredPrefixes = split.uncovered;
+  stats.collectOnlyPrefixes = split.collectOnly;
+
+  await refreshOrphanCounts([...split.uncovered, ...split.collectOnly], stats);
+
+  // Nenhuma vertical habilitada: não há universo para varrer. A saída fica DEPOIS
+  // da classificação de propósito — é justamente o caso em que todo prefixo
+  // coletado é órfão, e sair antes de olhar produziria um `success` mudo com a
+  // descoberta rodando contra ninguém.
+  if (prefixes.length === 0) {
+    stats.reachedEnd = true;
+    return stats;
   }
+
+  const learnedRoles = await loadLearnedRoles(prefixes);
+  stats.learnedRoleForms = Object.keys(learnedRoles).length;
 
   const maxScan = opts.maxScan ?? DEFAULT_MAX_SCAN;
   let planned = 0;
@@ -1639,22 +1683,125 @@ export async function resolveUnlinkedEvents(
 }
 
 /**
- * Prefixos que a descoberta coleta e nenhuma vertical habilitada resolve.
+ * Prefixos coletados sem vertical habilitada, separados por INTENÇÃO.
  *
- * Devolve lista vazia quando os dois lados concordam. Qualquer elemento aqui
- * significa mercado entrando em `events` sem ninguém para linká-lo — órfão
- * garantido, e crescendo enquanto a descoberta rodar.
+ * Os dois conjuntos descrevem o mesmo fato técnico: mercado entrando em `events`
+ * sem ninguém para linká-lo, e crescendo enquanto a descoberta rodar. O que os
+ * separa é se alguém disse que era para ser assim.
  *
- * Não decide nada: as duas saídas (habilitar a vertical, ou parar de coletar o
- * prefixo) são escolha do dono. O que o resolver deve fazer é parar de chamar
- * isso de "nada a fazer".
+ *   `collectOnly` — declarado em `system_config.collect_only_prefixes`. É a
+ *   estratégia em curso: coletar `lol-` e `dota2-` antes de saber analisá-los
+ *   acumula série temporal, e a análise fica em `cs2-` porque é o domínio
+ *   julgável. O estado vai se repetir a cada vertical nova.
+ *
+ *   `uncovered` — nem habilitado nem declarado. Ninguém escolheu isto; alguém
+ *   acrescentou o prefixo à descoberta e esqueceu o resto.
+ *
+ * Sem essa separação o aviso dispararia para sempre por um estado esperado, e
+ * aviso constante é indistinguível de nenhum aviso: some junto com ele a chance
+ * de notar o dia em que o prefixo era mesmo esquecimento.
+ *
+ * Nenhum dos dois decide nada. Para `uncovered`, as duas saídas — habilitar a
+ * vertical, tirar o prefixo da descoberta — são do dono; declarar é a terceira,
+ * e é ela que este par de conjuntos passou a permitir dizer.
+ *
+ * Pura de propósito: é comparação de config contra config, sem custo de banco.
  */
-async function uncoveredDiscoveryPrefixes(verticals: readonly VerticalConfig[]): Promise<string[]> {
-  const config = await getSystemConfig();
-  const discovered = safeSlugPrefixes(config.discovery_slug_prefixes ?? [], COMPONENT);
-  const covered = new Set(verticals.filter((v) => v.enabled).map((v) => v.slugPrefix));
+export function classifyDiscoveryPrefixes(
+  discovered: readonly string[],
+  verticals: readonly VerticalConfig[],
+  declared: readonly string[],
+): { uncovered: string[]; collectOnly: string[] } {
+  const enabled = new Set(verticals.filter((v) => v.enabled).map((v) => v.slugPrefix));
+  const declaredSet = new Set(declared);
 
-  return discovered.filter((prefix) => !covered.has(prefix));
+  const uncovered: string[] = [];
+  const collectOnly: string[] = [];
+
+  for (const prefix of discovered) {
+    // Vertical habilitada resolve o prefixo: não é órfão, e uma declaração
+    // obsoleta em `collect_only_prefixes` não tem efeito nenhum aqui. Habilitar
+    // a vertical não obriga a limpar a declaração.
+    if (enabled.has(prefix)) continue;
+
+    if (declaredSet.has(prefix)) collectOnly.push(prefix);
+    else uncovered.push(prefix);
+  }
+
+  return { uncovered, collectOnly };
+}
+
+/**
+ * A última contagem de órfãos por prefixo, e quando foi feita.
+ *
+ * Estado de módulo pelo mesmo motivo do cursor: é cache de leitura, não verdade
+ * do sistema. Um processo novo apenas mede de novo no primeiro ciclo.
+ */
+let orphanCounts: Record<string, number> | null = null;
+let orphanCountsAt: string | null = null;
+
+export function resetOrphanCounts(): void {
+  orphanCounts = null;
+  orphanCountsAt = null;
+}
+
+/**
+ * Conta os órfãos dos prefixos sem vertical, declarados inclusive.
+ *
+ * O número dos declarados é o ponto: o volume acumulando é a série que motivou
+ * coletá-los, e é o que dirá se habilitar a vertical vale o trabalho. Silenciar
+ * o aviso não pode significar parar de medir.
+ *
+ * ## Cadência: uma vez por hora, não a cada tick
+ *
+ * Cada prefixo é uma varredura de índice em `events` mais uma sondagem de PK por
+ * linha. Hoje são dezenas de linhas e não custa nada; em um ano de coleta são
+ * dezenas de milhares, 144 vezes por dia, para um número que muda devagar por
+ * construção. Amarrar a medição ao reciclo do cursor (`RESWEEP_EVERY_CYCLES`,
+ * ~1h) é a mesma cadência que o aviso já usa no log, e a granularidade horária
+ * não perde nada de uma curva que se lê em semanas.
+ *
+ * A primeira passada depois de um deploy mede fora dessa cadência: sem isso, o
+ * metadata sairia sem número até o primeiro resweep.
+ *
+ * ## Falha preserva o último valor
+ *
+ * A função pode não existir (código no ar antes do apply da migration
+ * 20260808002747) ou a leitura pode falhar. Nos dois casos o valor anterior fica
+ * de pé com o carimbo antigo, e nada vai para `stats.errors`: um contador de
+ * observação que rebaixasse o ciclo para `partial` recriaria, por outro caminho,
+ * exatamente o ruído que a declaração existe para acabar.
+ */
+async function refreshOrphanCounts(prefixes: readonly string[], stats: ResolveStats): Promise<void> {
+  // Sem prefixo a contar — todas as verticais coletadas foram habilitadas — o
+  // cache tem que sumir junto. Deixá-lo de pé publicaria no metadata um número
+  // de órfãos que já foi linkado.
+  if (prefixes.length === 0) {
+    resetOrphanCounts();
+    stats.orphansByPrefix = null;
+    stats.orphanCountsAt = null;
+    return;
+  }
+
+  if (orphanCounts === null || stats.resweptFromStart) {
+    const { data, error } = await supabase.rpc('orphan_events_by_prefix', {
+      prefixes: [...prefixes],
+    });
+
+    if (error) {
+      console.warn(
+        `[${COMPONENT}] contagem de órfãos por prefixo indisponível (${error.message}) — ` +
+          `migration 20260808002747 aplicada?`,
+      );
+    } else {
+      const rows = (data ?? []) as { prefix: string; orphans: number }[];
+      orphanCounts = Object.fromEntries(rows.map((r) => [r.prefix, Number(r.orphans)]));
+      orphanCountsAt = new Date().toISOString();
+    }
+  }
+
+  stats.orphansByPrefix = orphanCounts;
+  stats.orphanCountsAt = orphanCountsAt;
 }
 
 function enabledDefaults(): VerticalConfig[] {

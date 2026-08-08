@@ -129,6 +129,15 @@ export interface SystemConfig {
   generic_detectors_enabled: boolean;
   /** Prefixos de slug que a descoberta (spec 000, item 2a) persiste. */
   discovery_slug_prefixes: string[];
+  /**
+   * Prefixos coletados DE PROPÓSITO sem vertical habilitada.
+   *
+   * Declaração explícita, não inferência: coletar `lol-` e `dota2-` antes de
+   * saber analisá-los é decisão — acumula série temporal desde já. O resolver
+   * conta os órfãos destes prefixos e NÃO avisa. Prefixo coletado que não está
+   * aqui nem habilitado em `verticals` é esquecimento, e continua virando aviso.
+   */
+  collect_only_prefixes: string[];
   discovery_lookback_minutes: number;
   /** Cadência da watchlist por faixa (spec 000, itens 3b e 7). Ver a migration. */
   watchlist_interval_live_seconds: number;
