@@ -854,10 +854,27 @@ export function buildOddsSummary(
     );
   }
 
-  parts.push(
-    `Casas de aposta em ${nameA} x ${nameB}: consenso (mediana de ${consensus.books}) ` +
-      `${pct(consensus.fairA)} para ${nameA}, já sem a margem.`,
-  );
+  // Havia cotação em alguma casa, mas nenhuma sobreviveu ao filtro do consenso —
+  // todas paradas, suspensas sem preço ativo, ou com um lado só.
+  //
+  // O texto tinha um bug aqui: a frase do consenso era montada de qualquer jeito
+  // e saía `consenso (mediana de 0) ? para <time>`. Uma mediana de zero casas
+  // não é um consenso fraco, é a AUSÊNCIA de consenso — e `?` no lugar de uma
+  // probabilidade é a forma mais fácil de o agente ler ausência como número.
+  // Quem produz o fragmento tem que dizer o que ele não tem.
+  if (consensus.books === 0 || consensus.fairA === null) {
+    parts.push(
+      `SEM CONSENSO de casas para ${nameA} x ${nameB}: nenhuma das ${quoted.length} ` +
+        `casa(s) com cotação tem linha ativa e recente o bastante para comparar com ` +
+        `o preço do Polymarket. O que segue é o último preço de cada uma, com a idade — ` +
+        `serve para ver que o mercado delas parou, não como estimativa.`,
+    );
+  } else {
+    parts.push(
+      `Casas de aposta em ${nameA} x ${nameB}: consenso (mediana de ${consensus.books}) ` +
+        `${pct(consensus.fairA)} para ${nameA}, já sem a margem.`,
+    );
+  }
 
   const perBook = quoted
     .map(

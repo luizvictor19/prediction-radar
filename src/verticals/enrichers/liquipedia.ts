@@ -13,7 +13,7 @@ import {
   ATTRIBUTION_SUFFIX,
   LiquipediaError,
 } from '../../lib/liquipedia-api.js';
-import { lastFragmentAsOf } from '../enricher.js';
+import { lastFragmentAsOf, noteEnricherSkip } from '../enricher.js';
 import type { ContextFragment, Enricher, EnricherContext } from '../enricher.js';
 
 /**
@@ -288,7 +288,7 @@ async function resolveTeams(
   const rows = await query({
     wiki,
     datapoint: 'team',
-    conditions: or(...toAsk.map(t => eq('name', t.display_name as string))),
+    conditions: or(...toAsk.map((t) => eq('name', t.display_name as string))),
     query: 'name,pagename',
     limit: 10,
     cacheSeconds: CACHE.team,
@@ -296,7 +296,7 @@ async function resolveTeams(
 
   for (const team of toAsk) {
     const displayName = (team.display_name as string).trim();
-    const hit = rows.find(row => {
+    const hit = rows.find((row) => {
       const name = row['name'];
       return typeof name === 'string' && sameName(name, displayName);
     });
@@ -496,7 +496,7 @@ export function buildRosterFragment(
   sides: ReadonlyArray<{ identity: TeamIdentity; squad: SquadMember[] }>,
   asOf: Date,
 ): ContextFragment | null {
-  const withSquad = sides.filter(s => s.squad.length > 0);
+  const withSquad = sides.filter((s) => s.squad.length > 0);
   if (withSquad.length === 0) return null;
 
   const parts: string[] = [];
@@ -520,29 +520,24 @@ export function buildRosterFragment(
       ? ` Mudança recente de line-up: ${recent.join('; ')}.`
       : ' Nenhuma entrada nos últimos 60 dias.';
 
-  return fragment(
-    'roster',
-    asOf,
-    `Line-up ativo. ${parts.join('. ')}.${novelty}`,
-    {
-      teams: withSquad.map(side => ({
-        team_id: side.identity.teamId,
-        display_name: side.identity.displayName,
-        liquipedia_page: side.identity.page,
-        url: side.identity.page === null ? null : pageUrl(wiki, side.identity.page),
-        players: side.squad.map(m => ({
-          id: m.id,
-          name: m.name,
-          role: m.role,
-          join_date: m.joinDate?.toISOString() ?? null,
-          leave_date: m.leaveDate?.toISOString() ?? null,
-        })),
+  return fragment('roster', asOf, `Line-up ativo. ${parts.join('. ')}.${novelty}`, {
+    teams: withSquad.map((side) => ({
+      team_id: side.identity.teamId,
+      display_name: side.identity.displayName,
+      liquipedia_page: side.identity.page,
+      url: side.identity.page === null ? null : pageUrl(wiki, side.identity.page),
+      players: side.squad.map((m) => ({
+        id: m.id,
+        name: m.name,
+        role: m.role,
+        join_date: m.joinDate?.toISOString() ?? null,
+        leave_date: m.leaveDate?.toISOString() ?? null,
       })),
-      // O filtro que produziu a lista, gravado junto: sem ele o payload não diz
-      // a que instante o line-up se refere.
-      active_at: asOf.toISOString(),
-    },
-  );
+    })),
+    // O filtro que produziu a lista, gravado junto: sem ele o payload não diz
+    // a que instante o line-up se refere.
+    active_at: asOf.toISOString(),
+  });
 }
 
 export function buildH2hFragment(
@@ -573,7 +568,7 @@ export function buildH2hFragment(
       team_a: { team_id: a.teamId, display_name: a.displayName, liquipedia_page: a.page },
       team_b: { team_id: b.teamId, display_name: b.displayName, liquipedia_page: b.page },
       record_for_team_a: counts,
-      matches: matches.map(m => ({
+      matches: matches.map((m) => ({
         date: m.date?.toISOString() ?? null,
         opponents: m.opponents,
         winner: m.winner,
@@ -597,9 +592,10 @@ export function buildFormFragment(
   const counts = tally(matches, identity.page);
   const opponents = matches
     .slice(0, 5)
-    .map(m => {
-      const other = m.opponents.find(name => !sameName(name, identity.page as string));
-      const mark = m.winner === null ? '?' : sameName(m.winner, identity.page as string) ? 'V' : 'D';
+    .map((m) => {
+      const other = m.opponents.find((name) => !sameName(name, identity.page as string));
+      const mark =
+        m.winner === null ? '?' : sameName(m.winner, identity.page as string) ? 'V' : 'D';
       return `${mark} vs ${other ?? '?'}`;
     })
     .join(', ');
@@ -614,7 +610,7 @@ export function buildFormFragment(
       display_name: identity.displayName,
       liquipedia_page: identity.page,
       record: counts,
-      matches: matches.map(m => ({
+      matches: matches.map((m) => ({
         date: m.date?.toISOString() ?? null,
         opponents: m.opponents,
         winner: m.winner,
@@ -676,7 +672,9 @@ export function buildTournamentFragment(
 
 const MATCH_FIELDS = 'date,winner,bestof,tournament,parent,pagename,match2opponents';
 
-async function loadTeamRows(matchId: string): Promise<{ rows: TeamRow[]; verticalId: string } | null> {
+async function loadTeamRows(
+  matchId: string,
+): Promise<{ rows: TeamRow[]; verticalId: string } | null> {
   const { data: match, error } = await supabase
     .from('esports_matches')
     .select('vertical_id, team_a_id, team_b_id')
@@ -684,7 +682,8 @@ async function loadTeamRows(matchId: string): Promise<{ rows: TeamRow[]; vertica
     .maybeSingle();
 
   if (error || match === null) {
-    if (error) console.warn(`[${LIQUIPEDIA_ID}] leitura de esports_matches falhou: ${error.message}`);
+    if (error)
+      console.warn(`[${LIQUIPEDIA_ID}] leitura de esports_matches falhou: ${error.message}`);
     return null;
   }
 
@@ -705,10 +704,12 @@ async function loadTeamRows(matchId: string): Promise<{ rows: TeamRow[]; vertica
 
   // A ordem importa: o lado A é o lado a que a probabilidade do analista se
   // refere, e o h2h é contado do ponto de vista dele.
-  const byId = new Map((teams ?? []).map(row => [row['id'] as string, row as TeamRow]));
-  const ordered = ids.map(id => byId.get(id)).filter((row): row is TeamRow => row !== undefined);
+  const byId = new Map((teams ?? []).map((row) => [row['id'] as string, row as TeamRow]));
+  const ordered = ids.map((id) => byId.get(id)).filter((row): row is TeamRow => row !== undefined);
 
-  return ordered.length === 2 ? { rows: ordered, verticalId: match['vertical_id'] as string } : null;
+  return ordered.length === 2
+    ? { rows: ordered, verticalId: match['vertical_id'] as string }
+    : null;
 }
 
 /**
@@ -730,16 +731,29 @@ async function loadTeamRows(matchId: string): Promise<{ rows: TeamRow[]; vertica
  * inteiro para fora do resultado, e o fragmento sairia enviesado sem sintoma.
  */
 async function fetchLiquipedia(ctx: EnricherContext): Promise<ContextFragment[]> {
+  // Toda saída daqui para baixo é NOMEADA, pelo mesmo motivo do enricher da
+  // OddsPapi: este aqui saía mudo 40 vezes por ciclo, e "sem credencial" ficava
+  // indistinguível de "não tenho o que dizer sobre esta partida".
   const wiki = WIKI_BY_VERTICAL[ctx.verticalId];
-  if (wiki === undefined) return [];
+  if (wiki === undefined) {
+    noteEnricherSkip(LIQUIPEDIA_ID, `vertical ${ctx.verticalId} sem wiki mapeada`);
+    return [];
+  }
 
   const config = await getSystemConfig();
-  if (config.esports_enricher_liquipedia_enabled !== true) return [];
+  if (config.esports_enricher_liquipedia_enabled !== true) {
+    noteEnricherSkip(
+      LIQUIPEDIA_ID,
+      'esports_enricher_liquipedia_enabled != true (desligado, ou coluna inexistente)',
+    );
+    return [];
+  }
 
   if (readConfig() === null) {
     // Uma vez por ciclo, não por partida: o job chama isto para dezenas de
     // partidas e a mensagem é a mesma.
     warnOnce(`[${LIQUIPEDIA_ID}] desligado por falta de credencial (${describeConfig()})`);
+    noteEnricherSkip(LIQUIPEDIA_ID, `credencial ausente (${describeConfig()})`);
     return [];
   }
 
@@ -750,6 +764,7 @@ async function fetchLiquipedia(ctx: EnricherContext): Promise<ContextFragment[]>
     console.warn(
       `[${LIQUIPEDIA_ID}] ${ctx.matchId} pulada: restam ${budget.remaining()} requisições na hora`,
     );
+    noteEnricherSkip(LIQUIPEDIA_ID, 'orçamento de 60 req/h no fim');
     return [];
   }
 
@@ -757,28 +772,42 @@ async function fetchLiquipedia(ctx: EnricherContext): Promise<ContextFragment[]>
   // (decisão documentada em `enricher.ts`). Sem isto, uma partida na janela
   // seria reconsultada a cada 30 min e o orçamento acabaria em duas horas.
   const lastAsOf = await lastFragmentAsOf(ctx.matchId, LIQUIPEDIA_ID);
-  if (lastAsOf !== null && ctx.asOf.getTime() - lastAsOf.getTime() < liquipediaEnricher.ttlSeconds * 1000) {
+  if (
+    lastAsOf !== null &&
+    ctx.asOf.getTime() - lastAsOf.getTime() < liquipediaEnricher.ttlSeconds * 1000
+  ) {
+    noteEnricherSkip(LIQUIPEDIA_ID, 'TTL de 6h ainda não venceu');
     return [];
   }
 
   const loaded = await loadTeamRows(ctx.matchId);
-  if (loaded === null) return [];
+  if (loaded === null) {
+    noteEnricherSkip(LIQUIPEDIA_ID, 'partida sem os dois times resolvidos');
+    return [];
+  }
 
   const asOf = ctx.asOf;
   const fragments: ContextFragment[] = [];
 
   const identities = await resolveTeams(wiki, loaded.rows, asOf);
   const [a, b] = identities;
-  if (a === undefined || b === undefined) return [];
+  if (a === undefined || b === undefined) {
+    // `resolveTeams` descarta time sem `display_name` — o caminho 2 do resolver.
+    noteEnricherSkip(LIQUIPEDIA_ID, 'time sem display_name para consultar a wiki');
+    return [];
+  }
 
   const pages = identities.filter((i): i is TeamIdentity & { page: string } => i.page !== null);
-  if (pages.length === 0) return [];
+  if (pages.length === 0) {
+    noteEnricherSkip(LIQUIPEDIA_ID, 'nenhum dos times tem página na Liquipedia');
+    return [];
+  }
 
   // --- roster -------------------------------------------------------------
   const squadRows = await query({
     wiki,
     datapoint: 'squadplayer',
-    conditions: or(...pages.map(i => eq('pagename', i.page))),
+    conditions: or(...pages.map((i) => eq('pagename', i.page))),
     query: 'pagename,id,name,link,role,position,joindate,leavedate',
     limit: SQUAD_LIMIT,
     cacheSeconds: CACHE.squad,
@@ -786,7 +815,7 @@ async function fetchLiquipedia(ctx: EnricherContext): Promise<ContextFragment[]>
 
   const roster = buildRosterFragment(
     wiki,
-    pages.map(identity => ({ identity, squad: activeSquad(squadRows, identity.page, asOf) })),
+    pages.map((identity) => ({ identity, squad: activeSquad(squadRows, identity.page, asOf) })),
     asOf,
   );
   if (roster !== null) fragments.push(roster);
@@ -808,14 +837,12 @@ async function fetchLiquipedia(ctx: EnricherContext): Promise<ContextFragment[]>
 
     const all = h2hRows.map(readMatch);
     const past = all
-      .filter(m => m.date !== null && m.date.getTime() < asOf.getTime())
+      .filter((m) => m.date !== null && m.date.getTime() < asOf.getTime())
       .slice(0, H2H_LIMIT);
 
     // A partida que vem é a que ainda não aconteceu — dela interessa o formato,
     // não o resultado, que não existe.
-    const upcoming = all
-      .filter(m => m.date !== null && m.date.getTime() >= asOf.getTime())
-      .pop();
+    const upcoming = all.filter((m) => m.date !== null && m.date.getTime() >= asOf.getTime()).pop();
 
     upcomingBestOf = upcoming?.bestOf ?? null;
     tournamentPage = upcoming?.parentPage ?? past[0]?.parentPage ?? null;
@@ -875,8 +902,10 @@ async function fetchGuarded(ctx: EnricherContext): Promise<ContextFragment[]> {
     if (err instanceof LiquipediaError) {
       if (err.kind === 'rate_limited' || err.kind === 'not_configured') {
         warnOnce(`[${LIQUIPEDIA_ID}] ${err.message}`);
+        noteEnricherSkip(LIQUIPEDIA_ID, `fonte indisponível: ${err.kind}`);
         return [];
       }
+      noteEnricherSkip(LIQUIPEDIA_ID, `erro da fonte: ${err.kind}`);
       console.warn(`[${LIQUIPEDIA_ID}] ${ctx.matchId}: ${err.kind} — ${err.message}`);
       return [];
     }

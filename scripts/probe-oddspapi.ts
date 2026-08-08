@@ -65,8 +65,16 @@ import 'dotenv/config';
  *   npm run oddspapi:probe -- --bookmakers=pinnacle,ggbet,thunderpick
  *   npm run oddspapi:probe -- --fixture=id1704591169167084
  *   npm run oddspapi:probe -- --with-db      # cruza os nomes com esports_teams
+ *   npm run oddspapi:probe -- --coverage     # cobertura real das NOSSAS partidas
  *
- * `--with-db` é opt-in de propósito: é a única parte que lê o banco de produção.
+ * `--coverage` responde à pergunta que o contador de recusas do enricher deixou
+ * aberta: das partidas que não acham fixture, quantas são teto da cobertura
+ * deles e quantas são defeito do nosso casamento por nome. Usa `matchFixture` do
+ * próprio enricher, não uma cópia — medir uma reimplementação descreveria um
+ * sistema que não existe.
+ *
+ * `--with-db` e `--coverage` são opt-in de propósito: são as únicas partes que
+ * leem o banco de produção.
  * Sem a flag a sonda só fala com a OddsPapi, e imprime os nomes deles para
  * conferência a olho.
  *
@@ -635,6 +643,279 @@ async function compareWithDb(fixtures: readonly Fixture[]): Promise<void> {
   if (misses.length > 0) {
     console.log(`[${LABEL}]   sem casar (${misses.length}), primeiros 20:`);
     console.log(`[${LABEL}]     ${[...new Set(misses)].slice(0, 20).join(' | ')}`);
+  }
+}
+
+/**
+ * Distância de edição, com teto. Só para achar quase-casamento no relatório de
+ * cobertura — não entra em decisão nenhuma do enricher.
+ */
+function editDistance(a: string, b: string, cap = 4): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min((prev[j] ?? 0) + 1, (row[j - 1] ?? 0) + 1, (prev[j - 1] ?? 0) + cost);
+      row[j] = value;
+      if (value < best) best = value;
+    }
+    if (best > cap) return cap + 1;
+    prev = row;
+  }
+
+  return prev[b.length] ?? cap + 1;
+}
+
+/** Iniciais das palavras: 'Natus Vincere' -> 'nv'. Preserva a fronteira de palavra. */
+function acronymOf(raw: string): string {
+  return raw
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 0)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toLowerCase();
+}
+
+/** O curto aparece em ordem dentro do longo. Piso de 3 letras contra ruído. */
+function isSubsequence(longer: string, shorter: string): boolean {
+  if (shorter.length < 3 || shorter.length >= longer.length) return false;
+
+  let i = 0;
+  for (const ch of longer) {
+    if (ch === shorter[i]) i += 1;
+    if (i === shorter.length) return true;
+  }
+  return false;
+}
+
+/**
+ * Nomes que "quase" são o mesmo — heurística SÓ para o relatório.
+ *
+ * É o que separa as duas respostas que a cobertura de 35% pode ter. Se o time
+ * não aparece de forma nenhuma na lista deles, o teto é da COBERTURA deles. Se
+ * aparece com outra grafia, o teto é do NOSSO casamento — e aí tem conserto.
+ *
+ * Recebe os nomes CRUS de propósito: a normalização apaga espaço, e sem fronteira
+ * de palavra não dá para reconhecer sigla — que é o caso dominante em esports
+ * ('Natus Vincere' / 'NAVI', 'Fnatic' / 'FNC'). Foi o furo da primeira versão:
+ * ela classificava sigla como cobertura deles, que é a conclusão oposta.
+ *
+ * Nenhuma decisão do enricher passa por aqui. O casamento que vale continua
+ * sendo o exato de `matchFixture`; isto só rotula a falha para quem lê.
+ */
+function nearMiss(oursRaw: string, theirsRaw: string): boolean {
+  const ours = normalize(oursRaw);
+  const theirs = normalize(theirsRaw);
+
+  if (ours.length === 0 || theirs.length === 0) return false;
+  if (ours === theirs) return false;
+  if (ours.includes(theirs) || theirs.includes(ours)) return true;
+
+  if (acronymOf(oursRaw) === theirs || acronymOf(theirsRaw) === ours) return true;
+
+  // Abreviação: as letras do curto aparecem na ordem dentro do longo.
+  // 'navi' ⊂ 'natusvincere', 'fnc' ⊂ 'fnatic'. Cobre sigla, contração e corte,
+  // que é a família inteira de como uma casa encurta nome de time.
+  //
+  // Piso de 3 letras: com 2, quase tudo é subsequência de quase tudo.
+  if (isSubsequence(ours, theirs) || isSubsequence(theirs, ours)) return true;
+
+  const cap = ours.length <= 6 ? 1 : 2;
+  return editDistance(ours, theirs, cap) <= cap;
+}
+
+/**
+ * A cobertura REAL, medida do nosso lado: das partidas da janela do enricher,
+ * quantas acham fixture na OddsPapi — e, das que não acham, por quê.
+ *
+ * Existe porque o contador de recusas mediu 26 de 40 partidas "sem fixture
+ * correspondente" e esse número sozinho não decide nada: 35% pode ser o teto da
+ * cobertura deles (não cobrem CS2 de tier baixo) ou defeito do nosso casamento
+ * (cobrem, com outra grafia). As duas leituras levam a ações opostas — desistir
+ * da fonte, ou consertar o casamento.
+ *
+ * ## Mede a lógica de PRODUÇÃO, não uma cópia dela
+ *
+ * `matchFixture` e `normalize` são importados do enricher. Reimplementá-los aqui
+ * mediria um casamento que não é o que roda — e o relatório passaria a descrever
+ * um sistema que não existe.
+ *
+ * Único passo que lê o banco, junto com `--with-db`.
+ */
+async function measureCoverage(from: string, to: string): Promise<void> {
+  const { supabase } = await import('../src/lib/supabase.js');
+  const { matchFixture, normalize: normalizeTeam } =
+    await import('../src/verticals/enrichers/oddspapi.js');
+
+  console.log(`\n[${LABEL}] ===== cobertura real das nossas partidas =====`);
+
+  const { data: matches, error } = await supabase
+    .from('esports_matches')
+    .select('id, match_slug, scheduled_at, team_a_id, team_b_id, external_ids')
+    .eq('vertical_id', 'cs2')
+    .gte('scheduled_at', `${from}T00:00:00Z`)
+    .lte('scheduled_at', `${to}T23:59:59Z`)
+    .order('scheduled_at', { ascending: true });
+
+  if (error) {
+    console.error(`[${LABEL}] leitura de esports_matches falhou: ${error.message}`);
+    return;
+  }
+
+  const rows = (matches ?? []) as Record<string, unknown>[];
+  if (rows.length === 0) {
+    console.log(`[${LABEL}]   nenhuma partida de cs2 entre ${from} e ${to}.`);
+    return;
+  }
+
+  const teamIds = [
+    ...new Set(
+      rows
+        .flatMap((r) => [r['team_a_id'], r['team_b_id']])
+        .filter((id): id is string => typeof id === 'string'),
+    ),
+  ];
+
+  const { data: teams, error: teamError } = await supabase
+    .from('esports_teams')
+    .select('id, display_name, polymarket_code')
+    .in('id', teamIds);
+
+  if (teamError) {
+    console.error(`[${LABEL}] leitura de esports_teams falhou: ${teamError.message}`);
+    return;
+  }
+
+  const byId = new Map(
+    ((teams ?? []) as Record<string, unknown>[]).map((t) => [t['id'] as string, t]),
+  );
+
+  // A janela de fixtures que o enricher usaria.
+  //
+  // A sonda e o cliente têm formas diferentes para a mesma coisa (`names` com
+  // três variantes por lado; `sides` com as não-nulas), então a conversão é
+  // explícita: `matchFixture` é o código de produção e recebe o que ele espera.
+  const probed = await probeFixtures(from, to);
+  const theirFixtures = probed.map((f) => ({
+    fixtureId: f.fixtureId,
+    startTime: f.startTime,
+    finished: f.finished,
+    hasOdds: f.hasOdds,
+    sides: f.names.map((side) => side.filter((n): n is string => n !== null)),
+  }));
+
+  // Todos os nomes que eles conhecem na janela, normalizados, para o teste de
+  // quase-casamento.
+  const theirNames = new Map<string, string>();
+  for (const fixture of theirFixtures) {
+    for (const side of fixture.sides) {
+      for (const variant of side) theirNames.set(normalizeTeam(variant), variant);
+    }
+  }
+
+  let matched = 0;
+  let semNome = 0;
+  const tetoDeles: string[] = [];
+  const defeitoNosso: string[] = [];
+  const jaMemoizadas: string[] = [];
+
+  for (const row of rows) {
+    const slug = (row['match_slug'] as string | null) ?? (row['id'] as string);
+    const a = byId.get(row['team_a_id'] as string);
+    const b = byId.get(row['team_b_id'] as string);
+
+    const nameA = typeof a?.['display_name'] === 'string' ? (a['display_name'] as string) : null;
+    const nameB = typeof b?.['display_name'] === 'string' ? (b['display_name'] as string) : null;
+
+    if (nameA === null || nameB === null) {
+      semNome += 1;
+      const falta = [
+        nameA === null ? (a?.['polymarket_code'] ?? '?') : null,
+        nameB === null ? (b?.['polymarket_code'] ?? '?') : null,
+      ]
+        .filter((c) => c !== null)
+        .join(', ');
+      defeitoNosso.push(`${slug} — sem display_name (código: ${falta})`);
+      continue;
+    }
+
+    const link = matchFixture(theirFixtures, nameA, nameB);
+    if (link !== null) {
+      matched += 1;
+      const externalIds = row['external_ids'];
+      if (
+        externalIds !== null &&
+        typeof externalIds === 'object' &&
+        'oddspapi_fixture_id' in (externalIds as Record<string, unknown>)
+      ) {
+        jaMemoizadas.push(slug);
+      }
+      continue;
+    }
+
+    // Não casou. Os dois nomes aparecem de alguma forma na lista deles?
+    const diagnostico = [nameA, nameB].map((nome) => {
+      const key = normalizeTeam(nome);
+      if (theirNames.has(key)) return `"${nome}" PRESENTE`;
+
+      const perto = [...theirNames.values()].find((cru) => nearMiss(nome, cru));
+      if (perto !== undefined) return `"${nome}" ~ "${perto}"`;
+
+      return `"${nome}" AUSENTE`;
+    });
+
+    const temAlgum = diagnostico.some((d) => !d.endsWith('AUSENTE'));
+    (temAlgum ? defeitoNosso : tetoDeles).push(`${slug} — ${diagnostico.join(' | ')}`);
+  }
+
+  const total = rows.length;
+  const pct = (n: number): string => `${Math.round((n / total) * 100)}%`;
+
+  console.log(`\n[${LABEL}]   ${total} partida(s) de cs2 na janela ${from}..${to}`);
+  console.log(
+    `[${LABEL}]   ${theirFixtures.length} fixture(s) de CS2 do lado deles na mesma janela`,
+  );
+  console.log(
+    `[${LABEL}]     casaram:              ${String(matched).padStart(4)}  ${pct(matched)}`,
+  );
+  console.log(
+    `[${LABEL}]     TETO DELES:           ${String(tetoDeles.length).padStart(4)}  ${pct(tetoDeles.length)}  (nenhum dos dois times na lista deles)`,
+  );
+  console.log(
+    `[${LABEL}]     DEFEITO NOSSO:        ${String(defeitoNosso.length).padStart(4)}  ${pct(defeitoNosso.length)}  (time presente com outra grafia, ou sem display_name)`,
+  );
+  console.log(`[${LABEL}]       dos quais sem display_name: ${semNome}`);
+  console.log(`[${LABEL}]     já memoizadas em external_ids: ${jaMemoizadas.length}`);
+
+  console.log(`\n[${LABEL}]   VEREDITO:`);
+  if (defeitoNosso.length > tetoDeles.length) {
+    console.log(
+      `[${LABEL}]     A maior parte da perda é NOSSA — os times existem do lado deles com\n` +
+        `[${LABEL}]     outra grafia (ou nem têm display_name aqui). Tem conserto: alias por\n` +
+        `[${LABEL}]     time, ou casar também por polymarket_code.`,
+    );
+  } else if (tetoDeles.length > 0) {
+    console.log(
+      `[${LABEL}]     A maior parte da perda é COBERTURA DELES — os times não aparecem na\n` +
+        `[${LABEL}]     lista de fixtures. Nenhum conserto de casamento recupera isso; é o\n` +
+        `[${LABEL}]     teto da fonte para o nosso universo de partidas.`,
+    );
+  } else {
+    console.log(`[${LABEL}]     Sem perda relevante nesta janela.`);
+  }
+
+  if (defeitoNosso.length > 0) {
+    console.log(`\n[${LABEL}]   DEFEITO NOSSO — os consertáveis (até 30):`);
+    for (const linha of defeitoNosso.slice(0, 30)) console.log(`[${LABEL}]     ${linha}`);
+  }
+  if (tetoDeles.length > 0) {
+    console.log(`\n[${LABEL}]   TETO DELES — sem fixture na fonte (até 30):`);
+    for (const linha of tetoDeles.slice(0, 30)) console.log(`[${LABEL}]     ${linha}`);
   }
 }
 
@@ -1444,6 +1725,11 @@ async function main(): Promise<void> {
   const fixtures = skipDiscovery ? [] : await probeFixtures(from, to);
 
   if (withDb) await compareWithDb(fixtures);
+
+  // A pergunta que o contador de recusas deixou aberta: 35% de cobertura é teto
+  // deles ou defeito nosso? Este passo mede pela lógica de PRODUÇÃO, sobre as
+  // nossas partidas, e classifica cada falha.
+  if (flag('coverage') !== null) await measureCoverage(from, to);
 
   // Fixture para o histórico: preferir FINALIZADA (statusId 2 pela doc), que é o
   // caso que o eval consome — série pré-partida inteira mais o desfecho. Além

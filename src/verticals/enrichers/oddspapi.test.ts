@@ -678,3 +678,57 @@ test('a espera do cooldown é consultável sem dormir', () => {
   assert.equal(cooldownOf('/v4/historical-odds'), 5_500);
   assert.equal(cooldownOf('/v4/fixtures'), 2_500);
 });
+
+test('sem consenso o summary diz isso — não inventa "mediana de 0"', () => {
+  // O bug que o contador expôs: saía `consenso (mediana de 0) ? para <time>`.
+  // Mediana de zero casas não é consenso fraco, é ausência de consenso, e `?` no
+  // lugar da probabilidade é a forma mais fácil de o agente ler ausência como
+  // número.
+  const velho = CONSENSUS_MAX_STALE_SECONDS / 60 + 600;
+  const perBook = new Map<string, OddsEntry[]>([
+    ['pinnacle', book('pinnacle', 1.8, 2.2, { createdAt: at(velho) })],
+  ]);
+
+  const { lines, format } = buildBookLines(perBook, SIDES, ASOF);
+  const consensus = consensusOf(lines);
+  assert.equal(consensus.books, 0, 'a única casa está parada há horas');
+
+  const summary = buildOddsSummary(
+    '6666',
+    'Team Spirit',
+    lines,
+    consensus,
+    coverageOf(['pinnacle'], lines),
+    format,
+  );
+
+  assert.match(summary, /SEM CONSENSO/);
+  assert.doesNotMatch(summary, /mediana de 0/);
+  // E não sobra `?` fingindo ser probabilidade na frase do consenso.
+  assert.doesNotMatch(summary, /\? para/);
+  // O preço de cada casa continua lá, com a idade — é o que diz que o mercado
+  // delas parou.
+  assert.match(summary, /pinnacle/);
+  assert.match(summary, /parada/);
+});
+
+test('com consenso utilizável a frase volta a ser a de sempre', () => {
+  const perBook = new Map<string, OddsEntry[]>([
+    ['pinnacle', book('pinnacle', 1.8, 2.2)],
+    ['stake', book('stake', 1.85, 2.1)],
+  ]);
+  const { lines, format } = buildBookLines(perBook, SIDES, ASOF);
+  const consensus = consensusOf(lines);
+
+  const summary = buildOddsSummary(
+    'A',
+    'B',
+    lines,
+    consensus,
+    coverageOf(['pinnacle', 'stake'], lines),
+    format,
+  );
+
+  assert.match(summary, /consenso \(mediana de 2\)/);
+  assert.doesNotMatch(summary, /SEM CONSENSO/);
+});

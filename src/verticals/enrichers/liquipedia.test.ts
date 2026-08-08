@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
+const { drainEnricherSkips } = await import('../enricher.js');
 const {
   liquipediaEnricher,
   activeSquad,
@@ -98,18 +99,30 @@ test('quem saiu antes do instante pedido fica fora do line-up', () => {
   ];
 
   const squad = activeSquad(rows, 'Natus Vincere', ASOF);
-  assert.deepEqual(squad.map(m => m.id), ['ficou']);
+  assert.deepEqual(
+    squad.map((m) => m.id),
+    ['ficou'],
+  );
 });
 
 test('o line-up é filtrado por time, e underscore não separa páginas', () => {
   const rows = [squadRow(), squadRow({ pagename: 'FaZe_Clan', id: 'karrigan' })];
 
-  assert.deepEqual(activeSquad(rows, 'FaZe Clan', ASOF).map(m => m.id), ['karrigan']);
-  assert.deepEqual(activeSquad(rows, 'Natus Vincere', ASOF).map(m => m.id), ['aleksib']);
+  assert.deepEqual(
+    activeSquad(rows, 'FaZe Clan', ASOF).map((m) => m.id),
+    ['karrigan'],
+  );
+  assert.deepEqual(
+    activeSquad(rows, 'Natus Vincere', ASOF).map((m) => m.id),
+    ['aleksib'],
+  );
 });
 
 test('sem data de saída o jogador está no time', () => {
-  assert.equal(activeSquad([squadRow({ leavedate: '0000-00-00' })], 'Natus Vincere', ASOF).length, 1);
+  assert.equal(
+    activeSquad([squadRow({ leavedate: '0000-00-00' })], 'Natus Vincere', ASOF).length,
+    1,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -211,7 +224,12 @@ test('o as_of do fragmento é a OBSERVAÇÃO, não a data do fato', () => {
   // janeiro seria afirmar que nós sabíamos em janeiro.
   const fragment = buildRosterFragment(
     'counterstrike',
-    [{ identity: NAVI, squad: activeSquad([squadRow({ joindate: '2025-01-01' })], 'Natus Vincere', ASOF) }],
+    [
+      {
+        identity: NAVI,
+        squad: activeSquad([squadRow({ joindate: '2025-01-01' })], 'Natus Vincere', ASOF),
+      },
+    ],
     ASOF,
   );
 
@@ -227,14 +245,24 @@ test('o as_of do fragmento é a OBSERVAÇÃO, não a data do fato', () => {
 test('o roster destaca entrada recente, que é o que o preço pode não ter', () => {
   const recente = buildRosterFragment(
     'counterstrike',
-    [{ identity: NAVI, squad: activeSquad([squadRow({ joindate: '2026-07-20' })], 'Natus Vincere', ASOF) }],
+    [
+      {
+        identity: NAVI,
+        squad: activeSquad([squadRow({ joindate: '2026-07-20' })], 'Natus Vincere', ASOF),
+      },
+    ],
     ASOF,
   );
   assert.match(recente?.summary ?? '', /Mudança recente de line-up/);
 
   const antigo = buildRosterFragment(
     'counterstrike',
-    [{ identity: NAVI, squad: activeSquad([squadRow({ joindate: '2024-01-01' })], 'Natus Vincere', ASOF) }],
+    [
+      {
+        identity: NAVI,
+        squad: activeSquad([squadRow({ joindate: '2024-01-01' })], 'Natus Vincere', ASOF),
+      },
+    ],
     ASOF,
   );
   assert.match(antigo?.summary ?? '', /Nenhuma entrada nos últimos 60 dias/);
@@ -263,7 +291,10 @@ test('sem partida não se inventa fragmento vazio', () => {
 
 test('time sem página na Liquipedia não gera h2h', () => {
   const semPagina = { teamId: 'team-c', displayName: 'Time Obscuro', page: null };
-  assert.equal(buildH2hFragment('counterstrike', NAVI, semPagina, [readMatch(matchRow())], ASOF), null);
+  assert.equal(
+    buildH2hFragment('counterstrike', NAVI, semPagina, [readMatch(matchRow())], ASOF),
+    null,
+  );
 });
 
 test('a URL da página é montada com underscore e escape', () => {
@@ -278,4 +309,41 @@ test('a URL da página é montada com underscore e escape', () => {
     (fragment?.payload as Record<string, unknown>)['url'],
     'https://liquipedia.net/counterstrike/IEM%2FCologne%2F2026',
   );
+});
+
+test('sem credencial, o enricher declara o motivo em vez de sair mudo', async () => {
+  // O contador do ciclo mediu `liquipedia: sem fragmentos, sem motivo declarado
+  // x40`. Silêncio 40 vezes por ciclo é indistinguível de "não tenho o que dizer
+  // sobre esta partida" — e neste caso a causa era só falta de chave.
+  drainEnricherSkips();
+
+  const saved = process.env['LIQUIPEDIA_API_KEY'];
+  delete process.env['LIQUIPEDIA_API_KEY'];
+
+  const fragments = await liquipediaEnricher.fetch({
+    verticalId: 'cs2',
+    matchId: 'm-1',
+    asOf: new Date(),
+  });
+
+  assert.deepEqual(fragments, []);
+
+  const motivos = Object.keys(drainEnricherSkips()['liquipedia'] ?? {});
+  assert.equal(motivos.length, 1, `esperava um motivo, veio ${JSON.stringify(motivos)}`);
+  // Sem banco, a config cai no fallback (flag false) — que também é um motivo
+  // NOMEADO. O que não pode existir é a saída sem nome nenhum.
+  assert.match(motivos[0] ?? '', /credencial|liquipedia_enabled/);
+
+  if (saved === undefined) delete process.env['LIQUIPEDIA_API_KEY'];
+  else process.env['LIQUIPEDIA_API_KEY'] = saved;
+});
+
+test('vertical sem wiki mapeada também diz por quê', async () => {
+  drainEnricherSkips();
+
+  await liquipediaEnricher.fetch({ verticalId: 'valorant', matchId: 'm-2', asOf: new Date() });
+
+  assert.deepEqual(Object.keys(drainEnricherSkips()['liquipedia'] ?? {}), [
+    'vertical valorant sem wiki mapeada',
+  ]);
 });
