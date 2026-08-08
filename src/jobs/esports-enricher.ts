@@ -3,7 +3,12 @@ import { getSystemConfig } from '../lib/config.js';
 import { logEvent, logDisabled } from '../lib/logger.js';
 import { beat } from '../lib/heartbeat.js';
 import { CycleLock } from '../lib/cycle-lock.js';
-import { fragmentsTableAvailable, runEnrichers, type ContextFragment } from '../verticals/enricher.js';
+import {
+  fragmentsTableAvailable,
+  runEnrichers,
+  drainEnricherSkips,
+  type ContextFragment,
+} from '../verticals/enricher.js';
 import { registerBuiltInEnrichers } from '../verticals/enrichers/index.js';
 import { loadVerticals } from '../verticals/resolver.js';
 
@@ -70,7 +75,7 @@ const CANDIDATE_CAP = 500;
 const PAUSE_BETWEEN_MATCHES_MS = 100;
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +104,14 @@ export interface EnrichStats {
   candidateCapHit: boolean;
   /** Migration 20260806211531 não aplicada — nada foi gravado. */
   tableMissing: boolean;
+  /**
+   * Por que cada enricher não produziu: `{oddspapi: {'sem fixture': 37}}`.
+   *
+   * Enricher que devolve `[]` é caso legítimo e frequente, e sem isto ele é
+   * indistinguível de enricher que não está registrado — que foi exatamente o
+   * que aconteceu com o da OddsPapi no primeiro deploy.
+   */
+  skips: Record<string, Record<string, number>>;
   errors: string[];
 }
 
@@ -113,6 +126,7 @@ export function emptyEnrichStats(): EnrichStats {
     truncated: false,
     candidateCapHit: false,
     tableMissing: false,
+    skips: {},
     errors: [],
   };
 }
@@ -181,6 +195,25 @@ export function cycleStatus(stats: EnrichStats): 'success' | 'partial' {
   // `tableMissing` é `partial` e não `error` pelo mesmo motivo do resolver: é o
   // estado esperado entre o deploy do código e o apply da migration (H4/H5).
   return stats.errors.length > 0 || stats.tableMissing ? 'partial' : 'success';
+}
+
+/** `oddspapi: sem fixture correspondente na OddsPapi x37` — o motivo dominante. */
+export function describeSkips(skips: Record<string, Record<string, number>>): string {
+  const parts: string[] = [];
+
+  for (const [enricherId, byReason] of Object.entries(skips)) {
+    const top = Object.entries(byReason).sort((a, b) => b[1] - a[1])[0];
+    if (top === undefined) continue;
+
+    const total = Object.values(byReason).reduce((sum, n) => sum + n, 0);
+    const others = Object.keys(byReason).length - 1;
+    parts.push(
+      `${enricherId}: ${top[0]} x${top[1]}` +
+        (others > 0 ? ` (+${others} outro(s) motivo(s), ${total} no total)` : ''),
+    );
+  }
+
+  return parts.join('; ');
 }
 
 function summary(stats: EnrichStats): string {
@@ -268,7 +301,7 @@ async function loadCandidates(
   if (error) return { rows: [], error: `leitura de esports_matches: ${error.message}` };
 
   return {
-    rows: (data ?? []).map(row => ({
+    rows: (data ?? []).map((row) => ({
       matchId: row['id'] as string,
       verticalId: row['vertical_id'] as string,
       matchSlug: (row['match_slug'] as string | null) ?? null,
@@ -312,7 +345,7 @@ async function runCycle(): Promise<void> {
   ensureEnrichers();
 
   const verticals = await loadVerticals();
-  const enabled = (verticals ?? []).filter(v => v.enabled).map(v => v.verticalId);
+  const enabled = (verticals ?? []).filter((v) => v.enabled).map((v) => v.verticalId);
 
   if (enabled.length === 0) {
     // Sem vertical habilitada não há o que enriquecer, e isso é configuração
@@ -374,14 +407,25 @@ async function runCycle(): Promise<void> {
     await sleep(PAUSE_BETWEEN_MATCHES_MS);
   }
 
+  // Drenado UMA vez, depois do laço: o contador é por ciclo, não desde o boot.
+  stats.skips = drainEnricherSkips();
+
   // Uma linha a cada 5 min dizendo "nada a fazer" seriam 288/dia de nada, e este
   // projeto já teve `system_logs` em 2,7M linhas. O batimento carimba saúde; o
   // log entra quando há o que contar.
-  if (stats.fragments > 0 || stats.errors.length > 0 || stats.truncated) {
+  // `skips` entra na condição de propósito. Sem ela, o ciclo em que NENHUM
+  // enricher produziu nada — que é o ciclo mais suspeito que existe — é
+  // justamente o que não deixa registro. Foi assim que a OddsPapi passou um dia
+  // no ar sem uma linha dizendo por quê.
+  const hasSkips = Object.keys(stats.skips).length > 0;
+
+  if (stats.fragments > 0 || stats.errors.length > 0 || stats.truncated || hasSkips) {
     await logEvent({
       component: COMPONENT,
       status: cycleStatus(stats),
-      message: `Enricher: ${summary(stats)}`,
+      message:
+        `Enricher: ${summary(stats)}` +
+        (hasSkips ? `. Sem produzir — ${describeSkips(stats.skips)}` : ''),
       metadata: {
         candidates: stats.candidates,
         enriched: stats.enriched,
@@ -389,6 +433,9 @@ async function runCycle(): Promise<void> {
         fragments: stats.fragments,
         by_enricher: stats.byEnricher,
         by_kind: stats.byKind,
+        // Enricher -> motivo -> quantas partidas. É o campo que responde "por
+        // que o enricher X não gravou nada" sem precisar abrir o stdout.
+        skips: stats.skips,
         // Freio que se anuncia: o teto cortou partidas elegíveis deste ciclo.
         truncated: stats.truncated,
         // A janela traz mais partidas do que o job lê por ciclo — sinal de
@@ -400,7 +447,9 @@ async function runCycle(): Promise<void> {
     });
   }
 
-  console.log(`[${COMPONENT}] ${summary(stats)}`);
+  console.log(
+    `[${COMPONENT}] ${summary(stats)}` + (hasSkips ? ` | ${describeSkips(stats.skips)}` : ''),
+  );
 
   await beat(
     COMPONENT,

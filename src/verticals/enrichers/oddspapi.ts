@@ -14,7 +14,7 @@ import {
   type OddsEntry,
   type OddsPapiFixture,
 } from '../../lib/oddspapi-api.js';
-import { lastFragmentAsOf } from '../enricher.js';
+import { lastFragmentAsOf, noteEnricherSkip } from '../enricher.js';
 import type { ContextFragment, Enricher, EnricherContext } from '../enricher.js';
 
 /**
@@ -1167,13 +1167,22 @@ async function resolveFixture(
 ): Promise<FixtureLink | null> {
   const cached = readCachedFixture(row.external_ids, now);
   if (cached.kind === 'fixture') return cached.link;
-  if (cached.kind === 'missing') return null;
+  if (cached.kind === 'missing') {
+    // Distinto de "procurei agora e não achei": este é o cache negativo de 24h
+    // falando. Confundir os dois esconderia o pior caso — uma primeira passada
+    // que falhou para todas as partidas e calou o enricher por um dia inteiro.
+    noteEnricherSkip(ODDSPAPI_ID, 'cache negativo: procurada nas últimas 24h e não encontrada');
+    return null;
+  }
 
   const sportId = SPORT_ID_BY_VERTICAL[row.vertical_id];
   if (sportId === undefined) return null;
 
   // Sem horário não há janela — e varrer sem janela custaria o orçamento inteiro.
-  if (row.scheduled_at === null) return null;
+  if (row.scheduled_at === null) {
+    noteEnricherSkip(ODDSPAPI_ID, 'partida sem scheduled_at');
+    return null;
+  }
   const scheduled = new Date(row.scheduled_at);
   if (!Number.isFinite(scheduled.getTime())) return null;
 
@@ -1194,13 +1203,29 @@ async function resolveFixture(
 }
 
 async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
-  if (SPORT_ID_BY_VERTICAL[ctx.verticalId] === undefined) return [];
+  // Cada saída daqui para baixo é NOMEADA. Todas devolvem `[]`, e sem o nome as
+  // seis viram o mesmo silêncio — que foi exatamente como este enricher passou
+  // um dia no ar sem gravar nada e sem ninguém conseguir dizer por quê.
+  if (SPORT_ID_BY_VERTICAL[ctx.verticalId] === undefined) {
+    noteEnricherSkip(ODDSPAPI_ID, `vertical ${ctx.verticalId} sem sportId medido`);
+    return [];
+  }
 
   const config = await getSystemConfig();
-  if (config.esports_enricher_oddspapi_enabled !== true) return [];
+  if (config.esports_enricher_oddspapi_enabled !== true) {
+    // Inclui o caso em que a migration 20260808060011 não foi aplicada: sem a
+    // coluna, o fallback de `config.ts` devolve `false` e isto é indistinguível
+    // de desligado à mão. Daí o motivo dizer as duas coisas.
+    noteEnricherSkip(
+      ODDSPAPI_ID,
+      'esports_enricher_oddspapi_enabled != true (desligado, ou coluna inexistente)',
+    );
+    return [];
+  }
 
   if (readConfig() === null) {
     warnOnce(`[${ODDSPAPI_ID}] desligado por falta de credencial (${describeConfig()})`);
+    noteEnricherSkip(ODDSPAPI_ID, 'ODDSPAPI_API_KEY ausente no ambiente');
     return [];
   }
 
@@ -1211,20 +1236,31 @@ async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
     lastAsOf !== null &&
     ctx.asOf.getTime() - lastAsOf.getTime() < oddspapiEnricher.ttlSeconds * 1000
   ) {
+    noteEnricherSkip(ODDSPAPI_ID, 'TTL de 30 min ainda não venceu');
     return [];
   }
 
   const loaded = await loadMatch(ctx.matchId);
-  if (loaded === null) return [];
+  if (loaded === null) {
+    // A causa concreta mais provável: `esports_teams.display_name` nulo, que é o
+    // estado normal do caminho 2 do resolver (código sem nome). Sem nome não há
+    // casamento com a fixture deles, e não há nada a tentar.
+    noteEnricherSkip(ODDSPAPI_ID, 'partida sem os dois times com display_name');
+    return [];
+  }
 
   const { row, nameA, nameB } = loaded;
 
   const link = await resolveFixture(row, nameA, nameB, ctx.asOf);
-  if (link === null) return [];
+  if (link === null) {
+    noteEnricherSkip(ODDSPAPI_ID, 'sem fixture correspondente na OddsPapi');
+    return [];
+  }
 
   const requested = safeBookmakers(config.oddspapi_bookmakers);
   if (requested.length === 0) {
     warnOnce(`[${ODDSPAPI_ID}] oddspapi_bookmakers vazio — nada a pedir`);
+    noteEnricherSkip(ODDSPAPI_ID, 'oddspapi_bookmakers vazio');
     return [];
   }
 
@@ -1251,6 +1287,13 @@ async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
   // Só sai fragmento se ALGUMA casa cotou de forma comparável. Um fragmento que
   // diz "ninguém cotou" a cada 30 min é ruído puro, e o job já registra a
   // ausência no log.
+  if (!lines.some((l) => l.fairA !== null)) {
+    // A resposta veio e nenhuma casa deu par cotável. O motivo por casa está em
+    // `excludedBecause`; aqui fica o agregado, que é o que denuncia o dia em que
+    // o `marketId` ou a orientação dos outcomes mudar do lado deles.
+    noteEnricherSkip(ODDSPAPI_ID, `nenhuma casa cotou o mercado ${marketId} de forma comparável`);
+  }
+
   if (lines.some((l) => l.fairA !== null)) {
     fragments.push({
       enricherId: ODDSPAPI_ID,
@@ -1359,6 +1402,7 @@ async function fetchGuarded(ctx: EnricherContext): Promise<ContextFragment[]> {
   } catch (err) {
     if (err instanceof OddsPapiError) {
       if (isExpectedOutage(err)) {
+        noteEnricherSkip(ODDSPAPI_ID, `fonte indisponível: ${err.kind}`);
         warnOnce(
           `[${ODDSPAPI_ID}] ${err.kind}: ${err.message}` +
             (err.kind === 'budget_exhausted'
@@ -1367,6 +1411,7 @@ async function fetchGuarded(ctx: EnricherContext): Promise<ContextFragment[]> {
         );
         return [];
       }
+      noteEnricherSkip(ODDSPAPI_ID, `erro da fonte: ${err.kind}`);
       console.warn(`[${ODDSPAPI_ID}] ${ctx.matchId}: ${err.kind} — ${err.message}`);
       return [];
     }

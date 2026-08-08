@@ -7,8 +7,14 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { enrichmentWindow, selectMatches, countFragments, cycleStatus, emptyEnrichStats } =
-  await import('./esports-enricher.js');
+const {
+  enrichmentWindow,
+  selectMatches,
+  countFragments,
+  cycleStatus,
+  emptyEnrichStats,
+  describeSkips,
+} = await import('./esports-enricher.js');
 
 type EnrichCandidate = Parameters<typeof selectMatches>[0][number];
 type ContextFragment = Parameters<typeof countFragments>[1][number];
@@ -62,7 +68,7 @@ test('partida enriquecida há menos que o intervalo mínimo é pulada', () => {
   );
 
   assert.deepEqual(
-    result.selected.map(c => c.matchId),
+    result.selected.map((c) => c.matchId),
     ['b'],
   );
   assert.equal(result.skippedRecent, 1);
@@ -93,7 +99,7 @@ test('o teto corta as mais distantes, não as mais próximas', () => {
   );
 
   assert.deepEqual(
-    result.selected.map(c => c.matchId),
+    result.selected.map((c) => c.matchId),
     ['ao-vivo', 'logo'],
   );
   assert.equal(result.truncated, true);
@@ -116,20 +122,14 @@ test('o filtro de cadência vem ANTES do teto', () => {
   );
 
   assert.deepEqual(
-    result.selected.map(c => c.matchId),
+    result.selected.map((c) => c.matchId),
     ['c'],
   );
   assert.equal(result.truncated, false);
 });
 
 test('intervalo mínimo zero enriquece tudo em todo tick', () => {
-  const result = selectMatches(
-    [candidate('a', 10)],
-    new Map([['a', NOW.getTime()]]),
-    NOW,
-    0,
-    50,
-  );
+  const result = selectMatches([candidate('a', 10)], new Map([['a', NOW.getTime()]]), NOW, 0, 50);
   assert.equal(result.selected.length, 1);
 });
 
@@ -175,4 +175,26 @@ test('teto batido não muda o status, mas fica registrado', () => {
   const stats = emptyEnrichStats();
   stats.truncated = true;
   assert.equal(cycleStatus(stats), 'success');
+});
+
+test('describeSkips põe o motivo dominante na frente', () => {
+  // O ciclo em que um enricher não produz nada é o mais suspeito que existe, e
+  // era justamente o que não deixava registro. O log agora nomeia a causa
+  // majoritária e diz que há outras, sem despejar todas na mensagem.
+  const linha = describeSkips({
+    oddspapi: {
+      'sem fixture correspondente na OddsPapi': 37,
+      'partida sem os dois times com display_name': 3,
+    },
+  });
+
+  assert.match(linha, /oddspapi: sem fixture correspondente na OddsPapi x37/);
+  assert.match(linha, /\+1 outro\(s\) motivo\(s\), 40 no total/);
+
+  // Motivo único não ganha o parêntese.
+  assert.equal(
+    describeSkips({ oddspapi: { 'ODDSPAPI_API_KEY ausente no ambiente': 12 } }),
+    'oddspapi: ODDSPAPI_API_KEY ausente no ambiente x12',
+  );
+  assert.equal(describeSkips({}), '');
 });

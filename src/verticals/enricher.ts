@@ -150,13 +150,72 @@ export function registerEnricher(enricher: Enricher): void {
  */
 export function getEnrichers(verticalId: string): Enricher[] {
   return [...registry.values()]
-    .filter(e => e.verticals.includes(verticalId))
+    .filter((e) => e.verticals.includes(verticalId))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Só para teste: o registry é global ao processo. */
 export function resetEnrichers(): void {
   registry.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Por que um enricher não produziu nada
+// ---------------------------------------------------------------------------
+
+/**
+ * Contador de recusas por enricher e por motivo.
+ *
+ * Existe por um caso concreto: o enricher da OddsPapi entrou no ar registrado,
+ * ligado, com credencial, e não gravou um fragmento sequer — sem uma linha de
+ * log em lugar nenhum. Devolver `[]` é a resposta certa em meia dúzia de
+ * situações legítimas (fonte não cobre a partida, cadência não venceu, time sem
+ * nome), e o efeito colateral é que "não tenho o que dizer" ficou
+ * indistinguível de "não existo". Um componente que pode sumir em silêncio
+ * acabou sumindo em silêncio.
+ *
+ * ## Por que contador, e não log por partida
+ *
+ * O job roda a cada 5 min sobre dezenas de partidas. Uma linha por recusa seriam
+ * centenas por hora dizendo a mesma coisa — e este projeto já teve `system_logs`
+ * em 2,7M linhas. Contado e agregado, o ciclo inteiro cabe num campo do
+ * metadata: `{oddspapi: {'sem fixture na OddsPapi': 37, 'time sem nome': 3}}`.
+ *
+ * O motivo é texto e não enum de propósito: quem escreve o enricher sabe
+ * descrever a própria recusa melhor que uma taxonomia central, e este contador
+ * não toma decisão nenhuma com base nele — só o mostra.
+ */
+const skipCounts = new Map<string, Map<string, number>>();
+
+export function noteEnricherSkip(enricherId: string, reason: string): void {
+  const byReason = skipCounts.get(enricherId) ?? new Map<string, number>();
+  byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  skipCounts.set(enricherId, byReason);
+}
+
+/** Quantas recusas este enricher já registrou no ciclo. Só para o runner. */
+function skipTotalOf(enricherId: string): number {
+  let total = 0;
+  for (const n of skipCounts.get(enricherId)?.values() ?? []) total += n;
+  return total;
+}
+
+/**
+ * Devolve o acumulado e ZERA.
+ *
+ * Drenar em vez de só ler é o que amarra a contagem a um ciclo: o número que o
+ * job publica é sempre "neste ciclo", nunca um total desde o boot que cresce
+ * para sempre e não diz quando parou.
+ */
+export function drainEnricherSkips(): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+
+  for (const [enricherId, byReason] of skipCounts) {
+    out[enricherId] = Object.fromEntries(byReason);
+  }
+
+  skipCounts.clear();
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,16 +460,34 @@ export async function runEnrichers(
   for (const enricher of enrichers) {
     const skip = enricherSkipReason(enricher, ctx.asOf, now, opts);
     if (skip !== null) {
+      // Contado ALÉM do console: o `console.warn` vai para o stdout do processo,
+      // que não é onde ninguém procura depois. O contador chega ao metadata do
+      // ciclo, que é o registro que sobrevive.
+      noteEnricherSkip(enricher.id, skip);
       console.warn(`[${COMPONENT}] ${enricher.id} pulado em ${ctx.matchId}: ${skip}`);
       continue;
     }
+
+    // Marca d'água para não contar duas vezes: o enricher que já nomeou a
+    // própria recusa não deve receber por cima o motivo genérico.
+    const skipsBefore = skipTotalOf(enricher.id);
 
     let produced: ContextFragment[];
     try {
       produced = (await enricher.fetch(ctx)) ?? [];
     } catch (err) {
+      noteEnricherSkip(enricher.id, 'exceção no fetch');
       console.error(`[${COMPONENT}] ${enricher.id} falhou em ${ctx.matchId}: ${String(err)}`);
       continue;
+    }
+
+    // Devolveu vazio e não disse por quê. Não é erro — pode ser a fonte não ter
+    // o que dizer sobre esta partida — mas some do relatório se não for contado,
+    // e some justamente o caso em que o enricher está quebrado. Enricher que
+    // nomeia as próprias saídas nunca cai aqui; o que cair é candidato a
+    // nomeá-las também.
+    if (produced.length === 0 && skipTotalOf(enricher.id) === skipsBefore) {
+      noteEnricherSkip(enricher.id, 'sem fragmentos, sem motivo declarado');
     }
 
     for (const fragment of produced) {

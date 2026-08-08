@@ -14,6 +14,8 @@ const {
   enricherSkipReason,
   fragmentRejection,
   DEFAULT_POINT_IN_TIME_TOLERANCE_MS,
+  noteEnricherSkip,
+  drainEnricherSkips,
 } = await import('./enricher.js');
 
 type Enricher = Parameters<typeof registerEnricher>[0];
@@ -78,11 +80,11 @@ test('getEnrichers filtra por vertical e devolve em ordem estável de id', () =>
   registerEnricher(enricher({ id: 'lol-only', verticals: ['lol'] }));
 
   assert.deepEqual(
-    getEnrichers('cs2').map(e => e.id),
+    getEnrichers('cs2').map((e) => e.id),
     ['market-history', 'polymarket-context'],
   );
   assert.deepEqual(
-    getEnrichers('lol').map(e => e.id),
+    getEnrichers('lol').map((e) => e.id),
     ['lol-only', 'polymarket-context'],
   );
   assert.deepEqual(getEnrichers('dota2'), []);
@@ -182,4 +184,29 @@ test('as_of do fragmento pode ser muito anterior a agora — backfill é legíti
 test('as_of do fragmento no futuro é descartado', () => {
   const future = new Date(NOW.getTime() + 2 * 60 * 60_000);
   assert.match(fragmentRejection(fragment({ asOf: future }), NOW) ?? '', /futuro/);
+});
+
+// ---------------------------------------------------------------------------
+// Por que um enricher não produziu nada
+// ---------------------------------------------------------------------------
+
+test('recusa é contada por enricher e por motivo, e drenar zera', () => {
+  drainEnricherSkips();
+
+  noteEnricherSkip('oddspapi', 'sem fixture correspondente na OddsPapi');
+  noteEnricherSkip('oddspapi', 'sem fixture correspondente na OddsPapi');
+  noteEnricherSkip('oddspapi', 'partida sem os dois times com display_name');
+  noteEnricherSkip('liquipedia', 'sem credencial');
+
+  assert.deepEqual(drainEnricherSkips(), {
+    oddspapi: {
+      'sem fixture correspondente na OddsPapi': 2,
+      'partida sem os dois times com display_name': 1,
+    },
+    liquipedia: { 'sem credencial': 1 },
+  });
+
+  // Drenar zera: o número publicado é sempre "neste ciclo", nunca um total desde
+  // o boot que cresce para sempre e não diz quando parou.
+  assert.deepEqual(drainEnricherSkips(), {});
 });
