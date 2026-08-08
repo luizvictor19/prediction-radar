@@ -905,7 +905,10 @@ async function fetchGuarded(ctx: EnricherContext): Promise<ContextFragment[]> {
         noteEnricherSkip(LIQUIPEDIA_ID, `fonte indisponível: ${err.kind}`);
         return [];
       }
-      noteEnricherSkip(LIQUIPEDIA_ID, `erro da fonte: ${err.kind}`);
+      noteEnricherSkip(
+        LIQUIPEDIA_ID,
+        `erro da fonte: ${err.kind}${err.status === undefined ? '' : ` ${err.status}`}`,
+      );
       console.warn(`[${LIQUIPEDIA_ID}] ${ctx.matchId}: ${err.kind} — ${err.message}`);
       return [];
     }

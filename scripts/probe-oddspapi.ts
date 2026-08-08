@@ -684,6 +684,9 @@ function acronymOf(raw: string): string {
 /** O curto aparece em ordem dentro do longo. Piso de 3 letras contra ruído. */
 function isSubsequence(longer: string, shorter: string): boolean {
   if (shorter.length < 3 || shorter.length >= longer.length) return false;
+  // Mesma inicial. Sem isto, `mtx` é subsequência de `dynamoeclotphoenix` e o
+  // relatório classifica nomes sem relação nenhuma como quase-casamento.
+  if (longer[0] !== shorter[0]) return false;
 
   let i = 0;
   for (const ch of longer) {
@@ -820,8 +823,11 @@ async function measureCoverage(from: string, to: string): Promise<void> {
 
   let matched = 0;
   let semNome = 0;
+  const porDegrau = new Map<string, number>();
+  const fixturesUsadas = new Set<string>();
   const tetoDeles: string[] = [];
   const defeitoNosso: string[] = [];
+  const bugDoCasador: string[] = [];
   const jaMemoizadas: string[] = [];
 
   for (const row of rows) {
@@ -844,9 +850,22 @@ async function measureCoverage(from: string, to: string): Promise<void> {
       continue;
     }
 
-    const link = matchFixture(theirFixtures, nameA, nameB);
+    const codeA =
+      typeof a?.['polymarket_code'] === 'string' ? (a['polymarket_code'] as string) : null;
+    const codeB =
+      typeof b?.['polymarket_code'] === 'string' ? (b['polymarket_code'] as string) : null;
+
+    const agendada = new Date((row['scheduled_at'] as string | null) ?? '');
+    const link = matchFixture(
+      theirFixtures,
+      { displayName: nameA, polymarketCode: codeA },
+      { displayName: nameB, polymarketCode: codeB },
+      Number.isFinite(agendada.getTime()) ? agendada : undefined,
+    );
     if (link !== null) {
       matched += 1;
+      porDegrau.set(link.tier, (porDegrau.get(link.tier) ?? 0) + 1);
+      fixturesUsadas.add(link.fixtureId);
       const externalIds = row['external_ids'];
       if (
         externalIds !== null &&
@@ -858,10 +877,45 @@ async function measureCoverage(from: string, to: string): Promise<void> {
       continue;
     }
 
-    // Não casou. Os dois nomes aparecem de alguma forma na lista deles?
+    // Não casou. Antes de classificar, a pergunta decisiva: existe UMA fixture
+    // com os dois times juntos?
+    //
+    // "PRESENTE" sozinho quer dizer "este nome aparece em alguma fixture da
+    // janela" — o que é compatível com os dois times estarem em fixtures
+    // DIFERENTES, contra outros adversários. A primeira versão deste relatório
+    // não fazia essa distinção e convidava à leitura errada de que o par devia
+    // ter casado. Se os dois estão na mesma fixture e o casamento falhou, é bug
+    // do casador; se estão em fixtures diferentes, eles não cobrem ESTE par.
+    const keyA = normalizeTeam(nameA);
+    const keyB = normalizeTeam(nameB);
+    const juntos = theirFixtures.find((f) => {
+      const [s1 = [], s2 = []] = f.sides;
+      const inS1 = (k: string): boolean => s1.some((n) => normalizeTeam(n) === k);
+      const inS2 = (k: string): boolean => s2.some((n) => normalizeTeam(n) === k);
+      return (inS1(keyA) && inS2(keyB)) || (inS2(keyA) && inS1(keyB));
+    });
+
+    if (juntos !== undefined) {
+      bugDoCasador.push(
+        `${slug} — os dois exatos na fixture ${juntos.fixtureId} e mesmo assim não casou`,
+      );
+      continue;
+    }
+
     const diagnostico = [nameA, nameB].map((nome) => {
       const key = normalizeTeam(nome);
-      if (theirNames.has(key)) return `"${nome}" PRESENTE`;
+      if (theirNames.has(key)) {
+        // Está na janela, mas contra outro adversário. Diz contra quem, que é o
+        // que separa "não cobrem este par" de "resolvemos o adversário errado".
+        const onde = theirFixtures.find((f) =>
+          f.sides.some((side) => side.some((n) => normalizeTeam(n) === key)),
+        );
+        const adversario = onde?.sides
+          .filter((side) => !side.some((n) => normalizeTeam(n) === key))
+          .map((side) => side[0] ?? '?')
+          .join('/');
+        return `"${nome}" em OUTRA fixture (vs ${adversario ?? '?'})`;
+      }
 
       const perto = [...theirNames.values()].find((cru) => nearMiss(nome, cru));
       if (perto !== undefined) return `"${nome}" ~ "${perto}"`;
@@ -869,8 +923,10 @@ async function measureCoverage(from: string, to: string): Promise<void> {
       return `"${nome}" AUSENTE`;
     });
 
-    const temAlgum = diagnostico.some((d) => !d.endsWith('AUSENTE'));
-    (temAlgum ? defeitoNosso : tetoDeles).push(`${slug} — ${diagnostico.join(' | ')}`);
+    // Só é defeito nosso se houver quase-casamento: nome presente contra OUTRO
+    // adversário não é problema de grafia, é par que eles não têm.
+    const temQuaseCasamento = diagnostico.some((d) => d.includes(' ~ '));
+    (temQuaseCasamento ? defeitoNosso : tetoDeles).push(`${slug} — ${diagnostico.join(' | ')}`);
   }
 
   const total = rows.length;
@@ -883,6 +939,11 @@ async function measureCoverage(from: string, to: string): Promise<void> {
   console.log(
     `[${LABEL}]     casaram:              ${String(matched).padStart(4)}  ${pct(matched)}`,
   );
+  // Por degrau: diz se o casamento relaxado está carregando a cobertura ou só
+  // arredondando. Degrau fraco em massa é sinal para olhar as amostras à mão.
+  for (const [degrau, n] of [...porDegrau].sort((x, y) => y[1] - x[1])) {
+    console.log(`[${LABEL}]       via ${degrau.padEnd(10)}${String(n).padStart(4)}`);
+  }
   console.log(
     `[${LABEL}]     TETO DELES:           ${String(tetoDeles.length).padStart(4)}  ${pct(tetoDeles.length)}  (nenhum dos dois times na lista deles)`,
   );
@@ -890,7 +951,30 @@ async function measureCoverage(from: string, to: string): Promise<void> {
     `[${LABEL}]     DEFEITO NOSSO:        ${String(defeitoNosso.length).padStart(4)}  ${pct(defeitoNosso.length)}  (time presente com outra grafia, ou sem display_name)`,
   );
   console.log(`[${LABEL}]       dos quais sem display_name: ${semNome}`);
+  console.log(
+    `[${LABEL}]     BUG DO CASADOR:       ${String(bugDoCasador.length).padStart(4)}  ${pct(bugDoCasador.length)}  (os dois exatos na MESMA fixture e não casou)`,
+  );
   console.log(`[${LABEL}]     já memoizadas em external_ids: ${jaMemoizadas.length}`);
+
+  if (bugDoCasador.length > 0) {
+    console.error(`\n[${LABEL}]   BUG — isto não deveria existir:`);
+    for (const linha of bugDoCasador.slice(0, 20)) console.error(`[${LABEL}]     ${linha}`);
+  }
+
+  // O número que decide se vale insistir no casamento: quanto do que EXISTE do
+  // lado deles nós já estamos aproveitando. A taxa sobre as nossas partidas
+  // mistura duas coisas — o que eles não cobrem e o que nós não casamos — e a
+  // primeira não tem conserto nenhum deste lado.
+  const teto = Math.min(theirFixtures.length, total);
+  console.log(
+    `\n[${LABEL}]   TETO ESTRUTURAL: eles têm ${theirFixtures.length} fixture(s) para as nossas ` +
+      `${total} partidas.`,
+  );
+  console.log(
+    `[${LABEL}]   Aproveitamos ${fixturesUsadas.size}/${theirFixtures.length} das fixtures deles ` +
+      `(${Math.round((fixturesUsadas.size / Math.max(theirFixtures.length, 1)) * 100)}%), ` +
+      `e ${matched}/${teto} do máximo alcançável (${Math.round((matched / Math.max(teto, 1)) * 100)}%).`,
+  );
 
   console.log(`\n[${LABEL}]   VEREDITO:`);
   if (defeitoNosso.length > tetoDeles.length) {

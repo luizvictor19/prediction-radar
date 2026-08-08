@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase.js';
-import { lastFragmentAsOf } from '../enricher.js';
+import { lastFragmentAsOf, noteEnricherSkip } from '../enricher.js';
 import type { ContextFragment, Enricher, EnricherContext } from '../enricher.js';
 
 /**
@@ -267,6 +267,14 @@ interface CandidateEvent {
   block: PolymarketContextBlock;
 }
 
+/**
+ * Os eventos da partida que têm bloco `context_*`.
+ *
+ * Cada saída vazia é NOMEADA, pelo mesmo motivo dos outros enrichers: este aqui
+ * saía mudo 19 vezes por ciclo, e as causas possíveis são bem diferentes entre
+ * si — partida sem link de market, evento sem o bloco de contexto, ou leitura do
+ * banco falhando. Contadas separadamente, elas apontam para lugares diferentes.
+ */
 async function loadCandidates(matchId: string): Promise<CandidateEvent[]> {
   const { data: links, error: linkError } = await supabase
     .from('market_match_links')
@@ -275,27 +283,32 @@ async function loadCandidates(matchId: string): Promise<CandidateEvent[]> {
 
   if (linkError) {
     console.warn(`[${COMPONENT}] leitura de market_match_links falhou: ${linkError.message}`);
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, 'leitura de market_match_links falhou');
     return [];
   }
 
   const rows = links ?? [];
-  if (rows.length === 0) return [];
+  if (rows.length === 0) {
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, 'partida sem market linkado');
+    return [];
+  }
 
   const { data: events, error: eventError } = await supabase
     .from('events')
     .select('id, slug, event_metadata')
     .in(
       'id',
-      rows.map(r => r['event_id'] as string),
+      rows.map((r) => r['event_id'] as string),
     );
 
   if (eventError) {
     console.warn(`[${COMPONENT}] leitura de events falhou: ${eventError.message}`);
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, 'leitura de events falhou');
     return [];
   }
 
   const roleById = new Map(
-    rows.map(r => [r['event_id'] as string, (r['market_role'] as string | null) ?? ''] as const),
+    rows.map((r) => [r['event_id'] as string, (r['market_role'] as string | null) ?? ''] as const),
   );
 
   const candidates: CandidateEvent[] = [];
@@ -319,23 +332,35 @@ async function loadCandidates(matchId: string): Promise<CandidateEvent[]> {
 
 async function fetchPolymarketContext(ctx: EnricherContext): Promise<ContextFragment[]> {
   const candidates = await loadCandidates(ctx.matchId);
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) {
+    // `loadCandidates` já nomeou os casos de falha e de partida sem link. Sobra
+    // este: havia market, e nenhum evento dele trouxe o bloco `context_*` — que
+    // é o caso mais comum e o menos preocupante, já que a cobertura medida do
+    // bloco é de 98% mas não de 100%.
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, 'nenhum evento da partida tem bloco context_*');
+    return [];
+  }
 
   // O bloco `context_*` é do EVENTO da Gamma, então todos os markets da partida
   // carregam o mesmo texto. Preferir o moneyline é só escolher a linha mais
   // estável para citar como origem — não muda o conteúdo.
-  const chosen = candidates.find(c => c.role === 'moneyline') ?? (candidates[0] as CandidateEvent);
+  const chosen =
+    candidates.find((c) => c.role === 'moneyline') ?? (candidates[0] as CandidateEvent);
 
   const now = new Date();
   const dating = contextAsOf(chosen.block, ctx.asOf, now, CLOCK_TOLERANCE_MS);
 
   if (dating.kind === 'refuse') {
     console.warn(`[${COMPONENT}] ${ctx.matchId} sem fragmento: ${dating.reason}`);
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, `datação recusada: ${dating.reason}`);
     return [];
   }
 
   const lastAsOf = await lastFragmentAsOf(ctx.matchId, POLYMARKET_CONTEXT_ID);
   if (shouldSkipRewrite(lastAsOf, dating.asOf, dating.kind, polymarketContextEnricher.ttlSeconds)) {
+    // O caso dominante e saudável: o texto da Polymarket não mudou desde o
+    // último fragmento, então regravá-lo produziria linhas idênticas de 1-2 KB.
+    noteEnricherSkip(POLYMARKET_CONTEXT_ID, 'texto inalterado desde o último fragmento');
     return [];
   }
 

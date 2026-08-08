@@ -970,8 +970,9 @@ interface MatchRow {
   vertical_id: string;
   scheduled_at: string | null;
   external_ids: Record<string, unknown> | null;
-  team_a: string | null;
-  team_b: string | null;
+  /** Nome E código de cada lado: o código é o degrau de fallback do casador. */
+  keyA: TeamKey;
+  keyB: TeamKey;
 }
 
 export interface FixtureLink {
@@ -1036,6 +1037,182 @@ export function readCachedFixture(
 }
 
 /**
+ * Palavras que enfeitam o nome da organização e não distinguem time nenhum.
+ *
+ * Saem dos padrões medidos nas falhas: `DENDELE CS` / `Dendele`, `NIO` /
+ * `Nio eSports`, `Kreazion` / `Team Kreazion`. São a mesma organização escrita
+ * com mais ou menos enfeite.
+ */
+const DECORATIVE_TOKENS: ReadonlySet<string> = new Set([
+  'esports',
+  'esport',
+  'gaming',
+  'team',
+  'club',
+  'org',
+  'cs',
+  'cs2',
+  'csgo',
+  'gg',
+  'the',
+]);
+
+/**
+ * Palavras que NÃO podem ser removidas nem abreviadas: elas separam times
+ * distintos da MESMA organização.
+ *
+ * É a proteção central deste casador, e ela vem do próprio dado medido: a lista
+ * de falhas tem `Inner Circle Esports` e `Inner Circle Prospect`. Tratar as duas
+ * como a mesma coisa ligaria a partida do time principal à linha do time B — um
+ * erro sem sintoma, da mesma família do mercado espelhado.
+ */
+const DISTINGUISHING_TOKENS: ReadonlySet<string> = new Set([
+  'academy',
+  'prospect',
+  'prospects',
+  'junior',
+  'juniors',
+  'jr',
+  'youth',
+  'young',
+  'female',
+  'women',
+  'fe',
+  'b',
+  'ii',
+]);
+
+function tokensOf(raw: string): string[] {
+  return raw
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 0);
+}
+
+/** O nome sem enfeite de organização. `DENDELE CS` e `Dendele` viram o mesmo. */
+export function canonicalTeamName(raw: string): string {
+  const kept = tokensOf(raw).filter((t) => !DECORATIVE_TOKENS.has(t));
+  // Nome feito só de enfeite (`Team`, `CS`) não vira string vazia: aí ele casaria
+  // com qualquer outro nome vazio.
+  return (kept.length > 0 ? kept : tokensOf(raw)).join('');
+}
+
+/** As palavras que separam times da mesma organização, presentes neste nome. */
+export function distinguishingOf(raw: string): string[] {
+  return tokensOf(raw)
+    .filter((t) => DISTINGUISHING_TOKENS.has(t))
+    .sort();
+}
+
+/** Iniciais das palavras que sobram depois do enfeite: `Inner Circle` -> `ic`. */
+function acronymOf(raw: string): string {
+  return tokensOf(raw)
+    .filter((t) => !DECORATIVE_TOKENS.has(t))
+    .map((t) => t[0] ?? '')
+    .join('');
+}
+
+/** O curto aparece em ordem dentro do longo. `navi` ⊂ `natusvincere`. */
+function isSubsequence(longer: string, shorter: string): boolean {
+  if (shorter.length < 3 || shorter.length >= longer.length) return false;
+
+  let i = 0;
+  for (const ch of longer) {
+    if (ch === shorter[i]) i += 1;
+    if (i === shorter.length) return true;
+  }
+  return false;
+}
+
+/**
+ * Como este lado casou, do mais forte para o mais fraco. `null` = não casou.
+ *
+ * O nível fica gravado em `external_ids` e no payload: um casamento fraco que
+ * depois se revele errado precisa ser rastreável até a regra que o produziu.
+ */
+export type MatchTier = 'exact' | 'canonical' | 'code' | 'abbrev';
+
+const TIER_ORDER: readonly MatchTier[] = ['exact', 'canonical', 'code', 'abbrev'];
+
+export interface TeamKey {
+  readonly displayName: string;
+  /** A sigla que a Polymarket usa. Costuma bater com o `Abbr` deles. */
+  readonly polymarketCode: string | null;
+}
+
+/**
+ * Este lado da fixture é o nosso time?
+ *
+ * Cascata, e cada degrau abaixo do exato tem uma guarda própria — porque o erro
+ * que ela pode cometer não é "não achou", é "achou o time errado da mesma
+ * organização", que entra no fragmento com cara de certo.
+ *
+ *   `exact`     — nome normalizado igual. É o que já existia.
+ *   `canonical` — igual depois de tirar o enfeite (`Esports`, `Team`, `CS`).
+ *   `code`      — `polymarket_code` bate com alguma variante deles.
+ *   `abbrev`    — sigla ou abreviação (`IC` para `Inner Circle`, `navi` para
+ *                 `Natus Vincere`).
+ *
+ * A guarda que atravessa tudo: as palavras DISTINTIVAS (`Academy`, `Prospect`,
+ * `Junior`, …) têm que ser as mesmas dos dois lados. E os dois degraus mais
+ * fracos são RECUSADOS quando o nosso nome tem alguma delas — uma sigla não
+ * consegue expressar "Prospect", então `INN` casaria igualmente bem com
+ * `Inner Circle Esports` e com `Inner Circle Prospect`. Sem lado é melhor que
+ * lado errado.
+ */
+export function sideMatchTier(ours: TeamKey, theirVariants: readonly string[]): MatchTier | null {
+  const nome = ours.displayName;
+  if (nome.trim().length === 0 || theirVariants.length === 0) return null;
+
+  const ourDistinct = distinguishingOf(nome).join(',');
+  const compatible = (variant: string): boolean =>
+    distinguishingOf(variant).join(',') === ourDistinct;
+
+  const usable = theirVariants.filter(compatible);
+  if (usable.length === 0) return null;
+
+  const ourNorm = normalize(nome);
+  if (usable.some((v) => normalize(v) === ourNorm)) return 'exact';
+
+  const ourCanon = canonicalTeamName(nome);
+  if (ourCanon.length > 0 && usable.some((v) => canonicalTeamName(v) === ourCanon)) {
+    return 'canonical';
+  }
+
+  // Daqui para baixo a identidade é parcial. Nome com palavra distintiva não
+  // passa: nenhuma sigla carrega "Prospect".
+  if (ourDistinct.length > 0) return null;
+
+  const code = ours.polymarketCode?.trim().toLowerCase() ?? '';
+  if (code.length >= 2 && usable.some((v) => normalize(v) === normalize(code))) return 'code';
+
+  const ourAcronym = acronymOf(nome);
+  for (const variant of usable) {
+    // Compara a forma CANÔNICA dos dois lados, não a normalizada crua: a sigla
+    // deles costuma vir com o mesmo enfeite do nome longo (`IC eSports`), e
+    // comparar `ic` com `icesports` falha por causa de uma palavra que já
+    // decidimos ignorar.
+    const theirCanon = canonicalTeamName(variant);
+    if (theirCanon.length < 2) continue;
+
+    if (ourAcronym.length >= 2 && theirCanon === ourAcronym) return 'abbrev';
+    if (acronymOf(variant) === ourCanon && ourCanon.length >= 2) return 'abbrev';
+    if (isSubsequence(ourCanon, theirCanon) || isSubsequence(theirCanon, ourCanon)) {
+      return 'abbrev';
+    }
+  }
+
+  return null;
+}
+
+/** O mais fraco dos dois — é ele que qualifica o par. */
+function weakestTier(a: MatchTier, b: MatchTier): MatchTier {
+  return TIER_ORDER.indexOf(a) >= TIER_ORDER.indexOf(b) ? a : b;
+}
+
+/**
  * A fixture deles que corresponde aos nossos dois times.
  *
  * Casamento por nome exato normalizado, contra as três variantes que eles dão
@@ -1046,38 +1223,93 @@ export function readCachedFixture(
  */
 export function matchFixture(
   rows: readonly OddsPapiFixture[],
-  displayA: string,
-  displayB: string,
-): FixtureLink | null {
-  const keyA = normalize(displayA);
-  const keyB = normalize(displayB);
-  if (keyA.length === 0 || keyB.length === 0) return null;
+  teamA: TeamKey,
+  teamB: TeamKey,
+  /**
+   * O horário da NOSSA partida, para desempatar.
+   *
+   * Os mesmos dois times se enfrentam mais de uma vez na janela com frequência —
+   * fase de grupos e playoff, ou revanche no dia seguinte. Sem a data, as duas
+   * fixtures empatam no mesmo degrau e o casador recusa as duas; foi o que o
+   * relatório de cobertura pegou como "os dois exatos na mesma fixture e mesmo
+   * assim não casou". A data é a informação que separa uma da outra, e nós
+   * sempre a tivemos.
+   */
+  scheduledAt?: Date,
+): (FixtureLink & { tier: MatchTier }) | null {
+  if (teamA.displayName.trim().length === 0 || teamB.displayName.trim().length === 0) return null;
+
+  const candidatos: (FixtureLink & { tier: MatchTier })[] = [];
 
   for (const fixture of rows) {
     const [side1 = [], side2 = []] = fixture.sides;
-    const has = (side: readonly string[], key: string): boolean =>
-      side.some((name) => normalize(name) === key);
 
     // `sideAIndex` é o participante DELES que é o nosso time A — 1 quando o
     // nosso A casou com o `participant1`, 2 quando casou com o `participant2`.
-    if (has(side1, keyA) && has(side2, keyB)) {
-      return {
+    const a1 = sideMatchTier(teamA, side1);
+    const b2 = sideMatchTier(teamB, side2);
+    if (a1 !== null && b2 !== null) {
+      candidatos.push({
         fixtureId: fixture.fixtureId,
         aliasesA: [...side1],
         aliasesB: [...side2],
         sideAIndex: 1,
-      };
+        tier: weakestTier(a1, b2),
+      });
+      continue;
     }
-    if (has(side2, keyA) && has(side1, keyB)) {
-      return {
+
+    const a2 = sideMatchTier(teamA, side2);
+    const b1 = sideMatchTier(teamB, side1);
+    if (a2 !== null && b1 !== null) {
+      candidatos.push({
         fixtureId: fixture.fixtureId,
         aliasesA: [...side2],
         aliasesB: [...side1],
         sideAIndex: 2,
-      };
+        tier: weakestTier(a2, b1),
+      });
     }
   }
 
+  if (candidatos.length === 0) return null;
+
+  // Primeiro o degrau: evidência mais forte ganha de mais fraca, sempre.
+  candidatos.sort((x, y) => TIER_ORDER.indexOf(x.tier) - TIER_ORDER.indexOf(y.tier));
+  const melhorDegrau = (candidatos[0] as { tier: MatchTier }).tier;
+  const empatados = candidatos.filter((c) => c.tier === melhorDegrau);
+
+  if (empatados.length === 1) return empatados[0] as FixtureLink & { tier: MatchTier };
+
+  // Empate no degrau: desempata pela DATA, que é o que distingue duas partidas
+  // dos mesmos dois times na mesma janela.
+  const alvo = scheduledAt?.getTime();
+  if (alvo !== undefined && Number.isFinite(alvo)) {
+    const comDistancia = empatados
+      .map((c) => {
+        const fixture = rows.find((f) => f.fixtureId === c.fixtureId);
+        const inicio = fixture?.startTime === null ? NaN : Date.parse(fixture?.startTime ?? '');
+        return { c, distancia: Number.isFinite(inicio) ? Math.abs(inicio - alvo) : Infinity };
+      })
+      .sort((x, y) => x.distancia - y.distancia);
+
+    const primeiro = comDistancia[0];
+    const segundo = comDistancia[1];
+
+    // Só decide se a mais próxima é ESTRITAMENTE mais próxima. Duas fixtures à
+    // mesma distância (ou as duas sem horário) continuam sendo adivinhação.
+    if (
+      primeiro !== undefined &&
+      Number.isFinite(primeiro.distancia) &&
+      (segundo === undefined || segundo.distancia > primeiro.distancia)
+    ) {
+      return primeiro.c;
+    }
+  }
+
+  // Sem data para desempatar, recusa. Escolher uma seria adivinhar qual partida
+  // o nosso mercado está precificando — e o preço da outra entraria no fragmento
+  // com cara de certo.
   return null;
 }
 
@@ -1121,7 +1353,7 @@ async function loadMatch(
 
   const { data: teams, error: teamError } = await supabase
     .from('esports_teams')
-    .select('id, display_name')
+    .select('id, display_name, polymarket_code')
     .in('id', ids);
 
   if (teamError) {
@@ -1138,14 +1370,19 @@ async function loadMatch(
   // gastar do orçamento tentando.
   if (typeof nameA !== 'string' || typeof nameB !== 'string') return null;
 
+  const codeOf = (id: string): string | null => {
+    const raw = byId.get(id)?.['polymarket_code'];
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null;
+  };
+
   return {
     row: {
       id: data['id'] as string,
       vertical_id: data['vertical_id'] as string,
       scheduled_at: (data['scheduled_at'] as string | null) ?? null,
       external_ids: (data['external_ids'] as Record<string, unknown> | null) ?? null,
-      team_a: nameA,
-      team_b: nameB,
+      keyA: { displayName: nameA, polymarketCode: codeOf(ids[0] as string) },
+      keyB: { displayName: nameB, polymarketCode: codeOf(ids[1] as string) },
     },
     nameA,
     nameB,
@@ -1163,7 +1400,7 @@ async function loadMatch(
 async function rememberFixture(
   matchId: string,
   current: Record<string, unknown> | null,
-  link: FixtureLink | null,
+  link: (FixtureLink & { tier?: MatchTier }) | null,
 ): Promise<void> {
   const merged: Record<string, unknown> = { ...(current ?? {}) };
 
@@ -1174,6 +1411,10 @@ async function rememberFixture(
     merged['oddspapi_aliases_a'] = [...link.aliasesA];
     merged['oddspapi_aliases_b'] = [...link.aliasesB];
     merged['oddspapi_side_a_index'] = link.sideAIndex;
+    // O degrau que produziu o casamento. Alias confirmado é o que este bloco
+    // inteiro é: da próxima vez o casador nem roda, e se o casamento se revelar
+    // errado o degrau diz qual regra o produziu.
+    if (link.tier !== undefined) merged['oddspapi_match_tier'] = link.tier;
     delete merged['oddspapi_missing_at'];
   }
 
@@ -1211,10 +1452,13 @@ async function resolveFixture(
   row: MatchRow,
   nameA: string,
   nameB: string,
-  now: Date,
+  // `asOf`, e NÃO `now`. O nome é a correção: este instante é o começo do ciclo,
+  // não o presente, e usá-lo como relógio de cooldown foi um bug de alta
+  // gravidade — ver `callFitsBudget`.
+  asOf: Date,
   remaining: number,
 ): Promise<FixtureLink | null> {
-  const cached = readCachedFixture(row.external_ids, now);
+  const cached = readCachedFixture(row.external_ids, asOf);
   if (cached.kind === 'fixture') return cached.link;
   if (cached.kind === 'missing') {
     // Distinto de "procurei agora e não achei": este é o cache negativo de 24h
@@ -1240,14 +1484,21 @@ async function resolveFixture(
   // A descoberta é a chamada mais cara em consequência: gasta do orçamento
   // MENSAL. Entrar nela sem tempo para terminar gastaria a requisição e jogaria
   // fora a resposta.
-  const noBudget = callFitsBudget('/v4/fixtures', remaining, now.getTime());
+  // Relógio REAL, não `asOf`. Passar `asOf` aqui fazia `waitMsFor` calcular
+  // `cooldown - (asOf - últimaChamada)`: com a última chamada no presente e
+  // `asOf` no começo do ciclo, a subtração fica negativa e a "espera" cresce
+  // exatamente o tempo já decorrido. O log mostrou `exige 133s (129s de
+  // cooldown)` para um endpoint cujo cooldown é 2,5s — eram os 129s que o ciclo
+  // levava até ali. Efeito: passados os primeiros segundos de cada ciclo, TODA
+  // descoberta era recusada, e as 26 partidas sem fixture nunca eram procuradas.
+  const noBudget = callFitsBudget('/v4/fixtures', remaining);
   if (noBudget !== null) {
     noteEnricherSkip(ODDSPAPI_ID, noBudget);
     return null;
   }
 
   const rows = await fixtures({ sportId, from, to });
-  const link = matchFixture(rows, nameA, nameB);
+  const link = matchFixture(rows, row.keyA, row.keyB, scheduled);
 
   await rememberFixture(row.id, row.external_ids, link);
 
@@ -1255,6 +1506,15 @@ async function resolveFixture(
     console.log(
       `[${ODDSPAPI_ID}] ${nameA} x ${nameB} sem fixture na OddsPapi (${from}..${to}) — ` +
         `não reprocura por ${MISSING_RECHECK_HOURS}h`,
+    );
+  } else if (link.tier !== 'exact') {
+    // Casamento abaixo do exato é o que a correção de cobertura passou a
+    // permitir. Fica no log e em `external_ids` para ser auditável: se um dia
+    // um fragmento apontar para a partida errada, o degrau que o produziu é a
+    // primeira coisa a olhar.
+    console.log(
+      `[${ODDSPAPI_ID}] ${nameA} x ${nameB} casou por '${link.tier}' com ` +
+        `${link.aliasesA.join('/')} x ${link.aliasesB.join('/')}`,
     );
   }
 
@@ -1311,6 +1571,7 @@ async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
   const { row, nameA, nameB } = loaded;
 
   const link = await resolveFixture(row, nameA, nameB, ctx.asOf, remainingMs(ctx));
+
   if (link === null) {
     noteEnricherSkip(ODDSPAPI_ID, 'sem fixture correspondente na OddsPapi');
     return [];
@@ -1479,7 +1740,13 @@ async function fetchGuarded(ctx: EnricherContext): Promise<ContextFragment[]> {
         );
         return [];
       }
-      noteEnricherSkip(ODDSPAPI_ID, `erro da fonte: ${err.kind}`);
+      // O status entra no motivo: 429, 404 e 500 pedem tratamentos diferentes
+      // (recuar, desistir da partida, tentar de novo) e sem o código eles são
+      // indistinguíveis no contador.
+      noteEnricherSkip(
+        ODDSPAPI_ID,
+        `erro da fonte: ${err.kind}${err.status === undefined ? '' : ` ${err.status}`}`,
+      );
       console.warn(`[${ODDSPAPI_ID}] ${ctx.matchId}: ${err.kind} — ${err.message}`);
       return [];
     }

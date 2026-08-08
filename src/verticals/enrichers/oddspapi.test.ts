@@ -32,6 +32,9 @@ const {
   CONSENSUS_MAX_STALE_SECONDS,
   callFitsBudget,
   CALL_HEADROOM_MS,
+  sideMatchTier,
+  canonicalTeamName,
+  distinguishingOf,
 } = await import('./oddspapi.js');
 const { oddspapiEnricher } = await import('./oddspapi.js');
 const { waitMsFor, cooldownOf, resetOddsPapiState } = await import('../../lib/oddspapi-api.js');
@@ -469,7 +472,11 @@ test('a fixture exige os DOIS lados, em qualquer ordem', () => {
     },
   ];
 
-  const link = matchFixture(rows, 'Natus Vincere', 'Team Spirit');
+  const link = matchFixture(
+    rows,
+    { displayName: 'Natus Vincere', polymarketCode: 'navi' },
+    { displayName: 'Team Spirit', polymarketCode: 'ts' },
+  );
   assert.equal(link?.fixtureId, 'f2');
   // Na f2 o nosso time A é o participant2 deles — e é isso que orienta o lado
   // quando a resposta de odds não traz nome nenhum.
@@ -480,7 +487,14 @@ test('a fixture exige os DOIS lados, em qualquer ordem', () => {
 
   // Um lado só casaria com qualquer partida do time no dia — e a fixture errada
   // produziria a linha de outra partida com cara de certa.
-  assert.equal(matchFixture(rows, 'Natus Vincere', 'Outro'), null);
+  assert.equal(
+    matchFixture(
+      rows,
+      { displayName: 'Natus Vincere', polymarketCode: 'navi' },
+      { displayName: 'Outro Time Qualquer', polymarketCode: 'otq' },
+    ),
+    null,
+  );
 });
 
 test('o cache negativo é o que protege o orçamento mensal', () => {
@@ -731,4 +745,159 @@ test('com consenso utilizável a frase volta a ser a de sempre', () => {
 
   assert.match(summary, /consenso \(mediana de 2\)/);
   assert.doesNotMatch(summary, /SEM CONSENSO/);
+});
+
+test('o relógio do cooldown é o presente, nunca o asOf do ciclo', () => {
+  // REGRESSÃO. `resolveFixture` passava `ctx.asOf` como relógio para
+  // `callFitsBudget`. Como `asOf` é o começo do ciclo e a última chamada é
+  // registrada no presente, `cooldown - (asOf - últimaChamada)` fica negativo e
+  // a espera cresce exatamente o tempo decorrido do ciclo. O log de produção
+  // mostrou `exige 133s (129s de cooldown)` num endpoint de cooldown 2,5s.
+  //
+  // Efeito: passados os primeiros segundos de cada ciclo, TODA descoberta era
+  // recusada — e as 26 partidas sem fixture nunca chegavam a ser procuradas.
+  resetOddsPapiState();
+
+  const agora = Date.now();
+  const asOfDoCiclo = agora - 129_000;
+
+  // Com o relógio certo, um endpoint sem chamada anterior não espera nada.
+  assert.equal(waitMsFor('/v4/fixtures', agora), 0);
+  assert.equal(callFitsBudget('/v4/fixtures', 30_000, agora), null);
+
+  // A espera nunca pode passar do cooldown nominal do endpoint, qualquer que
+  // seja o relógio — é isto que o bug violava.
+  assert.ok(waitMsFor('/v4/fixtures', asOfDoCiclo) <= cooldownOf('/v4/fixtures'));
+});
+
+// ---------------------------------------------------------------------------
+// O casador de nomes — 66% da perda de cobertura era aqui
+// ---------------------------------------------------------------------------
+
+function fx(id: string, side1: string[], side2: string[]) {
+  return { fixtureId: id, startTime: null, finished: true, hasOdds: true, sides: [side1, side2] };
+}
+const semCodigo = (nome: string) => ({ displayName: nome, polymarketCode: null });
+
+test('enfeite de organização não impede o casamento', () => {
+  // Os padrões medidos nas falhas reais.
+  assert.equal(sideMatchTier(semCodigo('DENDELE CS'), ['Dendele']), 'canonical');
+  assert.equal(sideMatchTier(semCodigo('NIO'), ['Nio eSports']), 'canonical');
+  assert.equal(sideMatchTier(semCodigo('Kreazion'), ['Team Kreazion']), 'canonical');
+  assert.equal(sideMatchTier(semCodigo('Dendele'), ['Dendele']), 'exact');
+});
+
+test('sigla e abreviação casam, com o degrau certo', () => {
+  assert.equal(sideMatchTier(semCodigo('Inner Circle Esports'), ['IC eSports']), 'abbrev');
+  assert.equal(sideMatchTier(semCodigo('Natus Vincere'), ['NAVI']), 'abbrev');
+  // O código da Polymarket é degrau próprio, acima da abreviação.
+  assert.equal(
+    sideMatchTier({ displayName: 'Nome Que Nao Casa', polymarketCode: 'nqnc' }, ['NQNC']),
+    'code',
+  );
+});
+
+test('time B da mesma organização NUNCA casa com o principal', () => {
+  // A proteção central, e ela vem do dado medido: a lista de falhas tem
+  // `Inner Circle Esports` e `Inner Circle Prospect` na mesma janela. Ligar a
+  // partida de um à linha do outro é erro sem sintoma — mesma família do mercado
+  // espelhado.
+  assert.equal(sideMatchTier(semCodigo('Inner Circle Esports'), ['Inner Circle Prospect']), null);
+  assert.equal(sideMatchTier(semCodigo('Inner Circle Prospect'), ['Inner Circle Esports']), null);
+
+  // E a sigla não pode expressar "Prospect", então o nome com palavra distintiva
+  // não desce para os degraus fracos de jeito nenhum.
+  assert.equal(sideMatchTier(semCodigo('Inner Circle Prospect'), ['INN']), null);
+  assert.equal(
+    sideMatchTier({ displayName: 'Spirit Academy', polymarketCode: 'sa' }, ['SA']),
+    null,
+  );
+
+  // Mas com a MESMA palavra distintiva dos dois lados, casa normalmente.
+  assert.equal(sideMatchTier(semCodigo('Spirit Academy'), ['Team Spirit Academy']), 'canonical');
+});
+
+test('o par exige os dois lados na MESMA fixture', () => {
+  // O relatório de cobertura mostrava os dois times "PRESENTE" e sem casar. Isso
+  // é compatível com estarem em fixtures diferentes, contra outros adversários —
+  // e nesse caso NÃO casar é o comportamento certo.
+  const rows = [fx('f1', ['HOTU'], ['Outro Time']), fx('f2', ['GenOne'], ['Mais Outro'])];
+
+  assert.equal(matchFixture(rows, semCodigo('HOTU'), semCodigo('GenOne')), null);
+
+  // Juntos na mesma fixture, casa.
+  const juntos = [...rows, fx('f3', ['HOTU'], ['GenOne'])];
+  assert.equal(matchFixture(juntos, semCodigo('HOTU'), semCodigo('GenOne'))?.fixtureId, 'f3');
+});
+
+test('empate no mesmo degrau é recusado, não desempatado', () => {
+  // Duas fixtures igualmente plausíveis são a mesma organização aparecendo duas
+  // vezes no dia. Escolher uma seria adivinhar qual partida o nosso mercado
+  // está precificando.
+  const rows = [fx('f1', ['Dendele CS'], ['Nio']), fx('f2', ['Dendele'], ['Nio eSports'])];
+
+  assert.equal(matchFixture(rows, semCodigo('Dendele'), semCodigo('NIO')), null);
+});
+
+test('o degrau mais forte ganha quando não há empate', () => {
+  const rows = [fx('f1', ['DENDELE CS'], ['Nio eSports']), fx('f2', ['Dendele'], ['NIO'])];
+
+  const link = matchFixture(rows, semCodigo('Dendele'), semCodigo('NIO'));
+  assert.equal(link?.fixtureId, 'f2');
+  assert.equal(link?.tier, 'exact');
+});
+
+test('o par carrega o degrau MAIS FRACO dos dois lados', () => {
+  const rows = [fx('f1', ['Dendele'], ['Nio eSports'])];
+  const link = matchFixture(rows, semCodigo('Dendele'), semCodigo('NIO'));
+
+  assert.equal(link?.tier, 'canonical', 'exato de um lado, canônico do outro');
+});
+
+test('canonicalTeamName tira enfeite sem esvaziar o nome', () => {
+  assert.equal(canonicalTeamName('DENDELE CS'), 'dendele');
+  assert.equal(canonicalTeamName('Nio eSports'), 'nio');
+  assert.equal(canonicalTeamName('Virtus.pro'), 'virtuspro');
+
+  // Nome feito SÓ de enfeite não pode virar string vazia — aí casaria com
+  // qualquer outro nome igualmente vazio.
+  assert.equal(canonicalTeamName('Team CS'), 'teamcs');
+});
+
+test('distinguishingOf enxerga o que separa time principal de time B', () => {
+  assert.deepEqual(distinguishingOf('Inner Circle Prospect'), ['prospect']);
+  assert.deepEqual(distinguishingOf('Spirit Academy'), ['academy']);
+  assert.deepEqual(distinguishingOf('Team Spirit'), []);
+});
+
+test('revanche na janela é desempatada pela data, não recusada', () => {
+  // REGRESSÃO da cobertura: `cs2-is-6666-2026-08-07` e `cs2-6666-is-2026-08-08`
+  // apontavam para fixtures com os dois times exatos e não casavam. Os mesmos
+  // dois times se enfrentam duas vezes na janela, as duas fixtures empatavam no
+  // degrau `exact`, e o casador recusava as duas.
+  const rows = [
+    { ...fx('dia7', ['Iberian Soul'], ['6666']), startTime: '2026-08-07T18:00:00.000Z' },
+    { ...fx('dia8', ['Iberian Soul'], ['6666']), startTime: '2026-08-08T18:00:00.000Z' },
+  ];
+
+  const a = semCodigo('Iberian Soul');
+  const b = semCodigo('6666');
+
+  assert.equal(matchFixture(rows, a, b, new Date('2026-08-07T18:00:00.000Z'))?.fixtureId, 'dia7');
+  assert.equal(matchFixture(rows, a, b, new Date('2026-08-08T17:30:00.000Z'))?.fixtureId, 'dia8');
+
+  // Sem data para desempatar, continua recusando: escolher seria adivinhar qual
+  // partida o nosso mercado está precificando.
+  assert.equal(matchFixture(rows, a, b), null);
+});
+
+test('empate exato na distância continua sendo recusa', () => {
+  const rows = [
+    { ...fx('f1', ['Dendele'], ['Nio']), startTime: '2026-08-07T12:00:00.000Z' },
+    { ...fx('f2', ['Dendele'], ['Nio']), startTime: '2026-08-07T18:00:00.000Z' },
+  ];
+
+  // Exatamente no meio: as duas à mesma distância.
+  const meio = new Date('2026-08-07T15:00:00.000Z');
+  assert.equal(matchFixture(rows, semCodigo('Dendele'), semCodigo('NIO'), meio), null);
 });
