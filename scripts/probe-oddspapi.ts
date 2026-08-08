@@ -29,6 +29,19 @@ import 'dotenv/config';
  *      confiança da casa na linha, e é o que faria uma discordância com o
  *      Polymarket valer mais ou menos no eval.
  *
+ *   5. O que `active = false` significa, e se o histórico de fixture antiga é
+ *      imutável. As duas foram perguntadas no Discord deles e não voltaram —
+ *      então são medidas aqui, com a amostra que já temos e com o tempo.
+ *      `analyzeActive` responde a primeira pelo PADRÃO (alternância com preço
+ *      mudando vs. blocos coincidentes entre casas); `--snapshot`/`--compare`
+ *      respondem a segunda com evidência própria, duas semanas depois.
+ *
+ *      A decisão que depende do item 5 está registrada em
+ *      `specs/001-esports-vertical.md`, Parte D: o enricher da OddsPapi nasce com
+ *      `supportsPointInTime = false` por AUSÊNCIA DE GARANTIA, não por defeito
+ *      conhecido. Isso não o bloqueia — só o mantém fora do replay do eval até a
+ *      comparação acima existir. Lá está o critério exato que vira a chave.
+ *
  * ## Antes de rodar
  *
  *   ODDSPAPI_API_KEY=...
@@ -56,6 +69,24 @@ import 'dotenv/config';
  * `--with-db` é opt-in de propósito: é a única parte que lê o banco de produção.
  * Sem a flag a sonda só fala com a OddsPapi, e imprime os nomes deles para
  * conferência a olho.
+ *
+ * ### Imutabilidade, em duas passadas separadas por semanas
+ *
+ *   npm run oddspapi:probe -- --fixture=<encerrada> --bookmakers=a,b,c --snapshot
+ *   npm run oddspapi:probe -- --compare=probes/oddspapi/<fixtureId>.json
+ *
+ * `--snapshot` aceita caminho (`--snapshot=onde/quiser.json`); sem valor, grava
+ * em `probes/oddspapi/<fixtureId>.json`. O arquivo NÃO contém a chave de API — o
+ * que ele guarda é endpoint, params, ETag, os dois hashes e o corpo. É feito
+ * para durar em disco e para ser commitado se você quiser que o próprio git
+ * carimbe a data.
+ *
+ * As duas passadas gastam ZERO billable quando `--fixture` e `--bookmakers` vêm
+ * explícitos: `/v4/historical-odds` é declarado livre, e `--compare` nem chega a
+ * fazer descoberta.
+ *
+ * `--coincidence-ms=60000` regula o quanto dois blocos de `active=false` podem
+ * se afastar e ainda contarem como o mesmo evento.
  */
 
 const LABEL = 'probe-oddspapi';
@@ -124,8 +155,21 @@ interface CallResult {
   readonly ok: boolean;
   readonly status: number;
   readonly body: unknown;
+  /** O corpo CRU, antes do parse. É o que permite comparar byte a byte. */
+  readonly text: string;
   /** Só os headers com cara de cota/limite — é onde a contagem parece morar. */
   readonly meta: ReadonlyMap<string, string>;
+  /**
+   * `etag` e `last-modified`, quando vierem.
+   *
+   * São a afirmação do PRÓPRIO servidor sobre imutabilidade, e por isso ficam
+   * fora de `meta`: um ETag idêntico duas semanas depois é evidência de outra
+   * natureza que a comparação byte a byte — ela mostra que o corpo não mudou,
+   * ele mostra que o servidor diz que não devia mudar. Os dois juntos separam
+   * "estável por enquanto" de "prometido estável".
+   */
+  readonly etag: string | null;
+  readonly lastModified: string | null;
 }
 
 /** Medido na primeira passada: o 429 traz `error.retryMs` com a espera exata. */
@@ -203,7 +247,15 @@ async function call(
     console.error(`[${LABEL}]   HTTP ${response.status} — ${text.slice(0, 400)}`);
   }
 
-  return { ok: response.ok, status: response.status, body, meta };
+  return {
+    ok: response.ok,
+    status: response.status,
+    body,
+    text,
+    meta,
+    etag: response.headers.get('etag'),
+    lastModified: response.headers.get('last-modified'),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -590,6 +642,28 @@ interface OddsEntry {
   readonly createdAt: string | null;
   readonly price: number | null;
   readonly limit: number | null;
+  /**
+   * `active` da entrada, ou `null` quando o campo não existe.
+   *
+   * `null` e `false` são coisas diferentes e não podem colapsar: `false` é a
+   * casa dizendo que a linha não vale naquele instante; `null` é a sonda não
+   * tendo o que medir. Tratar os dois como "não ativo" inventaria suspensão.
+   */
+  readonly active: boolean | null;
+  /**
+   * Caminho até a entrada, ex. `bookmakers.pinnacle.markets.0.outcomes.1.odds.7`.
+   *
+   * É o que permite separar SÉRIES dentro da mesma casa. Sem isso, as entradas
+   * de todos os mercados e outcomes de uma casa virariam uma sequência só, e a
+   * alternância medida seria o intercalamento de séries distintas — um artefato
+   * da coleta, não comportamento da casa.
+   */
+  readonly path: string;
+}
+
+/** O caminho sem o índice final: identifica a série a que a entrada pertence. */
+function seriesKeyOf(path: string): string {
+  return path.replace(/\.\d+$/, '');
 }
 
 /**
@@ -597,65 +671,403 @@ interface OddsEntry {
  * `bookmakers -> markets -> outcomes -> players`, mas a sonda existe justamente
  * para não confiar nisso: qualquer objeto com `price` conta como entrada, em
  * qualquer profundidade.
+ *
+ * `path` acumula a rota até a entrada. Nada na análise depende da forma
+ * documentada — só da rota que a resposta de fato tiver.
  */
-function collectOdds(value: unknown, out: OddsEntry[]): void {
+function collectOdds(value: unknown, out: OddsEntry[], path = ''): void {
   if (Array.isArray(value)) {
-    for (const item of value) collectOdds(item, out);
+    value.forEach((item, i) => collectOdds(item, out, path.length > 0 ? `${path}.${i}` : `${i}`));
     return;
   }
   if (!isRecord(value)) return;
 
   if ('price' in value) {
+    // Três grafias possíveis para o mesmo campo. A doc usa `active`; as outras
+    // duas aparecem no resto da API deles (`is_active` no entitlement de
+    // `/v4/account`), e adivinhar errado aqui apagaria o fenômeno inteiro.
+    const rawActive = value['active'] ?? value['isActive'] ?? value['is_active'];
+
     out.push({
       createdAt: str(value['createdAt']),
       price: typeof value['price'] === 'number' ? value['price'] : null,
       limit: typeof value['limit'] === 'number' ? value['limit'] : null,
+      active: typeof rawActive === 'boolean' ? rawActive : null,
+      path,
     });
   }
-  for (const nested of Object.values(value)) collectOdds(nested, out);
+  for (const [k, nested] of Object.entries(value)) {
+    collectOdds(nested, out, path.length > 0 ? `${path}.${k}` : k);
+  }
 }
 
-async function probeHistorical(fixtureId: string, bookmakers: readonly string[]): Promise<void> {
-  console.log(`\n[${LABEL}] ===== /v4/historical-odds fixtureId=${fixtureId} =====`);
-  console.log(`[${LABEL}]   casas: ${bookmakers.join(', ')} (o endpoint aceita no máximo 3)`);
+// ---------------------------------------------------------------------------
+// Item 5 — o padrão de `active`
+// ---------------------------------------------------------------------------
+//
+// A pergunta que o Discord não respondeu: `active = false` no meio da série é a
+// casa suspendendo o mercado, ou o feed deles falhando? As duas produzem o mesmo
+// campo e significam coisas opostas para o eval.
+//
+//   SUSPENSÃO REAL — a casa tirou a linha (lesão, saque, mercado virando). O
+//   `false` é INFORMAÇÃO: o silêncio da casa naquele instante é um dado sobre a
+//   partida, e o eval deve preservá-lo.
+//
+//   FALHA DE FEED — a coleta deles perdeu contato. O `false` é ARTEFATO: não diz
+//   nada sobre a partida, e usá-lo como sinal seria aprender o ruído do
+//   fornecedor.
+//
+// O que separa as duas, e é medível sem resposta de ninguém:
+//
+//   1. Alternância COM preço mudando entre um bloco e o seguinte. Casa que
+//      suspende e reabre reabre em outro preço — foi por isso que suspendeu.
+//      Feed que cai e volta volta no mesmo preço, porque nada aconteceu.
+//
+//   2. Blocos de `false` COINCIDENTES entre casas diferentes. Pinnacle e GGBet
+//      não suspendem juntas por acaso; o fornecedor que coleta as duas, sim,
+//      cai para as duas ao mesmo tempo.
+//
+// Os dois sinais são independentes e podem aparecer juntos — daí o relatório
+// mostrar os dois números em vez de escolher um veredito.
 
-  const res = await call('/v4/historical-odds', {
-    fixtureId,
-    bookmakers: bookmakers.slice(0, 3).join(','),
-  });
+/** Quanto dois blocos de `false` podem se afastar e ainda contarem como o mesmo evento. */
+const DEFAULT_COINCIDENCE_MS = 60_000;
 
-  if (!res.ok) return;
+interface FalseRun {
+  readonly bookmaker: string;
+  readonly series: string;
+  /** Instantes do primeiro e do último `false` do bloco. */
+  readonly startMs: number | null;
+  readonly endMs: number | null;
+  readonly startAt: string | null;
+  readonly endAt: string | null;
+  readonly entries: number;
+  /** `true` quando há entrada ativa dos DOIS lados — o true→false→true completo. */
+  readonly enclosed: boolean;
+  readonly priceBefore: number | null;
+  readonly priceAfter: number | null;
+}
+
+function priceChanged(run: FalseRun): boolean {
+  return run.priceBefore !== null && run.priceAfter !== null && run.priceBefore !== run.priceAfter;
+}
+
+function timeOf(iso: string | null): number | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Ordena a série no tempo, quando dá.
+ *
+ * Sem `createdAt` em TODAS as entradas a ordem do array é a única disponível — e
+ * aí a alternância medida vale menos, porque depende de a resposta vir ordenada.
+ * O relatório diz quando foi esse o caso em vez de fingir que ordenou.
+ */
+function ordered(entries: readonly OddsEntry[]): { rows: OddsEntry[]; byTime: boolean } {
+  const byTime = entries.every((e) => timeOf(e.createdAt) !== null);
+  if (!byTime) return { rows: [...entries], byTime: false };
+
+  return {
+    rows: [...entries].sort((a, b) => (timeOf(a.createdAt) ?? 0) - (timeOf(b.createdAt) ?? 0)),
+    byTime: true,
+  };
+}
+
+/**
+ * Os blocos de `active = false` de uma série, com o preço dos dois lados.
+ *
+ * Entradas com `active = null` são PULADAS, não tratadas como ativas: onde o
+ * campo não existe não há o que medir, e preencher o buraco com um palpite
+ * fabricaria ou apagaria bloco.
+ */
+function falseRunsOf(bookmaker: string, series: string, entries: readonly OddsEntry[]): FalseRun[] {
+  const measurable = entries.filter((e) => e.active !== null);
+  const runs: FalseRun[] = [];
+
+  let i = 0;
+  while (i < measurable.length) {
+    const entry = measurable[i];
+    if (entry === undefined || entry.active !== false) {
+      i += 1;
+      continue;
+    }
+
+    const start = i;
+    while (i < measurable.length && measurable[i]?.active === false) i += 1;
+    const end = i - 1;
+
+    const before = start > 0 ? measurable[start - 1] : undefined;
+    const after = i < measurable.length ? measurable[i] : undefined;
+
+    runs.push({
+      bookmaker,
+      series,
+      startMs: timeOf(measurable[start]?.createdAt ?? null),
+      endMs: timeOf(measurable[end]?.createdAt ?? null),
+      startAt: measurable[start]?.createdAt ?? null,
+      endAt: measurable[end]?.createdAt ?? null,
+      entries: end - start + 1,
+      enclosed: before !== undefined && after !== undefined,
+      priceBefore: before?.price ?? null,
+      priceAfter: after?.price ?? null,
+    });
+  }
+
+  return runs;
+}
+
+/** Dois blocos se sobrepõem, dada a tolerância. Bloco de instante único conta. */
+function coincide(a: FalseRun, b: FalseRun, toleranceMs: number): boolean {
+  if (a.startMs === null || a.endMs === null || b.startMs === null || b.endMs === null)
+    return false;
+  return a.startMs - toleranceMs <= b.endMs && b.startMs - toleranceMs <= a.endMs;
+}
+
+function analyzeActive(perBook: ReadonlyMap<string, OddsEntry[]>, toleranceMs: number): void {
+  console.log(`\n[${LABEL}] ===== padrão de \`active\` =====`);
+
+  const all = [...perBook.values()].flat();
+  const measurable = all.filter((e) => e.active !== null);
+
+  if (all.length === 0) {
+    console.log(`[${LABEL}]   nenhuma entrada de odds nesta resposta — nada a medir.`);
+    return;
+  }
+
+  if (measurable.length === 0) {
+    console.warn(
+      `[${LABEL}]   NENHUMA entrada tem \`active\` (nem \`isActive\`, nem \`is_active\`).\n` +
+        `[${LABEL}]   O padrão não é observável nesta resposta, e a pergunta do Discord\n` +
+        `[${LABEL}]   continua aberta — mas por ausência do campo, não por ele ser estável.\n` +
+        `[${LABEL}]   Conferir uma entrada crua antes de concluir qualquer coisa:`,
+    );
+    console.log(JSON.stringify(all.slice(0, 2), null, 2));
+    return;
+  }
 
   console.log(
-    `[${LABEL}]   forma do topo: ${isRecord(res.body) ? Object.keys(res.body).join(', ') : typeof res.body}`,
+    `[${LABEL}]   ${measurable.length}/${all.length} entrada(s) com o campo. ` +
+      `${measurable.filter((e) => e.active === false).length} com active=false.`,
+  );
+  if (measurable.length < all.length) {
+    console.log(
+      `[${LABEL}]   As ${all.length - measurable.length} sem o campo ficam FORA da contagem — ` +
+        `ausência não é suspensão.`,
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Sinal 1 — alternância por casa, e o preço entre um bloco e o seguinte
+  // -------------------------------------------------------------------------
+
+  const runsByBook = new Map<string, FalseRun[]>();
+  const unordered: string[] = [];
+
+  for (const [book, entries] of perBook) {
+    const bySeries = new Map<string, OddsEntry[]>();
+    for (const entry of entries) {
+      const key = seriesKeyOf(entry.path);
+      const bucket = bySeries.get(key);
+      if (bucket === undefined) bySeries.set(key, [entry]);
+      else bucket.push(entry);
+    }
+
+    const runs: FalseRun[] = [];
+    for (const [series, rows] of bySeries) {
+      const { rows: sorted, byTime } = ordered(rows);
+      if (!byTime && rows.some((r) => r.active !== null)) unordered.push(`${book}:${series}`);
+      runs.push(...falseRunsOf(book, series, sorted));
+    }
+    runsByBook.set(book, runs);
+  }
+
+  console.log(`\n[${LABEL}]   transições por casa (uma série = um mercado/outcome):`);
+  console.log(
+    `[${LABEL}]     ${'casa'.padEnd(16)}${'séries'.padStart(7)}${'blocos'.padStart(8)}` +
+      `${'true→false→true'.padStart(17)}${'c/ preço mudando'.padStart(18)}`,
   );
 
-  // Por casa: a resposta agrupa por bookmaker, então medimos casa a casa em vez
-  // de um total que esconderia uma casa vazia.
+  for (const [book, runs] of runsByBook) {
+    const seriesCount = new Set(perBook.get(book)?.map((e) => seriesKeyOf(e.path)) ?? []).size;
+    const enclosed = runs.filter((r) => r.enclosed);
+    const changed = enclosed.filter(priceChanged);
+
+    console.log(
+      `[${LABEL}]     ${book.padEnd(16)}${String(seriesCount).padStart(7)}` +
+        `${String(runs.length).padStart(8)}${String(enclosed.length).padStart(17)}` +
+        `${String(changed.length).padStart(18)}`,
+    );
+  }
+
+  const allRuns = [...runsByBook.values()].flat();
+  const allEnclosed = allRuns.filter((r) => r.enclosed);
+  const allChanged = allEnclosed.filter(priceChanged);
+  const sameBothSides = allEnclosed.filter(
+    (r) => r.priceBefore !== null && r.priceAfter !== null && r.priceBefore === r.priceAfter,
+  );
+
+  if (allEnclosed.length > 0) {
+    console.log(`\n[${LABEL}]   os 10 primeiros blocos fechados, com o preço dos dois lados:`);
+    for (const run of allEnclosed.slice(0, 10)) {
+      console.log(
+        `[${LABEL}]     ${run.bookmaker.padEnd(14)}${String(run.entries).padStart(4)} entrada(s)  ` +
+          `${run.startAt ?? '?'} .. ${run.endAt ?? '?'}  ` +
+          `${run.priceBefore ?? '?'} -> ${run.priceAfter ?? '?'}` +
+          `${priceChanged(run) ? '   PREÇO MUDOU' : ''}`,
+      );
+      console.log(`[${LABEL}]       série: ${run.series}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Sinal 2 — os blocos coincidem entre casas?
+  // -------------------------------------------------------------------------
+
+  const books = [...runsByBook.keys()].filter((b) => (runsByBook.get(b)?.length ?? 0) > 0);
+
+  console.log(
+    `\n[${LABEL}]   coincidência entre casas (tolerância ${Math.round(toleranceMs / 1000)}s):`,
+  );
+
+  if (books.length < 2) {
+    console.log(
+      `[${LABEL}]     menos de duas casas com bloco de false — o sinal 2 não é\n` +
+        `[${LABEL}]     mensurável nesta amostra. Repetir com --bookmakers=a,b,c.`,
+    );
+  } else {
+    for (let i = 0; i < books.length; i += 1) {
+      for (let j = i + 1; j < books.length; j += 1) {
+        const a = books[i] as string;
+        const b = books[j] as string;
+        const runsA = runsByBook.get(a) ?? [];
+        const runsB = runsByBook.get(b) ?? [];
+
+        const hitA = runsA.filter((ra) => runsB.some((rb) => coincide(ra, rb, toleranceMs)));
+        const hitB = runsB.filter((rb) => runsA.some((ra) => coincide(ra, rb, toleranceMs)));
+
+        const pctA = runsA.length === 0 ? 0 : Math.round((hitA.length / runsA.length) * 100);
+        const pctB = runsB.length === 0 ? 0 : Math.round((hitB.length / runsB.length) * 100);
+
+        console.log(
+          `[${LABEL}]     ${a} × ${b}: ${hitA.length}/${runsA.length} de ${a} (${pctA}%) ` +
+            `coincidem com ${hitB.length}/${runsB.length} de ${b} (${pctB}%)`,
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Leitura
+  // -------------------------------------------------------------------------
+
+  console.log(`\n[${LABEL}]   Como ler:`);
+
+  if (allEnclosed.length === 0) {
+    console.log(
+      `[${LABEL}]     Nenhum bloco fechado (true→false→true). Ou o false só aparece no\n` +
+        `[${LABEL}]     fim da série — que é o normal de mercado fechando ao vivo, não\n` +
+        `[${LABEL}]     suspensão — ou esta fixture não teve o fenômeno.`,
+    );
+  } else {
+    console.log(
+      `[${LABEL}]     ${allChanged.length}/${allEnclosed.length} bloco(s) fechado(s) reabrem em preço\n` +
+        `[${LABEL}]     DIFERENTE; ${sameBothSides.length} reabrem no MESMO preço.`,
+    );
+    console.log(
+      `[${LABEL}]     Preço mudando na volta é a casa tendo reprecificado enquanto estava\n` +
+        `[${LABEL}]     fora — suspensão real, e o false é informação a preservar.\n` +
+        `[${LABEL}]     Voltar no mesmo preço é o que uma queda de feed produz: nada\n` +
+        `[${LABEL}]     aconteceu no intervalo porque não havia intervalo de verdade.`,
+    );
+  }
+
+  if (books.length >= 2) {
+    console.log(
+      `[${LABEL}]     Coincidência alta entre casas independentes aponta para o\n` +
+        `[${LABEL}]     fornecedor, não para as casas: Pinnacle e GGBet não suspendem\n` +
+        `[${LABEL}]     juntas por acaso, mas a coleta que traz as duas cai para as duas.`,
+    );
+  }
+
+  if (unordered.length > 0) {
+    console.warn(
+      `\n[${LABEL}]   ATENÇÃO: ${unordered.length} série(s) sem \`createdAt\` em todas as entradas.\n` +
+        `[${LABEL}]   Nelas a ordem usada foi a do array, e a alternância medida depende de\n` +
+        `[${LABEL}]   a resposta vir ordenada — o que não está prometido em lugar nenhum.\n` +
+        `[${LABEL}]   Primeiras: ${unordered.slice(0, 3).join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Agrupa as entradas de odds por casa, preservando o caminho de cada uma.
+ *
+ * O caminho é o que a análise de `active` usa para separar séries dentro da
+ * mesma casa — por isso o prefixo entra aqui, e não é reconstruído depois.
+ */
+function groupByBookmaker(body: unknown): Map<string, OddsEntry[]> {
   const perBook = new Map<string, OddsEntry[]>();
-  const bookmakersNode = isRecord(res.body) ? res.body['bookmakers'] : undefined;
+  const bookmakersNode = isRecord(body) ? body['bookmakers'] : undefined;
 
   if (Array.isArray(bookmakersNode)) {
-    for (const book of bookmakersNode) {
-      if (!isRecord(book)) continue;
+    bookmakersNode.forEach((book, i) => {
+      if (!isRecord(book)) return;
       const slug = str(book['slug']) ?? str(book['key']) ?? str(book['name']) ?? '(sem slug)';
       const entries: OddsEntry[] = [];
-      collectOdds(book, entries);
+      collectOdds(book, entries, `bookmakers.${i}`);
       perBook.set(slug, entries);
-    }
+    });
   } else if (isRecord(bookmakersNode)) {
     // Medido: `bookmakers` é um MAPA slug -> conteúdo, não uma lista. Mesma forma
     // de `/v4/participants` e do entitlement em `/v4/account` — é o padrão da casa.
     for (const [slug, content] of Object.entries(bookmakersNode)) {
       const entries: OddsEntry[] = [];
-      collectOdds(content, entries);
+      collectOdds(content, entries, `bookmakers.${slug}`);
       perBook.set(slug, entries);
     }
   } else {
     const entries: OddsEntry[] = [];
-    collectOdds(res.body, entries);
+    collectOdds(body, entries);
     perBook.set('(agrupamento não reconhecido)', entries);
   }
+
+  return perBook;
+}
+
+async function fetchHistorical(
+  fixtureId: string,
+  bookmakers: readonly string[],
+): Promise<CallResult> {
+  return call('/v4/historical-odds', {
+    fixtureId,
+    bookmakers: bookmakers.slice(0, 3).join(','),
+  });
+}
+
+async function probeHistorical(
+  fixtureId: string,
+  bookmakers: readonly string[],
+  coincidenceMs: number,
+): Promise<CallResult | null> {
+  console.log(`\n[${LABEL}] ===== /v4/historical-odds fixtureId=${fixtureId} =====`);
+  console.log(`[${LABEL}]   casas: ${bookmakers.join(', ')} (o endpoint aceita no máximo 3)`);
+
+  const res = await fetchHistorical(fixtureId, bookmakers);
+
+  if (!res.ok) return null;
+
+  console.log(
+    `[${LABEL}]   forma do topo: ${isRecord(res.body) ? Object.keys(res.body).join(', ') : typeof res.body}`,
+  );
+  console.log(
+    `[${LABEL}]   etag: ${res.etag ?? '(ausente)'}   last-modified: ${res.lastModified ?? '(ausente)'}`,
+  );
+
+  // Por casa: a resposta agrupa por bookmaker, então medimos casa a casa em vez
+  // de um total que esconderia uma casa vazia.
+  const perBook = groupByBookmaker(res.body);
 
   console.log(`\n[${LABEL}]   movimentos de linha por casa:`);
   for (const [slug, entries] of perBook) {
@@ -693,6 +1105,300 @@ async function probeHistorical(fixtureId: string, bookmakers: readonly string[])
         `[${LABEL}]   point-in-time, e não serve de baseline para o eval.`,
     );
   }
+
+  analyzeActive(perBook, coincidenceMs);
+
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// Imutabilidade — evidência própria, sem depender de resposta de ninguém
+// ---------------------------------------------------------------------------
+//
+// A pergunta: o histórico de uma fixture ANTIGA é imutável? Se for, o enricher
+// pode cachear para sempre, o backfill é reprodutível e o replay do eval usa a
+// série sem medo. Se não for — se a OddsPapi reescreve o passado quando corrige
+// um feed — então o que o eval leria hoje não é o que existia na época, e a
+// série deixa de ser point-in-time por mais carimbo que tenha.
+//
+// A doc não promete nada e o Discord não respondeu. O que resolve isso é tempo:
+// gravar a resposta de uma fixture já encerrada, esperar, e buscar de novo.
+//
+//   npm run oddspapi:probe -- --fixture=<id> --bookmakers=a,b,c --snapshot
+//   ... duas semanas ...
+//   npm run oddspapi:probe -- --compare=probes/oddspapi/<id>.json
+//
+// As duas passadas gastam ZERO requisição billable: `/v4/historical-odds` é
+// declarado livre (item 1), e `--compare` não chama descoberta nenhuma.
+//
+// Três evidências, de forças diferentes:
+//
+//   ETag igual        — o servidor AFIRMA que não mudou. É a mais forte, e a
+//                       única que fala sobre intenção em vez de coincidência.
+//   Hash canônico igual — o conteúdo não mudou, mesmo que a ordem das chaves ou
+//                       o espaçamento tenham mudado. É a que interessa ao cache.
+//   Bytes iguais      — nem a serialização mudou. Boa de ter, mas diferença aqui
+//                       sozinha não é mutação de dado.
+//
+// O diff, quando houver, separa o que importa: ENTRADA ALTERADA (preço, active
+// ou createdAt de uma entrada que já existia) é reescrita do passado e mata a
+// imutabilidade. ENTRADA NOVA numa fixture encerrada é outra coisa — chegada
+// tardia de dado, que o cache pode tolerar com TTL mas o replay não.
+
+const SNAPSHOT_KIND = 'oddspapi-historical-odds-snapshot';
+const SNAPSHOT_DIR = 'probes/oddspapi';
+
+interface Snapshot {
+  readonly kind: string;
+  readonly version: number;
+  readonly fetchedAt: string;
+  readonly endpoint: string;
+  readonly params: Record<string, string>;
+  readonly status: number;
+  readonly etag: string | null;
+  readonly lastModified: string | null;
+  readonly rawSha256: string;
+  readonly canonicalSha256: string;
+  readonly body: unknown;
+}
+
+/**
+ * JSON com as chaves ordenadas, em qualquer profundidade.
+ *
+ * Sem isso, uma troca de ordem de chaves — que nenhum servidor promete estável —
+ * apareceria como "o passado mudou". O hash canônico é o que responde à pergunta
+ * de conteúdo; o hash cru fica ao lado para a pergunta de serialização.
+ */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+async function sha256(text: string): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  return createHash('sha256').update(text).digest('hex');
+}
+
+function snapshotPathFor(fixtureId: string, given: string | null): string {
+  if (given !== null && given.length > 0) return given;
+  return `${SNAPSHOT_DIR}/${fixtureId}.json`;
+}
+
+async function writeSnapshot(
+  file: string,
+  endpoint: string,
+  params: Record<string, string>,
+  res: CallResult,
+): Promise<void> {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const { dirname } = await import('node:path');
+
+  const snapshot: Snapshot = {
+    kind: SNAPSHOT_KIND,
+    version: 1,
+    fetchedAt: new Date().toISOString(),
+    endpoint,
+    // `params` NUNCA inclui a chave: ela é acrescentada dentro de `call`, na URL.
+    // Um arquivo destes é feito para durar duas semanas em disco e possivelmente
+    // ser commitado — vazar credencial nele seria vazá-la para sempre.
+    params,
+    status: res.status,
+    etag: res.etag,
+    lastModified: res.lastModified,
+    rawSha256: await sha256(res.text),
+    canonicalSha256: await sha256(canonical(res.body)),
+    body: res.body,
+  };
+
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+
+  console.log(`\n[${LABEL}] ===== snapshot gravado =====`);
+  console.log(`[${LABEL}]   arquivo: ${file}`);
+  console.log(`[${LABEL}]   etag: ${res.etag ?? '(ausente)'}`);
+  console.log(`[${LABEL}]   sha256 canônico: ${snapshot.canonicalSha256}`);
+  console.log(`[${LABEL}]   sha256 cru:      ${snapshot.rawSha256}`);
+  console.log(
+    `\n[${LABEL}]   Daqui a duas semanas, para responder à imutabilidade com medida:\n` +
+      `[${LABEL}]     npm run oddspapi:probe -- --compare=${file}`,
+  );
+}
+
+/** Folhas do JSON, achatadas em `caminho -> valor`. É sobre isso que o diff fala. */
+function leaves(value: unknown, out: Map<string, unknown>, path = ''): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => leaves(item, out, path.length > 0 ? `${path}.${i}` : `${i}`));
+    return;
+  }
+  if (isRecord(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      leaves(v, out, path.length > 0 ? `${path}.${k}` : k);
+    }
+    return;
+  }
+  out.set(path, value);
+}
+
+async function compareSnapshot(file: string, coincidenceMs: number): Promise<void> {
+  const { readFile } = await import('node:fs/promises');
+
+  const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (!isRecord(parsed) || parsed['kind'] !== SNAPSHOT_KIND) {
+    console.error(`[${LABEL}] ${file} não é um snapshot desta sonda (kind != ${SNAPSHOT_KIND}).`);
+    process.exit(1);
+  }
+  const before = parsed as unknown as Snapshot;
+
+  const fixtureId = before.params['fixtureId'] ?? '';
+  const bookmakers = (before.params['bookmakers'] ?? '').split(',').filter((s) => s.length > 0);
+
+  console.log(`[${LABEL}] ===== comparação com snapshot =====`);
+  console.log(`[${LABEL}]   arquivo:  ${file}`);
+  console.log(`[${LABEL}]   gravado:  ${before.fetchedAt}`);
+  console.log(`[${LABEL}]   fixture:  ${fixtureId}`);
+  console.log(`[${LABEL}]   casas:    ${bookmakers.join(', ')}`);
+
+  const ageMs = Date.now() - Date.parse(before.fetchedAt);
+  const ageDays = Number.isFinite(ageMs) ? Math.round(ageMs / 86_400_000) : null;
+  console.log(`[${LABEL}]   idade:    ${ageDays === null ? '?' : `${ageDays} dia(s)`}`);
+  if (ageDays !== null && ageDays < 7) {
+    console.warn(
+      `[${LABEL}]   Menos de uma semana. Igualdade aqui é fraca como evidência:\n` +
+        `[${LABEL}]   correção de feed leva dias para aparecer. Repetir mais tarde.`,
+    );
+  }
+
+  const after = await fetchHistorical(fixtureId, bookmakers);
+  if (!after.ok) {
+    console.error(`[${LABEL}]   refetch falhou (HTTP ${after.status}) — nada a comparar.`);
+    process.exit(1);
+  }
+
+  const rawSha = await sha256(after.text);
+  const canonicalSha = await sha256(canonical(after.body));
+
+  console.log(`\n[${LABEL}]   ${'evidência'.padEnd(22)}${'antes'.padEnd(20)}agora`);
+  const etagLine = `${(before.etag ?? '(ausente)').slice(0, 18).padEnd(20)}${(after.etag ?? '(ausente)').slice(0, 18)}`;
+  console.log(`[${LABEL}]     ${'etag'.padEnd(20)}${etagLine}`);
+  console.log(
+    `[${LABEL}]     ${'sha256 canônico'.padEnd(20)}${before.canonicalSha256.slice(0, 16).padEnd(20)}${canonicalSha.slice(0, 16)}`,
+  );
+  console.log(
+    `[${LABEL}]     ${'sha256 cru'.padEnd(20)}${before.rawSha256.slice(0, 16).padEnd(20)}${rawSha.slice(0, 16)}`,
+  );
+
+  const sameEtag = before.etag !== null && after.etag !== null && before.etag === after.etag;
+  const sameCanonical = before.canonicalSha256 === canonicalSha;
+  const sameRaw = before.rawSha256 === rawSha;
+
+  console.log(`\n[${LABEL}]   VEREDITO:`);
+  if (sameCanonical) {
+    console.log(
+      `[${LABEL}]     Conteúdo IDÊNTICO${sameRaw ? ' (byte a byte, inclusive)' : ' (bytes diferem: só serialização)'}.`,
+    );
+    console.log(
+      `[${LABEL}]     ${
+        sameEtag
+          ? 'ETag igual: o servidor também afirma que não mudou.'
+          : before.etag === null || after.etag === null
+            ? 'Sem ETag para confirmar — a igualdade é observada, não prometida.'
+            : 'ETag MUDOU apesar do conteúdo igual: o ETag deles não é estável, e não serve de atalho de cache.'
+      }`,
+    );
+    console.log(
+      `[${LABEL}]     ${ageDays ?? '?'} dia(s) sem mudança é evidência A FAVOR da imutabilidade —\n` +
+        `[${LABEL}]     de uma fixture, num intervalo. Não é garantia, e o enricher deve\n` +
+        `[${LABEL}]     dizer isso: continua sendo ausência de promessa, não promessa.`,
+    );
+    return;
+  }
+
+  console.log(`[${LABEL}]     O PASSADO MUDOU. Detalhe abaixo.`);
+
+  if (sameEtag) {
+    console.error(
+      `[${LABEL}]     E o ETag NÃO mudou junto. O ETag deles mente: um cache que\n` +
+        `[${LABEL}]     confiasse nele para revalidar serviria dado velho achando que\n` +
+        `[${LABEL}]     está atualizado. Isso é achado sobre o fornecedor, não sobre\n` +
+        `[${LABEL}]     esta fixture, e vale para o desenho inteiro do enricher.`,
+    );
+  }
+
+  const oldLeaves = new Map<string, unknown>();
+  const newLeaves = new Map<string, unknown>();
+  leaves(before.body, oldLeaves);
+  leaves(after.body, newLeaves);
+
+  const changed: string[] = [];
+  const added: string[] = [];
+  const removed: string[] = [];
+
+  for (const [path, value] of oldLeaves) {
+    if (!newLeaves.has(path)) removed.push(path);
+    else if (JSON.stringify(newLeaves.get(path)) !== JSON.stringify(value)) changed.push(path);
+  }
+  for (const path of newLeaves.keys()) {
+    if (!oldLeaves.has(path)) added.push(path);
+  }
+
+  console.log(
+    `\n[${LABEL}]   folhas: ${changed.length} alterada(s), ${added.length} nova(s), ${removed.length} removida(s)`,
+  );
+
+  // O corte que decide: entrada que JÁ EXISTIA e mudou é reescrita do passado.
+  // Entrada nova numa fixture encerrada é chegada tardia — problema diferente,
+  // e com solução diferente (TTL resolve uma, nada resolve a outra).
+  const rewritten = changed.filter((p) => /\.(price|active|isActive|is_active|createdAt)$/.test(p));
+
+  if (rewritten.length > 0) {
+    console.error(
+      `\n[${LABEL}]   ${rewritten.length} entrada(s) EXISTENTE(S) tiveram price/active/createdAt\n` +
+        `[${LABEL}]   reescritos. Isto mata a imutabilidade: o que o eval leria hoje não é\n` +
+        `[${LABEL}]   o que existia na época, e a série não é point-in-time por mais\n` +
+        `[${LABEL}]   carimbo que ela tenha. supportsPointInTime tem que continuar false.`,
+    );
+    for (const path of rewritten.slice(0, 20)) {
+      console.log(
+        `[${LABEL}]     ${path}\n` +
+          `[${LABEL}]       ${JSON.stringify(oldLeaves.get(path))} -> ${JSON.stringify(newLeaves.get(path))}`,
+      );
+    }
+  } else if (changed.length > 0) {
+    console.log(
+      `\n[${LABEL}]   Nenhuma mudança em price/active/createdAt. As ${changed.length} alteradas\n` +
+        `[${LABEL}]   são outros campos — conferir se são metadados voláteis (contadores,\n` +
+        `[${LABEL}]   carimbos de resposta) antes de concluir mutação de dado:`,
+    );
+    for (const path of changed.slice(0, 20)) {
+      console.log(
+        `[${LABEL}]     ${path}: ${JSON.stringify(oldLeaves.get(path))} -> ${JSON.stringify(newLeaves.get(path))}`,
+      );
+    }
+  }
+
+  if (added.length > 0) {
+    const perBookBefore = groupByBookmaker(before.body);
+    const perBookAfter = groupByBookmaker(after.body);
+    console.log(`\n[${LABEL}]   entradas de odds por casa, antes -> agora:`);
+    for (const slug of new Set([...perBookBefore.keys(), ...perBookAfter.keys()])) {
+      console.log(
+        `[${LABEL}]     ${slug.padEnd(16)}${String(perBookBefore.get(slug)?.length ?? 0).padStart(6)} ->` +
+          `${String(perBookAfter.get(slug)?.length ?? 0).padStart(6)}`,
+      );
+    }
+    console.log(
+      `[${LABEL}]   Entrada NOVA numa fixture encerrada é chegada tardia de dado, não\n` +
+        `[${LABEL}]   reescrita. Um cache com TTL sobrevive a isso; um replay que assume\n` +
+        `[${LABEL}]   a série fechada, não.`,
+    );
+  }
+
+  console.log(`\n[${LABEL}]   O padrão de \`active\` na resposta de AGORA:`);
+  analyzeActive(groupByBookmaker(after.body), coincidenceMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +1412,18 @@ async function main(): Promise<void> {
   const from = flag('from') ?? '2026-07-01';
   const to = flag('to') ?? '2026-07-31';
   const withDb = flag('with-db') !== null;
+
+  const coincidenceRaw = Number(flag('coincidence-ms') ?? '');
+  const coincidenceMs =
+    Number.isFinite(coincidenceRaw) && coincidenceRaw > 0 ? coincidenceRaw : DEFAULT_COINCIDENCE_MS;
+
+  // `--compare` é modo próprio e sai antes de tudo: não faz descoberta, não lê o
+  // banco, não gasta billable. Só refaz a MESMA chamada gravada no arquivo.
+  const compareFile = flag('compare');
+  if (compareFile !== null && compareFile.length > 0) {
+    await compareSnapshot(compareFile, coincidenceMs);
+    return;
+  }
 
   console.log(
     `[${LABEL}] plano Free: 250 req/mês, contadas por chamada a endpoint billable.\n` +
@@ -757,7 +1475,28 @@ async function main(): Promise<void> {
           `A densidade medida pode ser parcial.`,
       );
     }
-    await probeHistorical(target, chosenBooks);
+    const historical = await probeHistorical(target, chosenBooks, coincidenceMs);
+
+    const snapshotFlag = flag('snapshot');
+    if (snapshotFlag !== null && historical !== null) {
+      // A fixture tem que estar ENCERRADA para o snapshot valer alguma coisa:
+      // uma em andamento muda porque ainda está acontecendo, e a comparação
+      // daqui a duas semanas não distinguiria isso de reescrita do passado.
+      if (finished !== undefined && !finished.finished && explicit === null) {
+        console.warn(
+          `\n[${LABEL}] ATENÇÃO: a fixture escolhida não tem trueEndTime. O snapshot vai\n` +
+            `[${LABEL}] gravar uma série ainda em movimento, e a comparação futura não vai\n` +
+            `[${LABEL}] separar "mudou porque continuou" de "mudou porque reescreveram".\n` +
+            `[${LABEL}] Prefira --fixture=<id de partida encerrada>.`,
+        );
+      }
+      await writeSnapshot(
+        snapshotPathFor(target, snapshotFlag),
+        '/v4/historical-odds',
+        { fixtureId: target, bookmakers: chosenBooks.slice(0, 3).join(',') },
+        historical,
+      );
+    }
   }
 
   const after = await readAccount('DEPOIS');

@@ -643,6 +643,47 @@ qualidade pior.
 
 Fontes externas de verdade (GRID, Liquipedia, OddsPapi) entram numa spec seguinte.
 
+### Decisão pendente de medição: `supportsPointInTime` da OddsPapi
+
+**Quando o enricher da OddsPapi for escrito, ele nasce com `supportsPointInTime = false`.**
+
+O motivo é **ausência de garantia, não defeito conhecido** — e a distinção não é
+formalidade. A Liquipedia é `false` porque a wiki é retroativa: ela reescreve o
+passado por desenho, e isso não muda. A OddsPapi pode muito bem ser imutável; o
+que não existe é evidência. `/v4/historical-odds` traz `createdAt` por entrada, o
+que faria a série ser point-in-time — mas só se o que está gravado naquele
+carimbo não for reescrito depois. A doc deles não promete, e a pergunta feita no
+Discord não voltou.
+
+Enquanto isso, `false` é a direção segura do erro: um `true` errado faz o eval
+ler hoje uma série que não é a de então, e o resultado do backtest fica errado
+sem nenhum sintoma. Um `false` errado só custa cobertura.
+
+**Isto não bloqueia o enricher.** Ele coleta, grava fragmento e serve a análise
+em tempo real normalmente. `false` o mantém fora de UMA coisa: o replay do eval
+(`runEnrichers` com `requirePointInTime: true`).
+
+**O que vira a chave.** `scripts/probe-oddspapi.ts` mede as duas perguntas
+abertas sem depender de resposta de ninguém:
+
+```
+# grava a resposta de uma fixture ENCERRADA
+npm run oddspapi:probe -- --fixture=<id> --bookmakers=a,b,c --snapshot
+
+# duas semanas depois, na mesma fixture
+npm run oddspapi:probe -- --compare=probes/oddspapi/<id>.json
+```
+
+Vira `true` só com: conteúdo idêntico depois de um intervalo de semanas, em mais
+de uma fixture, **e** nenhuma entrada existente com `price`/`active`/`createdAt`
+reescrito. Entrada NOVA numa fixture encerrada não é reescrita — é chegada
+tardia, e derruba o replay do mesmo jeito, então também conta contra.
+
+A sonda mede junto o padrão de `active` (alternância com preço mudando =
+suspensão real da casa; blocos coincidentes entre casas = falha de feed deles).
+Isso não decide a flag, mas decide se `active = false` é dado a preservar ou
+ruído do fornecedor a descartar.
+
 ---
 
 ## Parte E — Divisão de responsabilidades

@@ -10,7 +10,13 @@ export type MarketSubCategory =
   | 'product_launch'
   | 'other';
 
-export type SignalType = 'hype_reality_gap' | 'calendar_driven' | 'cross_market' | 'cross_market_intra' | 'cross_market_inter' | 'early_market';
+export type SignalType =
+  | 'hype_reality_gap'
+  | 'calendar_driven'
+  | 'cross_market'
+  | 'cross_market_intra'
+  | 'cross_market_inter'
+  | 'early_market';
 
 export interface Event {
   id: string;
@@ -196,6 +202,24 @@ export interface SystemConfig {
    */
   esports_enricher_liquipedia_enabled: boolean;
   /**
+   * Enricher da OddsPapi — a linha das casas de aposta. Default `false` pelo
+   * mesmo motivo do de cima, mais um: o tier gratuito é cortesia (250
+   * requisições/mês, sem contador observável, acesso cortável sem aviso).
+   */
+  esports_enricher_oddspapi_enabled: boolean;
+  /**
+   * Casas pedidas por chamada. A API aceita no máximo 3 — o que passar disso é
+   * ignorado. Medido: Pinnacle é densa (3.487 movimentos numa fixture), Stake é
+   * rala (102), bet365 devolve zero apesar de entitulada.
+   */
+  oddspapi_bookmakers: string[];
+  /**
+   * O mercado lido, na taxonomia da OddsPapi. `171` é o moneyline, por medição:
+   * é o mais denso e o único com peso nas duas casas. Config e não constante
+   * porque a taxonomia deles não está documentada.
+   */
+  oddspapi_market_id: string;
+  /**
    * Agente analista (spec 001). Único componente que gasta dinheiro por ciclo —
    * daí o default `false` na migration.
    */
@@ -320,10 +344,10 @@ export interface DetectedSignalInsert {
 export interface GammaMarket {
   id: string;
   slug: string;
-  question: string;         // maps to our `title`
+  question: string; // maps to our `title`
   description: string;
-  outcomes: string;         // JSON string: '["Yes", "No"]'
-  outcomePrices: string;    // JSON string: '["0.57", "0.43"]'
+  outcomes: string; // JSON string: '["Yes", "No"]'
+  outcomePrices: string; // JSON string: '["0.57", "0.43"]'
   volume?: string;
   volumeNum?: number;
   volume24hr?: number;

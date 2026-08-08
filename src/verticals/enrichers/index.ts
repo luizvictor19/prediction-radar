@@ -2,6 +2,7 @@ import { registerEnricher } from '../enricher.js';
 import { marketHistoryEnricher } from './market-history.js';
 import { polymarketContextEnricher } from './polymarket-context.js';
 import { liquipediaEnricher } from './liquipedia.js';
+import { oddspapiEnricher } from './oddspapi.js';
 
 /**
  * Os enrichers embutidos (spec 001, item 5).
@@ -26,8 +27,14 @@ export function registerBuiltInEnrichers(): void {
   // enquanto `esports_enricher_liquipedia_enabled` for false ou faltar
   // credencial.
   registerEnricher(liquipediaEnricher);
+  // Mesma razão do de cima para registrar SEMPRE: quem decide se ele faz alguma
+  // coisa é o próprio `fetch`, que devolve vazio sem tocar a rede enquanto
+  // `esports_enricher_oddspapi_enabled` for false ou faltar `ODDSPAPI_API_KEY`.
+  // Ele só atende as verticais cujo `sportId` foi medido — hoje, só cs2.
+  registerEnricher(oddspapiEnricher);
 }
 
 export { marketHistoryEnricher } from './market-history.js';
 export { polymarketContextEnricher } from './polymarket-context.js';
 export { liquipediaEnricher } from './liquipedia.js';
+export { oddspapiEnricher } from './oddspapi.js';

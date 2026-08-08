@@ -8,10 +8,10 @@ const DEFAULTS: SystemConfig = {
   id: 1,
   cash_usd: 0,
   max_stake_pct: 0.03,
-  cross_market_max_stake_pct: 0.10,
+  cross_market_max_stake_pct: 0.1,
   kelly_fraction: 0.25,
   min_confidence_alert: 0.75,
-  drawdown_stop_pct: 0.20,
+  drawdown_stop_pct: 0.2,
   telegram_chat_id: null,
   ops_telegram_chat_id: null,
   daily_report_hour: 9,
@@ -94,6 +94,20 @@ const DEFAULTS: SystemConfig = {
   // e no máximo 60 requisições/hora — e o acesso é negado a projeto de aposta,
   // o que é decisão a tomar antes de a primeira requisição sair, não depois.
   esports_enricher_liquipedia_enabled: false,
+  // Espelham os defaults da migration do enricher da OddsPapi. DESLIGA no
+  // fallback pelo mesmo motivo da Liquipedia e do analista: fonte externa, e o
+  // tier gratuito é cortesia — 250 requisições/mês sem contador observável, com
+  // acesso que pode ser cortado sem aviso. Um componente que se liga sozinho
+  // porque a coluna ainda não existe queimaria orçamento de terceiro.
+  esports_enricher_oddspapi_enabled: false,
+  // bet365 fica DE FORA por medição, não por preferência: devolveu zero
+  // movimento apesar de entitulada. São três vagas por chamada (teto da API), e
+  // gastar uma delas com uma casa que mede zero é perder um terço da amostra.
+  oddspapi_bookmakers: ['pinnacle', 'stake', 'ggbet'],
+  // Moneyline na taxonomia deles. Medido: 7 mercados na Pinnacle, 4 na Stake, e
+  // o 171 é o mais denso (688+689 entradas) — misturar todos compararia handicap
+  // de mapa com o moneyline do Polymarket, sem sintoma.
+  oddspapi_market_id: '171',
   // Espelham os defaults da migration 20260807033753. O fallback aqui DESLIGA,
   // ao contrário do resolver e do enricher, e pelo mesmo motivo que a migration
   // nasce com `false`: este é o único componente que gasta dinheiro por ciclo.
@@ -125,11 +139,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     return cachedConfig;
   }
 
-  const { data, error } = await supabase
-    .from('system_config')
-    .select('*')
-    .eq('id', 1)
-    .single();
+  const { data, error } = await supabase.from('system_config').select('*').eq('id', 1).single();
 
   if (error || !data) {
     await logEvent({
