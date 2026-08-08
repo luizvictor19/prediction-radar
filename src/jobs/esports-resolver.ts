@@ -64,7 +64,7 @@ const RECOMPUTE_PAUSE_MS = 250;
 const cycleLock = new CycleLock(45 * 60_000);
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -126,7 +126,13 @@ async function runGuarded(
  * deploy do código e o apply da migration (H4), não incidente.
  */
 export function cycleStatus(stats: ResolveStats): 'success' | 'partial' {
-  return stats.errors.length > 0 || stats.writeFailedRows > 0 || stats.tablesMissing
+  return stats.errors.length > 0 ||
+    stats.writeFailedRows > 0 ||
+    stats.tablesMissing ||
+    // Prefixo coletado e não coberto é estado degradado, não normal: há mercado
+    // entrando em `events` que ninguém vai linkar. Chamar isso de `success` foi
+    // o que deixou os órfãos de `lol-` crescerem de 23 para 81 sem um aviso.
+    stats.uncoveredPrefixes.length > 0
     ? 'partial'
     : 'success';
 }
@@ -163,6 +169,10 @@ function metadataOf(stats: ResolveStats): Record<string, unknown> {
     // Estado C: papel sem regra. Cresce ⇒ família nova no mapa.
     role_unknown: all.role.unknown,
     reached_end: stats.reachedEnd,
+    reswept_from_start: stats.resweptFromStart,
+    // Não vazio = a descoberta coleta um prefixo que nenhuma vertical habilitada
+    // resolve. Órfão por configuração: o varredor não erra, ele nem enxerga.
+    uncovered_prefixes: stats.uncoveredPrefixes,
     tables_missing: stats.tablesMissing,
     errors: stats.errors.slice(0, 5),
   };
@@ -202,24 +212,46 @@ export async function runEsportsResolver(): Promise<void> {
     // Uma linha a cada 10 min dizendo "nada a fazer" seriam 144/dia de nada, e
     // este projeto já teve `system_logs` em 2,7M linhas. O batimento carimba
     // saúde; o log só entra quando há o que contar.
-    if (all.resolved > 0 || stats.errors.length > 0 || stats.writeFailedRows > 0) {
+    const uncovered = stats.uncoveredPrefixes;
+
+    // Prefixo não coberto entra no log só na passada do reciclo (uma por hora),
+    // e não a cada tick: 144 linhas/dia repetindo a mesma frase é o padrão que
+    // levou `system_logs` a 2,7M linhas. O batimento carrega o aviso a cada
+    // ciclo, e batimento é upsert — não cresce.
+    const worthLogging =
+      all.resolved > 0 ||
+      stats.errors.length > 0 ||
+      stats.writeFailedRows > 0 ||
+      (uncovered.length > 0 && stats.resweptFromStart);
+
+    if (worthLogging) {
       await logEvent({
         component: COMPONENT,
         status: cycleStatus(stats),
-        message: `Resolver: ${summary(stats)}`,
+        message:
+          `Resolver: ${summary(stats)}` +
+          (uncovered.length > 0
+            ? `. ATENÇÃO: a descoberta coleta ${uncovered.join(', ')} e nenhuma vertical ` +
+              `habilitada cobre esses prefixos — esses mercados nascem órfãos. ` +
+              `Habilitar a vertical em \`verticals\` ou tirar o prefixo de ` +
+              `\`discovery_slug_prefixes\`; as duas são decisão do dono.`
+            : ''),
         metadata: metadataOf(stats),
       });
     }
 
     console.log(`[${COMPONENT}] ${summary(stats)}`);
 
-    await beat(
-      COMPONENT,
-      cycleStatus(stats),
-      all.resolved > 0
-        ? `${all.resolved} resolvidos, ${all.needsReview} para revisão`
-        : `nada novo, ${stats.scanned} lidos`,
-    );
+    // "nada novo" só quando é verdade. Com prefixo descoberto e não coberto, não
+    // é: existe pendência, ela só não está no universo que o varredor consulta.
+    const detail =
+      uncovered.length > 0
+        ? `${uncovered.join(', ')} coletado(s) e sem vertical habilitada — órfãos acumulando`
+        : all.resolved > 0
+          ? `${all.resolved} resolvidos, ${all.needsReview} para revisão`
+          : `nada novo, ${stats.scanned} lidos`;
+
+    await beat(COMPONENT, cycleStatus(stats), detail);
   });
 }
 
@@ -305,6 +337,8 @@ function mergeInto(total: ResolveStats, page: ResolveStats): void {
   total.writeFailedRows += page.writeFailedRows;
   total.learnedRoleForms = page.learnedRoleForms;
   total.reachedEnd = page.reachedEnd;
+  total.uncoveredPrefixes = page.uncoveredPrefixes;
+  total.resweptFromStart = total.resweptFromStart || page.resweptFromStart;
 
   for (const path of ['eventTeams', 'slugParse'] as const) {
     const a = total.byPath[path];

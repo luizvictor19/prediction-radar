@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { batchUpsert, dedupeByKey } from '../lib/batch-write.js';
-import { slugPrefixFilter } from '../lib/slug-prefixes.js';
+import { slugPrefixFilter, safeSlugPrefixes } from '../lib/slug-prefixes.js';
+import { getSystemConfig } from '../lib/config.js';
 import {
   inspectMarketSlug,
   DEFAULT_VERTICAL_PREFIXES,
@@ -288,6 +289,16 @@ export interface ResolveStats {
   /** Migration das tabelas de entidade ainda não aplicada: nada foi escrito. */
   tablesMissing: boolean;
   reachedEnd: boolean;
+  /**
+   * Prefixos coletados pela descoberta que nenhuma vertical habilitada cobre.
+   *
+   * Não vazio = mercado entrando em `events` sem ninguém para linkar. É órfão
+   * por configuração, não por falha do varredor, e nenhum outro contador daqui
+   * o enxerga.
+   */
+  uncoveredPrefixes: string[];
+  /** Esta passada recomeçou do zero pelo reciclo periódico do cursor. */
+  resweptFromStart: boolean;
   samples: ResolveSamples;
 }
 
@@ -322,6 +333,8 @@ export function emptyStats(): ResolveStats {
     errors: [],
     tablesMissing: false,
     reachedEnd: false,
+    uncoveredPrefixes: [],
+    resweptFromStart: false,
     samples: { unknownSuffixFamilies: {}, unmatched: [] },
   };
 }
@@ -428,7 +441,7 @@ function normalizeLabel(value: unknown): string {
  * `'Cognitive'`. Token exato é o meio-termo.
  */
 function hasToken(value: string, token: string): boolean {
-  return value.split(/[^a-z0-9]+/).some(part => part.length > 0 && part === token);
+  return value.split(/[^a-z0-9]+/).some((part) => part.length > 0 && part === token);
 }
 
 type LabelHit = { kind: 'one'; index: number } | { kind: 'none' } | { kind: 'ambiguous' };
@@ -438,13 +451,15 @@ function indexOfLabel(
   labels: readonly string[],
   mode: 'exact' | 'token',
 ): LabelHit {
-  const wanted = labels.map(normalizeLabel).filter(l => l.length > 0);
+  const wanted = labels.map(normalizeLabel).filter((l) => l.length > 0);
   if (wanted.length === 0) return { kind: 'none' };
 
   const hits: number[] = [];
   for (let i = 0; i < values.length; i++) {
     const value = values[i] ?? '';
-    const hit = wanted.some(label => (mode === 'exact' ? value === label : hasToken(value, label)));
+    const hit = wanted.some((label) =>
+      mode === 'exact' ? value === label : hasToken(value, label),
+    );
     if (hit) hits.push(i);
   }
 
@@ -484,7 +499,7 @@ export function outcomeSideIndex(
   const values = rawValues.map(normalizeLabel);
   if (values.length === 0) return { kind: 'unmatched', index: null };
 
-  if (values.every(v => NON_TEAM_OUTCOMES.has(v))) return { kind: 'no_team_side', index: null };
+  if (values.every((v) => NON_TEAM_OUTCOMES.has(v))) return { kind: 'no_team_side', index: null };
 
   const a = indexOfLabel(values, labelsA, mode);
   if (a.kind === 'one') return { kind: 'matched', index: a.index };
@@ -535,8 +550,8 @@ function orderTeams(
 ): { a: MetadataTeam; b: MetadataTeam; byField: boolean } | null {
   if (teams.length < 2) return null;
 
-  const home = teams.find(t => t.ordering === 'home');
-  const away = teams.find(t => t.ordering === 'away');
+  const home = teams.find((t) => t.ordering === 'home');
+  const away = teams.find((t) => t.ordering === 'away');
   if (home && away && home !== away) return { a: home, b: away, byField: true };
 
   const [first, second] = teams as [MetadataTeam, MetadataTeam];
@@ -595,7 +610,7 @@ export function planEvent(
 
   // `enabled` é política, e é aqui que ela vale — o parser continua parseando
   // tudo, porque o validador precisa enxergar as verticais desligadas.
-  const vertical = verticals.find(v => v.verticalId === verticalId);
+  const vertical = verticals.find((v) => v.verticalId === verticalId);
   if (vertical && !vertical.enabled) return { ok: false, reason: 'vertical_disabled' };
 
   const meta = row.event_metadata ?? {};
@@ -861,7 +876,7 @@ export async function loadVerticals(): Promise<VerticalConfig[] | null> {
 
   if (error) return null;
 
-  return (data ?? []).map(row => ({
+  return (data ?? []).map((row) => ({
     verticalId: row['id'] as string,
     slugPrefix: row['slug_prefix'] as string,
     enabled: row['enabled'] === true,
@@ -1025,7 +1040,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
   if (plans.length === 0) return;
 
   // --- times --------------------------------------------------------------
-  const allTeams = plans.flatMap(p => p.teams);
+  const allTeams = plans.flatMap((p) => p.teams);
   const teamKey = (t: PlannedTeam): string => `${t.verticalId}|${t.polymarketCode}`;
   const teams = dedupeByKey(
     [...allTeams].sort((x, y) => Number(x.authoritative) - Number(y.authoritative)),
@@ -1045,8 +1060,8 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
     needs_review: false,
   });
 
-  const authTeams = teams.filter(t => t.authoritative);
-  const slugTeams = teams.filter(t => !t.authoritative);
+  const authTeams = teams.filter((t) => t.authoritative);
+  const slugTeams = teams.filter((t) => !t.authoritative);
 
   if (authTeams.length > 0) {
     const result = await batchUpsert('esports_teams', authTeams.map(teamRow), {
@@ -1069,21 +1084,21 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
     'esports_teams',
     'id, vertical_id, polymarket_code',
     'polymarket_code',
-    [...new Set(teams.map(t => t.polymarketCode))],
+    [...new Set(teams.map((t) => t.polymarketCode))],
     stats.errors,
   );
 
   const teamIdByKey = new Map(
-    teamRows.map(r => [`${r.vertical_id}|${r.polymarket_code}`, r.id] as const),
+    teamRows.map((r) => [`${r.vertical_id}|${r.polymarket_code}`, r.id] as const),
   );
 
   // --- ligas --------------------------------------------------------------
   const leagues = dedupeByKey(
     plans
-      .map(p => p.match)
+      .map((p) => p.match)
       .filter((m): m is PlannedMatch & { league: string } => m.league !== null)
-      .map(m => ({ verticalId: m.verticalId, name: m.league })),
-    l => `${l.verticalId}|${l.name}`,
+      .map((m) => ({ verticalId: m.verticalId, name: m.league })),
+    (l) => `${l.verticalId}|${l.name}`,
   );
 
   const leagueIdByKey = new Map<string, string>();
@@ -1091,16 +1106,21 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
   if (leagues.length > 0) {
     const result = await batchUpsert(
       'esports_leagues',
-      leagues.map(l => ({ vertical_id: l.verticalId, name: l.name })),
+      leagues.map((l) => ({ vertical_id: l.verticalId, name: l.name })),
       { onConflict: 'vertical_id,name', ignoreDuplicates: true, label: COMPONENT },
     );
-    record(stats, stats.written.leagues, leagues.map(l => `${l.verticalId}|${l.name}`), result);
+    record(
+      stats,
+      stats.written.leagues,
+      leagues.map((l) => `${l.verticalId}|${l.name}`),
+      result,
+    );
 
     const rows = await readBack<{ id: string; vertical_id: string; name: string }>(
       'esports_leagues',
       'id, vertical_id, name',
       'name',
-      leagues.map(l => l.name),
+      leagues.map((l) => l.name),
       stats.errors,
     );
     for (const row of rows) leagueIdByKey.set(`${row.vertical_id}|${row.name}`, row.id);
@@ -1112,9 +1132,9 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
   // e mandá-las como null apagaria a revisão de quem já revisou.
   const tournaments = dedupeByKey(
     plans
-      .map(p => p.match)
-      .filter(m => m.league !== null)
-      .map(m => ({
+      .map((p) => p.match)
+      .filter((m) => m.league !== null)
+      .map((m) => ({
         verticalId: m.verticalId,
         leagueId: leagueIdByKey.get(`${m.verticalId}|${m.league}`) ?? null,
         serie: m.serie,
@@ -1122,7 +1142,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       .filter(
         (t): t is { verticalId: string; leagueId: string; serie: string } => t.leagueId !== null,
       ),
-    t => `${t.leagueId}|${t.serie}`,
+    (t) => `${t.leagueId}|${t.serie}`,
   );
 
   const tournamentIdByKey = new Map<string, string>();
@@ -1130,13 +1150,17 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
   if (tournaments.length > 0) {
     const result = await batchUpsert(
       'esports_tournaments',
-      tournaments.map(t => ({ vertical_id: t.verticalId, league_id: t.leagueId, serie: t.serie })),
+      tournaments.map((t) => ({
+        vertical_id: t.verticalId,
+        league_id: t.leagueId,
+        serie: t.serie,
+      })),
       { onConflict: 'vertical_id,league_id,serie', ignoreDuplicates: true, label: COMPONENT },
     );
     record(
       stats,
       stats.written.tournaments,
-      tournaments.map(t => `${t.leagueId}|${t.serie}`),
+      tournaments.map((t) => `${t.leagueId}|${t.serie}`),
       result,
     );
 
@@ -1144,7 +1168,7 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       'esports_tournaments',
       'id, league_id, serie',
       'league_id',
-      [...new Set(tournaments.map(t => t.leagueId))],
+      [...new Set(tournaments.map((t) => t.leagueId))],
       stats.errors,
     );
     for (const row of rows) tournamentIdByKey.set(`${row.league_id}|${row.serie}`, row.id);
@@ -1152,8 +1176,10 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
 
   // --- partidas -----------------------------------------------------------
   const matches = dedupeByKey(
-    [...plans.map(p => p.match)].sort((x, y) => Number(x.authoritative) - Number(y.authoritative)),
-    m => m.matchSlug,
+    [...plans.map((p) => p.match)].sort(
+      (x, y) => Number(x.authoritative) - Number(y.authoritative),
+    ),
+    (m) => m.matchSlug,
   );
 
   const matchRow = (m: PlannedMatch): Record<string, unknown> => {
@@ -1176,15 +1202,20 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
     };
   };
 
-  const authMatches = matches.filter(m => m.authoritative);
-  const slugMatches = matches.filter(m => !m.authoritative);
+  const authMatches = matches.filter((m) => m.authoritative);
+  const slugMatches = matches.filter((m) => !m.authoritative);
 
   if (authMatches.length > 0) {
     const result = await batchUpsert('esports_matches', authMatches.map(matchRow), {
       onConflict: 'match_slug',
       label: COMPONENT,
     });
-    record(stats, stats.written.matches, authMatches.map(m => m.matchSlug), result);
+    record(
+      stats,
+      stats.written.matches,
+      authMatches.map((m) => m.matchSlug),
+      result,
+    );
   }
 
   if (slugMatches.length > 0) {
@@ -1193,22 +1224,27 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       ignoreDuplicates: true,
       label: COMPONENT,
     });
-    record(stats, stats.written.matches, slugMatches.map(m => m.matchSlug), result);
+    record(
+      stats,
+      stats.written.matches,
+      slugMatches.map((m) => m.matchSlug),
+      result,
+    );
   }
 
   const matchRows = await readBack<{ id: string; match_slug: string }>(
     'esports_matches',
     'id, match_slug',
     'match_slug',
-    matches.map(m => m.matchSlug),
+    matches.map((m) => m.matchSlug),
     stats.errors,
   );
-  const matchIdBySlug = new Map(matchRows.map(r => [r.match_slug, r.id] as const));
+  const matchIdBySlug = new Map(matchRows.map((r) => [r.match_slug, r.id] as const));
 
   // --- links --------------------------------------------------------------
   const linkRows = plans
-    .map(p => p.link)
-    .map(link => {
+    .map((p) => p.link)
+    .map((link) => {
       const matchId = matchIdBySlug.get(link.matchSlug);
       if (matchId === undefined) return null;
 
@@ -1235,7 +1271,12 @@ async function persistPlans(plans: EventPlan[], stats: ResolveStats): Promise<vo
       onConflict: 'event_id',
       label: COMPONENT,
     });
-    record(stats, stats.written.links, linkRows.map(r => r.event_id), result);
+    record(
+      stats,
+      stats.written.links,
+      linkRows.map((r) => r.event_id),
+      result,
+    );
   }
 }
 
@@ -1287,7 +1328,7 @@ function collectSample(row: ResolvableEvent, plan: EventPlan, stats: ResolveStat
     stats.samples.unmatched.push({
       slug: row.slug ?? '(sem slug)',
       path: plan.link.resolutionMethod,
-      outcomes: values.map(v => (typeof v === 'string' ? v : JSON.stringify(v))),
+      outcomes: values.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))),
       labelA: a.displayName ?? a.polymarketCode,
       labelB: b.displayName ?? b.polymarketCode,
     });
@@ -1316,12 +1357,13 @@ export async function resolveEventToMatch(eventId: string): Promise<void> {
 
   const row = data as unknown as ResolvableEvent;
   const parsed = row.slug === null ? null : inspectMarketSlug(row.slug, verticals);
-  const codes =
-    parsed?.ok === true ? [parsed.parsed.teamCodeA, parsed.parsed.teamCodeB] : [];
+  const codes = parsed?.ok === true ? [parsed.parsed.teamCodeA, parsed.parsed.teamCodeB] : [];
 
   const ctx: PlanContext = {
     teamNames: await loadTeamNames(codes),
-    learnedRoles: await loadLearnedRoles(verticals.filter(v => v.enabled).map(v => v.slugPrefix)),
+    learnedRoles: await loadLearnedRoles(
+      verticals.filter((v) => v.enabled).map((v) => v.slugPrefix),
+    ),
   };
 
   const result = planEvent(row, verticals, ctx);
@@ -1398,8 +1440,35 @@ export interface ResolveOptions {
  */
 let cursor = 0;
 
+/**
+ * Passadas consecutivas que chegaram ao fim sem nada novo.
+ *
+ * O contador do reciclo abaixo. Zera assim que uma passada NÃO chega ao fim —
+ * aí o cursor está no meio da fila e recomeçar do zero só desperdiçaria leitura.
+ */
+let cyclesAtEnd = 0;
+
+/**
+ * De quantas em quantas passadas paradas no fim o cursor volta ao zero.
+ *
+ * 6 com o tick de 10 min = uma revarredura completa por hora.
+ *
+ * O número sai de um par de custos medidos. Reciclar TODA passada custaria as
+ * ~324 requisições da varredura completa a cada 10 min, ~47k/dia — a ordem de
+ * grandeza que já derrubou este projeto uma vez (spec 000, "causa raiz dos
+ * timeouts": insert linha-a-linha, dezenas de milhões de round-trips). Nunca
+ * reciclar é o que está no ar hoje, e deixa buraco permanente. Uma vez por hora
+ * são ~7,8k/dia e limita QUALQUER pulo a no máximo 60 min de atraso.
+ *
+ * Isto é rede de segurança, não o mecanismo principal: o caminho incremental
+ * continua sendo o cursor parado no fim. O reciclo só garante que um pulo não
+ * vire perda permanente.
+ */
+const RESWEEP_EVERY_CYCLES = 6;
+
 export function resetResolverCursor(): void {
   cursor = 0;
+  cyclesAtEnd = 0;
 }
 
 export async function resolveUnlinkedEvents(
@@ -1415,7 +1484,7 @@ export async function resolveUnlinkedEvents(
   }
 
   const verticals = (await loadVerticals()) ?? enabledDefaults();
-  const prefixes = verticals.filter(v => v.enabled).map(v => v.slugPrefix);
+  const prefixes = verticals.filter((v) => v.enabled).map((v) => v.slugPrefix);
 
   if (prefixes.length === 0) {
     stats.reachedEnd = true;
@@ -1424,6 +1493,27 @@ export async function resolveUnlinkedEvents(
 
   const learnedRoles = await loadLearnedRoles(prefixes);
   stats.learnedRoleForms = Object.keys(learnedRoles).length;
+
+  // Prefixo que a descoberta coleta e nenhuma vertical habilitada cobre. É
+  // comparação de config contra config, sem custo de banco — e é exatamente o
+  // buraco que produziu os órfãos de `lol-`: `discovery_slug_prefixes` traz
+  // 'lol-' desde sempre, `verticals.lol.enabled` nasceu false, e a consulta
+  // abaixo filtra por vertical HABILITADA. Os mercados entram em `events` e o
+  // varredor nunca os enxerga.
+  //
+  // `stats.verticalDisabled` não pegava isso: ele só conta rejeição em
+  // `planEvent`, e o filtro da query já tinha removido a linha antes. O contador
+  // que existia para denunciar este caso é inalcançável no caminho incremental.
+  stats.uncoveredPrefixes = await uncoveredDiscoveryPrefixes(verticals);
+
+  // Reciclo do cursor. Ver `RESWEEP_EVERY_CYCLES`.
+  //
+  // O recompute tem o seu próprio `resetResolverCursor()` e não passa por aqui.
+  if (opts.recompute !== true && cyclesAtEnd >= RESWEEP_EVERY_CYCLES) {
+    cursor = 0;
+    cyclesAtEnd = 0;
+    stats.resweptFromStart = true;
+  }
 
   const maxScan = opts.maxScan ?? DEFAULT_MAX_SCAN;
   let planned = 0;
@@ -1475,12 +1565,12 @@ export async function resolveUnlinkedEvents(
             'market_match_links',
             'event_id',
             'event_id',
-            rows.map(r => r.id),
+            rows.map((r) => r.id),
             stats.errors,
           );
-    const linkedIds = new Set(linked.map(l => l.event_id));
+    const linkedIds = new Set(linked.map((l) => l.event_id));
 
-    const pending = rows.filter(row => {
+    const pending = rows.filter((row) => {
       if (!linkedIds.has(row.id)) return true;
       stats.alreadyLinked++;
       return false;
@@ -1538,11 +1628,37 @@ export async function resolveUnlinkedEvents(
     }
   }
 
+  // Só o caminho incremental alimenta o contador: o recompute chega ao fim por
+  // construção, e deixá-lo contar faria a próxima passada incremental recomeçar
+  // do zero sem motivo.
+  if (opts.recompute !== true) {
+    cyclesAtEnd = stats.reachedEnd ? cyclesAtEnd + 1 : 0;
+  }
+
   return stats;
+}
+
+/**
+ * Prefixos que a descoberta coleta e nenhuma vertical habilitada resolve.
+ *
+ * Devolve lista vazia quando os dois lados concordam. Qualquer elemento aqui
+ * significa mercado entrando em `events` sem ninguém para linká-lo — órfão
+ * garantido, e crescendo enquanto a descoberta rodar.
+ *
+ * Não decide nada: as duas saídas (habilitar a vertical, ou parar de coletar o
+ * prefixo) são escolha do dono. O que o resolver deve fazer é parar de chamar
+ * isso de "nada a fazer".
+ */
+async function uncoveredDiscoveryPrefixes(verticals: readonly VerticalConfig[]): Promise<string[]> {
+  const config = await getSystemConfig();
+  const discovered = safeSlugPrefixes(config.discovery_slug_prefixes ?? [], COMPONENT);
+  const covered = new Set(verticals.filter((v) => v.enabled).map((v) => v.slugPrefix));
+
+  return discovered.filter((prefix) => !covered.has(prefix));
 }
 
 function enabledDefaults(): VerticalConfig[] {
   // Só quando a tabela `verticals` não responde. `cs2` é a única habilitada no
   // seed da migration, e habilitar as outras é decisão do dono (H7).
-  return DEFAULT_VERTICAL_PREFIXES.map(v => ({ ...v, enabled: v.verticalId === 'cs2' }));
+  return DEFAULT_VERTICAL_PREFIXES.map((v) => ({ ...v, enabled: v.verticalId === 'cs2' }));
 }
