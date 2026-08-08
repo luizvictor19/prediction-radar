@@ -198,3 +198,28 @@ test('describeSkips põe o motivo dominante na frente', () => {
   );
   assert.equal(describeSkips({}), '');
 });
+
+test('ciclo cortado pelo relógio é partial, não success', () => {
+  // Ciclo INCOMPLETO: partidas elegíveis ficaram sem tentativa. Passar por
+  // `success` foi o que deixou o job parar de completar sem nada dizer.
+  const noPrazo = emptyEnrichStats();
+  noPrazo.fragments = 120;
+  assert.equal(cycleStatus(noPrazo), 'success');
+
+  const cortado = emptyEnrichStats();
+  cortado.fragments = 120;
+  cortado.deadlineHit = true;
+  cortado.unattempted = 12;
+  assert.equal(cycleStatus(cortado), 'partial');
+});
+
+test('recusa de enricher NÃO rebaixa o ciclo', () => {
+  // Enricher sem o que dizer sobre uma partida é o caso normal desta camada.
+  // Rebaixar por isso seria um `partial` permanente — o ruído fixo que faz o
+  // degradado de verdade passar despercebido.
+  const stats = emptyEnrichStats();
+  stats.fragments = 80;
+  stats.skips = { oddspapi: { 'sem fixture correspondente na OddsPapi': 37 } };
+
+  assert.equal(cycleStatus(stats), 'success');
+});

@@ -5,6 +5,7 @@ import {
   historicalOdds,
   marketOutcomeOf,
   isExpectedOutage,
+  waitMsFor,
   readConfig,
   describeConfig,
   billableBudget,
@@ -14,7 +15,7 @@ import {
   type OddsEntry,
   type OddsPapiFixture,
 } from '../../lib/oddspapi-api.js';
-import { lastFragmentAsOf, noteEnricherSkip } from '../enricher.js';
+import { lastFragmentAsOf, noteEnricherSkip, remainingMs } from '../enricher.js';
 import type { ContextFragment, Enricher, EnricherContext } from '../enricher.js';
 
 /**
@@ -175,6 +176,36 @@ export const CONSENSUS_MAX_STALE_SECONDS = 3_600;
 
 /** Blocos de `false` a esta distância contam como o mesmo evento entre casas. */
 export const COINCIDENCE_TOLERANCE_MS = 60_000;
+
+/**
+ * Folga exigida além da espera do cooldown para entrar numa chamada.
+ *
+ * A espera é o custo conhecido; isto cobre o resto — a requisição em si, o
+ * parsing de milhares de entradas e a escrita do fragmento. Entrar numa chamada
+ * com o prazo justo produz exatamente o que o orçamento existe para evitar: a
+ * espera cabe, a resposta não, e o ciclo estoura mesmo assim.
+ */
+export const CALL_HEADROOM_MS = 4_000;
+
+/**
+ * Cabe fazer esta chamada no que resta do ciclo?
+ *
+ * Devolve o motivo quando NÃO cabe, para virar recusa nomeada em vez de silêncio
+ * — ou `null` quando cabe. Sem prazo (`deadline` ausente), sempre cabe: é o caso
+ * do backfill, que pode demorar o que precisar.
+ */
+export function callFitsBudget(path: string, remaining: number, now = Date.now()): string | null {
+  if (!Number.isFinite(remaining)) return null;
+
+  const wait = waitMsFor(path, now);
+  const needed = wait + CALL_HEADROOM_MS;
+  if (needed <= remaining) return null;
+
+  return (
+    `orçamento de tempo do ciclo: ${path} exige ${Math.round(needed / 1000)}s ` +
+    `(${Math.round(wait / 1000)}s de cooldown) e restam ${Math.round(remaining / 1000)}s`
+  );
+}
 
 /**
  * O mercado lido, na taxonomia deles.
@@ -1164,6 +1195,7 @@ async function resolveFixture(
   nameA: string,
   nameB: string,
   now: Date,
+  remaining: number,
 ): Promise<FixtureLink | null> {
   const cached = readCachedFixture(row.external_ids, now);
   if (cached.kind === 'fixture') return cached.link;
@@ -1187,6 +1219,16 @@ async function resolveFixture(
   if (!Number.isFinite(scheduled.getTime())) return null;
 
   const { from, to } = discoveryWindow(scheduled);
+
+  // A descoberta é a chamada mais cara em consequência: gasta do orçamento
+  // MENSAL. Entrar nela sem tempo para terminar gastaria a requisição e jogaria
+  // fora a resposta.
+  const noBudget = callFitsBudget('/v4/fixtures', remaining, now.getTime());
+  if (noBudget !== null) {
+    noteEnricherSkip(ODDSPAPI_ID, noBudget);
+    return null;
+  }
+
   const rows = await fixtures({ sportId, from, to });
   const link = matchFixture(rows, nameA, nameB);
 
@@ -1251,7 +1293,7 @@ async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
 
   const { row, nameA, nameB } = loaded;
 
-  const link = await resolveFixture(row, nameA, nameB, ctx.asOf);
+  const link = await resolveFixture(row, nameA, nameB, ctx.asOf, remainingMs(ctx));
   if (link === null) {
     noteEnricherSkip(ODDSPAPI_ID, 'sem fixture correspondente na OddsPapi');
     return [];
@@ -1261,6 +1303,15 @@ async function fetchOddsPapi(ctx: EnricherContext): Promise<ContextFragment[]> {
   if (requested.length === 0) {
     warnOnce(`[${ODDSPAPI_ID}] oddspapi_bookmakers vazio — nada a pedir`);
     noteEnricherSkip(ODDSPAPI_ID, 'oddspapi_bookmakers vazio');
+    return [];
+  }
+
+  // O gargalo medido: 5,5s de cooldown por chamada, uma chamada por partida,
+  // 40 partidas — 220s de espera num ciclo de 240s. Desistir aqui é a diferença
+  // entre esta partida não ter fragmento e o ciclo inteiro não fechar.
+  const noTime = callFitsBudget('/v4/historical-odds', remainingMs(ctx));
+  if (noTime !== null) {
+    noteEnricherSkip(ODDSPAPI_ID, noTime);
     return [];
   }
 

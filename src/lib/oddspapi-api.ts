@@ -243,6 +243,36 @@ const MAX_CACHE_ENTRIES = 200;
 const lastCallAt = new Map<string, number>();
 let lastAnyCallAt = 0;
 
+/**
+ * Quanto esta chamada VAI dormir antes de sair, sem dormir.
+ *
+ * O cooldown é POR PROCESSO e não por chamada, e isso está certo: é o limite da
+ * chave deles, não uma cortesia local. Torná-lo por chamada só faria N chamadas
+ * partirem juntas e levarem 429.
+ *
+ * O erro não era o escopo, era a espera ser INVISÍVEL. `call` dormia 5,5s dentro
+ * de si mesma e cobrava isso de quem chamou sem avisar; com 40 partidas num
+ * ciclo, viravam 220 segundos que ninguém tinha orçado — e o ciclo estourava o
+ * timeout de 4 min sem nenhum componente ter feito nada de errado.
+ *
+ * Com o custo exposto, quem chama decide: cabe no meu orçamento de tempo, ou
+ * desisto desta partida e deixo para o ciclo seguinte?
+ */
+export function waitMsFor(path: string, now = Date.now()): number {
+  const cooldown = COOLDOWN_MS[path] ?? COOLDOWN_DEFAULT_MS;
+
+  const previous = lastCallAt.get(path);
+  const perEndpoint = previous === undefined ? 0 : Math.max(cooldown - (now - previous), 0);
+  const global = Math.max(GLOBAL_COOLDOWN_MS - (now - lastAnyCallAt), 0);
+
+  return Math.max(perEndpoint, global);
+}
+
+/** O custo de uma chamada a este endpoint quando o cooldown já venceu. */
+export function cooldownOf(path: string): number {
+  return COOLDOWN_MS[path] ?? COOLDOWN_DEFAULT_MS;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

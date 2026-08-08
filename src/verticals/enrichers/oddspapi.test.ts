@@ -30,8 +30,11 @@ const {
   safeBookmakers,
   normalize,
   CONSENSUS_MAX_STALE_SECONDS,
+  callFitsBudget,
+  CALL_HEADROOM_MS,
 } = await import('./oddspapi.js');
 const { oddspapiEnricher } = await import('./oddspapi.js');
+const { waitMsFor, cooldownOf, resetOddsPapiState } = await import('../../lib/oddspapi-api.js');
 
 type OddsEntry = Parameters<typeof lineAtAsOf>[0][number];
 
@@ -636,4 +639,42 @@ test('casa que não cota o mercado lido é dita, não sumida', () => {
 
 test('o mercado default é o moneyline medido', () => {
   assert.equal(DEFAULT_MARKET_ID, '171');
+});
+
+// ---------------------------------------------------------------------------
+// Orçamento de tempo — o incidente do ciclo que não fechava
+// ---------------------------------------------------------------------------
+
+test('a chamada é recusada quando não cabe no que resta do ciclo', () => {
+  // O gargalo medido: 5,5s de cooldown por chamada, 40 partidas na janela, 220s
+  // de espera num ciclo de 240s. Sem esta guarda a espera decide o destino do
+  // ciclo inteiro — e leva junto os outros três enrichers, que estão saudáveis.
+  const agora = Date.now();
+
+  // Cooldown já vencido: sobra só a folga da requisição em si.
+  assert.equal(callFitsBudget('/v4/historical-odds', 60_000, agora), null);
+  assert.equal(callFitsBudget('/v4/historical-odds', CALL_HEADROOM_MS, agora), null);
+
+  const recusa = callFitsBudget('/v4/historical-odds', CALL_HEADROOM_MS - 1, agora);
+  assert.ok(recusa !== null);
+  // A recusa é NOMEADA: vira contagem no metadata, não silêncio.
+  assert.match(recusa, /orçamento de tempo do ciclo/);
+  assert.match(recusa, /historical-odds/);
+});
+
+test('sem prazo, nada é recusado por tempo', () => {
+  // Backfill e scripts não têm ciclo para estourar. A mesma função serve aos
+  // dois casos, e o `Infinity` é o que os separa.
+  assert.equal(callFitsBudget('/v4/historical-odds', Infinity), null);
+  assert.equal(callFitsBudget('/v4/fixtures', Infinity), null);
+});
+
+test('a espera do cooldown é consultável sem dormir', () => {
+  // O erro não era o cooldown ser por processo — isso está certo, é o limite da
+  // chave deles. Era a espera ser invisível: `call` dormia 5,5s por dentro e
+  // cobrava de quem chamou sem avisar.
+  resetOddsPapiState();
+  assert.equal(waitMsFor('/v4/historical-odds'), 0, 'sem chamada anterior, não espera');
+  assert.equal(cooldownOf('/v4/historical-odds'), 5_500);
+  assert.equal(cooldownOf('/v4/fixtures'), 2_500);
 });

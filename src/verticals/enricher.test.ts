@@ -16,6 +16,7 @@ const {
   DEFAULT_POINT_IN_TIME_TOLERANCE_MS,
   noteEnricherSkip,
   drainEnricherSkips,
+  remainingMs,
 } = await import('./enricher.js');
 
 type Enricher = Parameters<typeof registerEnricher>[0];
@@ -209,4 +210,18 @@ test('recusa é contada por enricher e por motivo, e drenar zera', () => {
   // Drenar zera: o número publicado é sempre "neste ciclo", nunca um total desde
   // o boot que cresce para sempre e não diz quando parou.
   assert.deepEqual(drainEnricherSkips(), {});
+});
+
+test('remainingMs: sem deadline é Infinity, com deadline é o que falta', () => {
+  // `Infinity` não é detalhe: é o que faz backfill e script rodarem sem prazo,
+  // enquanto o job de 5 min impõe o dele. A mesma função responde aos dois.
+  const now = Date.now();
+  const base = { verticalId: 'cs2', matchId: 'm', asOf: new Date(now) };
+
+  assert.equal(remainingMs(base, now), Infinity);
+  assert.equal(remainingMs({ ...base, deadline: new Date(now + 30_000) }, now), 30_000);
+  // Prazo vencido é negativo, não zero — quem chama distingue "no limite" de
+  // "passou faz tempo".
+  assert.ok(remainingMs({ ...base, deadline: new Date(now - 5_000) }, now) < 0);
+  assert.equal(remainingMs({ ...base, deadline: new Date(NaN) }, now), Infinity);
 });

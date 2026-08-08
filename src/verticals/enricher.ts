@@ -51,6 +51,38 @@ export interface EnricherContext {
    * estado atual devolve, no replay, uma resposta que ninguém tinha naquele T.
    */
   asOf: Date;
+  /**
+   * Até quando este ciclo aceita esperar. Opcional, e quem tem fonte externa
+   * lenta DEVE respeitar.
+   *
+   * Existe por um incidente: o enricher da OddsPapi tem cooldown de 5,5s por
+   * chamada, o ciclo tinha 40 partidas, e 220 segundos de espera derrubaram o
+   * timeout de 4 minutos do job. Nenhum componente falhou — o ciclo simplesmente
+   * não cabia em si mesmo, e o sintoma foi o job inteiro parar de completar,
+   * levando junto os outros três enrichers, que estavam saudáveis.
+   *
+   * O contrato é: chegou perto do prazo, PARE e devolva o que tiver. Uma partida
+   * sem fragmento neste ciclo é barata — ela volta no próximo. Um ciclo que não
+   * fecha não custa uma partida, custa todas, e ainda apaga o batimento.
+   *
+   * Ausente = sem prazo. É o caso do backfill e dos scripts, que podem demorar.
+   */
+  deadline?: Date;
+}
+
+/**
+ * Quanto tempo resta antes do prazo do ciclo. `Infinity` quando não há prazo.
+ *
+ * Fica aqui e não em cada enricher para que a conta — e sobretudo a resposta ao
+ * `deadline` ausente — seja a mesma em todos.
+ */
+export function remainingMs(ctx: EnricherContext, now = Date.now()): number {
+  if (ctx.deadline === undefined) return Infinity;
+
+  const ms = ctx.deadline.getTime();
+  if (!Number.isFinite(ms)) return Infinity;
+
+  return ms - now;
 }
 
 export interface ContextFragment {

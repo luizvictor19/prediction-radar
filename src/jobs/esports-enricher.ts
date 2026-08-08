@@ -56,6 +56,23 @@ const COMPONENT = 'esports_enricher';
 const CYCLE_TIMEOUT_MS = 4 * 60_000;
 
 /**
+ * Prazo que o ciclo se dá para PARAR sozinho, antes do timeout que o mata.
+ *
+ * A diferença entre os dois é o ponto. O timeout é a rede de segurança: ele
+ * dispara de fora, não cancela nada (a `Promise` continua correndo), não grava
+ * batimento e deixa o job indistinguível de parado. O orçamento é o componente
+ * se conhecendo: chegou perto, fecha o que tem, registra e bate o heartbeat.
+ *
+ * Os 30s de folga cobrem uma chamada externa em voo mais a escrita do lote.
+ *
+ * O número existe por um incidente concreto: o enricher da OddsPapi tem cooldown
+ * de 5,5s por chamada e o ciclo tinha 40 partidas — 220s só de espera. Nenhum
+ * componente falhou; o ciclo é que não cabia em si mesmo, e o efeito foi o job
+ * parar de completar e levar junto os outros três enrichers, saudáveis.
+ */
+const CYCLE_BUDGET_MS = CYCLE_TIMEOUT_MS - 30_000;
+
+/**
  * Maior que o timeout, para o tick seguinte não tomar o lock de um ciclo que
  * está apenas demorando.
  */
@@ -102,6 +119,16 @@ export interface EnrichStats {
   truncated: boolean;
   /** Teto de LEITURA batido: a janela traz mais do que este job olha por ciclo. */
   candidateCapHit: boolean;
+  /**
+   * O ciclo parou por tempo, não por ter terminado.
+   *
+   * Distinto de `truncated`, que é o teto de partidas por ciclo — aquele é
+   * decisão de config, este é o relógio. As partidas que sobraram não tiveram a
+   * tentativa marcada e são as primeiras do ciclo seguinte.
+   */
+  deadlineHit: boolean;
+  /** Quantas partidas elegíveis ficaram sem tentativa por causa do prazo. */
+  unattempted: number;
   /** Migration 20260806211531 não aplicada — nada foi gravado. */
   tableMissing: boolean;
   /**
@@ -125,6 +152,8 @@ export function emptyEnrichStats(): EnrichStats {
     byKind: {},
     truncated: false,
     candidateCapHit: false,
+    deadlineHit: false,
+    unattempted: 0,
     tableMissing: false,
     skips: {},
     errors: [],
@@ -194,7 +223,16 @@ export function countFragments(stats: EnrichStats, fragments: readonly ContextFr
 export function cycleStatus(stats: EnrichStats): 'success' | 'partial' {
   // `tableMissing` é `partial` e não `error` pelo mesmo motivo do resolver: é o
   // estado esperado entre o deploy do código e o apply da migration (H4/H5).
-  return stats.errors.length > 0 || stats.tableMissing ? 'partial' : 'success';
+  //
+  // `deadlineHit` entra porque é ciclo INCOMPLETO: partidas elegíveis ficaram
+  // sem tentativa. Um ciclo que não deu conta do trabalho não é `success` — e
+  // este é justamente o caso que estava passando por saudável enquanto o job
+  // parava de completar.
+  //
+  // `skips` NÃO entra: enricher que não tem o que dizer sobre uma partida é o
+  // caso normal desta camada, e rebaixar por isso seria um `partial` permanente
+  // — o ruído fixo que faz o degradado de verdade passar despercebido.
+  return stats.errors.length > 0 || stats.tableMissing || stats.deadlineHit ? 'partial' : 'success';
 }
 
 /** `oddspapi: sem fixture correspondente na OddsPapi x37` — o motivo dominante. */
@@ -380,10 +418,30 @@ async function runCycle(): Promise<void> {
   stats.skippedRecent = skippedRecent;
   stats.truncated = truncated;
 
-  for (const candidate of selected) {
+  // O prazo é contado do INÍCIO REAL do laço, não do início do ciclo: as leituras
+  // acima (config, sonda de tabela, verticais, candidatas) já consumiram parte do
+  // relógio, e orçar sobre o que sobrou é o que impede o laço de herdar um atraso
+  // que não é dele.
+  const deadline = new Date(Date.now() + CYCLE_BUDGET_MS);
+
+  for (const [index, candidate] of selected.entries()) {
+    // Parar ANTES de começar a partida, não no meio dela. Uma partida começada
+    // sem tempo produz fragmento pela metade e ainda estoura o prazo.
+    if (Date.now() >= deadline.getTime()) {
+      stats.deadlineHit = true;
+      stats.unattempted = selected.length - index;
+      console.warn(
+        `[${COMPONENT}] prazo do ciclo atingido — ${stats.unattempted} partida(s) ficam para o próximo`,
+      );
+      break;
+    }
+
     // Marca a TENTATIVA, e antes de tentar. Uma partida cujo enricher explode não
     // pode ser retentada a cada 5 minutos — o erro é logado por `runEnrichers`, e
     // repetir a falha em ciclo só a esconderia dentro do próprio ruído.
+    //
+    // As que ficaram de fora pelo prazo NÃO são marcadas, de propósito: elas não
+    // foram tentadas, e são as primeiras elegíveis do ciclo seguinte.
     lastAttemptAt.set(candidate.matchId, now.getTime());
 
     try {
@@ -394,6 +452,9 @@ async function runCycle(): Promise<void> {
         // série. Replay de eval não passa por aqui — ele lê `context_fragments`
         // filtrando por `observed_at`, que é o que este job está gravando.
         asOf: now,
+        // O prazo que o enricher de fonte externa deve respeitar. Sem ele, um
+        // cooldown de 5,5s vezes 40 partidas decide o destino do ciclo inteiro.
+        deadline,
       });
 
       stats.enriched++;
@@ -419,12 +480,21 @@ async function runCycle(): Promise<void> {
   // no ar sem uma linha dizendo por quê.
   const hasSkips = Object.keys(stats.skips).length > 0;
 
-  if (stats.fragments > 0 || stats.errors.length > 0 || stats.truncated || hasSkips) {
+  if (
+    stats.fragments > 0 ||
+    stats.errors.length > 0 ||
+    stats.truncated ||
+    stats.deadlineHit ||
+    hasSkips
+  ) {
     await logEvent({
       component: COMPONENT,
       status: cycleStatus(stats),
       message:
         `Enricher: ${summary(stats)}` +
+        (stats.deadlineHit
+          ? `. PRAZO: ciclo parou por tempo com ${stats.unattempted} partida(s) sem tentar`
+          : '') +
         (hasSkips ? `. Sem produzir — ${describeSkips(stats.skips)}` : ''),
       metadata: {
         candidates: stats.candidates,
@@ -441,6 +511,11 @@ async function runCycle(): Promise<void> {
         // A janela traz mais partidas do que o job lê por ciclo — sinal de
         // janela mal dimensionada, não de carga normal.
         candidate_cap_hit: stats.candidateCapHit,
+        // O relógio cortou o ciclo. Se aparecer todo ciclo, a janela ou a
+        // cadência estão maiores do que o orçamento de tempo comporta.
+        deadline_hit: stats.deadlineHit,
+        unattempted: stats.unattempted,
+        cycle_budget_ms: CYCLE_BUDGET_MS,
         window: { from, to },
         errors: stats.errors.slice(0, 5),
       },
@@ -455,8 +530,11 @@ async function runCycle(): Promise<void> {
     COMPONENT,
     cycleStatus(stats),
     stats.fragments > 0
-      ? `${stats.fragments} fragmentos em ${stats.enriched} partidas`
-      : `nada a gravar, ${stats.candidates} na janela`,
+      ? `${stats.fragments} fragmentos em ${stats.enriched} partidas` +
+          (stats.deadlineHit ? `, ${stats.unattempted} sem tentar (prazo)` : '')
+      : stats.deadlineHit
+        ? `prazo estourado, ${stats.unattempted} de ${stats.candidates} sem tentar`
+        : `nada a gravar, ${stats.candidates} na janela`,
   );
 }
 
@@ -495,11 +573,36 @@ export async function runEsportsEnricher(): Promise<void> {
   try {
     await Promise.race([cyclePromise, timeoutPromise]);
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+
     await logEvent({
       component: COMPONENT,
       status: 'error',
-      message: `Ciclo falhou: ${err instanceof Error ? err.message : String(err)}`,
-      metadata: { error: String(err) },
+      message: `Ciclo falhou: ${message}`,
+      metadata: {
+        error: String(err),
+        // O timeout NÃO cancela `cyclePromise` — não há como cancelar uma
+        // Promise em voo. O ciclo continua rodando, segurando o lock e podendo
+        // gravar depois desta linha. Registrar isso é o que evita a leitura
+        // errada de que nada aconteceu a partir daqui.
+        cycle_still_running: true,
+        cycle_timeout_ms: CYCLE_TIMEOUT_MS,
+        cycle_budget_ms: CYCLE_BUDGET_MS,
+      },
     });
+
+    // O batimento é a diferença entre "travado" e "sem trabalho".
+    //
+    // Sem esta linha, o timeout deixava o heartbeat parado no instante do último
+    // ciclo bem-sucedido — exatamente o mesmo estado de um componente ocioso. Foi
+    // assim que o job passou 11 minutos parado num cron de 5 sem nada dizer o
+    // que estava acontecendo. O estouro do timeout é a informação mais
+    // importante que este componente pode emitir, e era a única que ele não
+    // emitia.
+    await beat(
+      COMPONENT,
+      'partial',
+      `ciclo estourou ${Math.round(CYCLE_TIMEOUT_MS / 1000)}s: ${message}`,
+    );
   }
 }
