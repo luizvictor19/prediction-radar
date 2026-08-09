@@ -331,6 +331,57 @@ retorno. Enricher que domina pode estar carregando a tese sozinho.
 
 Hoje: `polymarket-context` 58,5% (confiança 0,4), `oddspapi` 5,4%.
 
+**A query acima soma tudo desde sempre.** Com mais de uma versão de prompt no ar,
+ela mistura os dois comportamentos numa média que não é nenhum dos dois — e a
+mistura piora conforme a versão nova acumula. Quebre por versão:
+
+```sql
+select a.prompt_version,
+       c.fragment_enricher_id,
+       count(*) as afirmacoes,
+       count(distinct c.analysis_id) as analises,
+       round(100.0 * count(*) / sum(count(*)) over (partition by a.prompt_version), 1) as pct
+from analysis_claims c
+join esports_analyses a on a.id = c.analysis_id
+group by 1, 2
+order by 1 desc, 3 desc;
+```
+
+O `partition by a.prompt_version` é o detalhe que importa: sem ele o percentual
+sai sobre o total geral, e a versão nova aparece com fatia minúscula só por ser
+nova. A coluna `analises` está ali para você não ler distribuição de três
+análises como se fosse tendência.
+
+**Nomes das colunas, que não são iguais nas duas tabelas:**
+
+| onde | coluna | o que é |
+|---|---|---|
+| `esports_analyses` | `prompt_version` | a versão que rodou naquela análise |
+| `system_config` | `analyst_prompt_version` | a versão que roda agora |
+
+`analysis_claims` não tem nenhuma das duas — daí o `join` com `esports_analyses`.
+
+### Citação é o sinal precoce; Brier é o tardio
+
+Depois de trocar `analyst_prompt_version`, a distribuição de citações **muda em
+horas** — bastam alguns ciclos de análise para a nova versão dizer de onde ela
+está tirando as afirmações. O Brier **leva dias**: cada ponto precisa de uma
+partida que comece, termine e resolva, e n=20 é o piso para a diferença sair do
+ruído.
+
+Use isso na ordem certa:
+
+- **Citação mudou** → a versão nova mudou o comportamento. Ainda não diz se
+  melhorou.
+- **Citação não mudou depois de dezenas de análises** → o texto novo não pegou.
+  Não adianta esperar o Brier: não há mudança de comportamento para ele medir, e
+  você vai gastar dias para descobrir isso.
+- **Citação mudou e o Brier não melhorou** → mudou de fonte e não de qualidade.
+  É resultado, e é o que manda ler as teses (Passo 4) em vez de escrever a v3.
+
+O caso que essa ordem evita é o mais caro: esperar uma semana por um Brier que
+nunca ia se mover, porque o prompt novo não alterou nada no que o modelo lê.
+
 **As abstenções fazem sentido?**
 
 Se quase tudo abstém, o limiar está apertado e você não gera dado. Se nada
