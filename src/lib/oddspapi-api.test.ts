@@ -17,6 +17,9 @@ const {
   SPORT_ID_BY_VERTICAL,
   MONTHLY_BILLABLE_LIMIT,
   BILLABLE_RESERVE,
+  cacheRead,
+  cacheWrite,
+  MAX_CACHE_ENTRIES,
 } = await import('./oddspapi-api.js');
 
 type OddsEntry = Parameters<typeof collectOdds>[1][number];
@@ -203,4 +206,66 @@ test('só as verticais com sportId medido são atendidas', () => {
 test('os tetos do plano Free estão onde o código os lê', () => {
   assert.equal(MONTHLY_BILLABLE_LIMIT, 250);
   assert.ok(BILLABLE_RESERVE > 0 && BILLABLE_RESERVE < MONTHLY_BILLABLE_LIMIT);
+});
+
+// ---------------------------------------------------------------------------
+// Cache — o endpoint livre não paga a conta do caro
+// ---------------------------------------------------------------------------
+
+test('a rotatividade do endpoint livre não despeja a entrada billable', () => {
+  // REGRESSÃO MEDIDA (09/08): 65 das 250 requisições billable do mês gastas em 2
+  // dias. Havia UM cache para os dois endpoints e, ao encher, um `cache.clear()`.
+  // `/v4/historical-odds` é livre e roda uma vez por partida por ciclo (~38
+  // partidas, tick de 5 min): enchia o teto em poucos ciclos e levava junto a
+  // entrada de `/v4/fixtures`, que é billable e vale 1h. Cada redescoberta depois
+  // disso custava do orçamento mensal.
+  resetOddsPapiState();
+
+  const t0 = Date.UTC(2026, 7, 9, 12, 0, 0);
+  const fixturesParams = { sportId: '17', from: '2026-08-09', to: '2026-08-10' };
+
+  cacheWrite('/v4/fixtures', fixturesParams, 3_600, { fixtures: ['f1'] }, t0);
+
+  // Bem mais que o teto, como um dia inteiro de ciclos produz.
+  for (let i = 0; i < MAX_CACHE_ENTRIES * 3; i += 1) {
+    cacheWrite(
+      '/v4/historical-odds',
+      { fixtureId: `f${i}`, bookmakers: 'pinnacle,stake' },
+      120,
+      { bookmakers: {} },
+      t0 + i * 1_000,
+    );
+  }
+
+  // Meia hora depois: dentro da 1h de TTL, e a entrada cara continua servindo.
+  const meiaHora = t0 + 30 * 60_000;
+  const hit = cacheRead('/v4/fixtures', fixturesParams, 3_600, meiaHora);
+  assert.notEqual(hit, undefined, 'a entrada billable foi despejada pelo endpoint livre');
+  assert.deepEqual(hit?.body, { fixtures: ['f1'] });
+
+  // Passado o TTL ela vence normalmente — a proteção é contra despejo, não contra
+  // o vencimento.
+  assert.equal(cacheRead('/v4/fixtures', fixturesParams, 3_600, t0 + 3_601_000), undefined);
+});
+
+test('o cache livre despeja o vencido antes do válido, e nunca zera inteiro', () => {
+  // O `clear()` era o defeito em si: jogava fora entrada válida para acomodar uma
+  // nova. Com N+1 escritas, quem sai é UMA — a mais antiga —, não as N.
+  resetOddsPapiState();
+
+  const t0 = Date.UTC(2026, 7, 9, 12, 0, 0);
+  const params = (i: number) => ({ fixtureId: `f${i}`, bookmakers: 'pinnacle' });
+
+  for (let i = 0; i < MAX_CACHE_ENTRIES + 1; i += 1) {
+    cacheWrite('/v4/historical-odds', params(i), 120, { i }, t0 + i);
+  }
+
+  // Todas ainda dentro dos 120s: a primeira saiu por idade, a segunda ficou.
+  const agora = t0 + MAX_CACHE_ENTRIES + 1;
+  assert.equal(cacheRead('/v4/historical-odds', params(0), 120, agora), undefined);
+  assert.notEqual(cacheRead('/v4/historical-odds', params(1), 120, agora), undefined);
+  assert.deepEqual(
+    cacheRead('/v4/historical-odds', params(MAX_CACHE_ENTRIES), 120, agora)?.body,
+    { i: MAX_CACHE_ENTRIES },
+  );
 });

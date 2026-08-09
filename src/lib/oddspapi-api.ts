@@ -219,7 +219,8 @@ export function markSuspended(now = Date.now()): void {
 export function resetOddsPapiState(): void {
   suspendedUntil = 0;
   billableBudget.reset();
-  cache.clear();
+  freeCache.clear();
+  billableCache.clear();
   lastCallAt.clear();
   lastAnyCallAt = 0;
 }
@@ -230,11 +231,89 @@ export function resetOddsPapiState(): void {
 
 interface CacheEntry {
   at: number;
+  /** Vencimento gravado por quem ESCREVEU. Só a evicção usa; a leitura usa o TTL de quem chama. */
+  expiresAt: number;
   body: unknown;
 }
 
-const cache = new Map<string, CacheEntry>();
-const MAX_CACHE_ENTRIES = 200;
+/**
+ * DOIS caches, separados pela mesma linha que separa a conta: billable e livre.
+ *
+ * A separação não é organização, é a garantia. `/v4/historical-odds` é livre e o
+ * enricher o chama uma vez por partida por ciclo (~38 partidas, tick de 5 min);
+ * `/v4/fixtures` é BILLABLE, custa do orçamento de 250/mês e por isso pede TTL
+ * de 1h. Num mapa só, a rotatividade do livre enchia o teto em poucos ciclos e
+ * despejava a entrada de fixtures muito antes da hora dela — e cada redescoberta
+ * depois disso é uma requisição paga. O endpoint barato pagava a conta do caro.
+ *
+ * Compartilhar o mapa e só trocar a política de despejo NÃO resolveria: a entrada
+ * de fixtures é justamente a mais ANTIGA do conjunto (escrita uma vez, vale 1h)
+ * enquanto as de odds são reescritas a cada 2 min. Qualquer critério por idade a
+ * elegeria primeiro. O que garante é o livre não alcançar o mapa do billable.
+ */
+const freeCache = new Map<string, CacheEntry>();
+const billableCache = new Map<string, CacheEntry>();
+
+/** Teto POR mapa. O mapa billable tem uma entrada por janela de descoberta e nunca chega perto. */
+export const MAX_CACHE_ENTRIES = 200;
+
+function cacheFor(path: string): Map<string, CacheEntry> {
+  return FREE_ENDPOINTS.has(path) ? freeCache : billableCache;
+}
+
+export function cacheKeyOf(path: string, params: Readonly<Record<string, string>>): string {
+  return `${path}?${new URLSearchParams(params).toString()}`;
+}
+
+/**
+ * Abre espaço para uma entrada, sem `clear()`.
+ *
+ * O `clear()` era o defeito em si: jogava fora entrada VÁLIDA e cara para
+ * acomodar uma barata. Primeiro saem as já vencidas (que não custam nada a
+ * ninguém); só se nenhuma tiver vencido é que sai a de escrita mais antiga.
+ */
+function evict(map: Map<string, CacheEntry>, now: number): void {
+  if (map.size < MAX_CACHE_ENTRIES) return;
+
+  for (const [key, entry] of map) {
+    if (entry.expiresAt <= now) map.delete(key);
+  }
+
+  // Map itera em ordem de inserção, e `cacheWrite` apaga antes de gravar — a
+  // primeira chave é sempre a de escrita mais antiga.
+  while (map.size >= MAX_CACHE_ENTRIES) {
+    const oldest = map.keys().next();
+    if (oldest.done === true) return;
+    map.delete(oldest.value);
+  }
+}
+
+/** A entrada ainda dentro do TTL de quem pede, ou `undefined`. */
+export function cacheRead(
+  path: string,
+  params: Readonly<Record<string, string>>,
+  cacheSeconds: number,
+  now = Date.now(),
+): { body: unknown } | undefined {
+  const hit = cacheFor(path).get(cacheKeyOf(path, params));
+  if (hit === undefined || now - hit.at >= cacheSeconds * 1000) return undefined;
+  return { body: hit.body };
+}
+
+export function cacheWrite(
+  path: string,
+  params: Readonly<Record<string, string>>,
+  cacheSeconds: number,
+  body: unknown,
+  now = Date.now(),
+): void {
+  const map = cacheFor(path);
+  const key = cacheKeyOf(path, params);
+
+  map.delete(key); // reescrita volta para o fim da fila de idade
+  evict(map, now);
+  map.set(key, { at: now, expiresAt: now + cacheSeconds * 1000, body });
+}
 
 // ---------------------------------------------------------------------------
 // Chamada
@@ -330,11 +409,10 @@ interface CallOptions {
  * suspensão, configuração, orçamento), depois a espera, e só então a rede.
  */
 async function call(opts: CallOptions, attempt = 0): Promise<unknown> {
-  const key = `${opts.path}?${new URLSearchParams(opts.params).toString()}`;
   const now = Date.now();
 
-  const hit = cache.get(key);
-  if (hit !== undefined && now - hit.at < opts.cacheSeconds * 1000) {
+  const hit = cacheRead(opts.path, opts.params, opts.cacheSeconds, now);
+  if (hit !== undefined) {
     return hit.body;
   }
 
@@ -433,8 +511,7 @@ async function call(opts: CallOptions, attempt = 0): Promise<unknown> {
     );
   }
 
-  if (cache.size >= MAX_CACHE_ENTRIES) cache.clear();
-  cache.set(key, { at: Date.now(), body });
+  cacheWrite(opts.path, opts.params, opts.cacheSeconds, body);
 
   return body;
 }
