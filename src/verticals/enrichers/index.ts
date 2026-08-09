@@ -1,5 +1,6 @@
 import { registerEnricher } from '../enricher.js';
 import { marketHistoryEnricher } from './market-history.js';
+import { matchHistoryEnricher } from './match-history.js';
 import { polymarketContextEnricher } from './polymarket-context.js';
 import { liquipediaEnricher } from './liquipedia.js';
 import { oddspapiEnricher } from './oddspapi.js';
@@ -18,6 +19,15 @@ import { oddspapiEnricher } from './oddspapi.js';
  */
 export function registerBuiltInEnrichers(): void {
   registerEnricher(marketHistoryEnricher);
+  // `match-history`, e não `market-history`: um responde sobre a partida (times,
+  // confrontos, desfechos), o outro sobre o mercado (preço, liquidez). Os nomes
+  // são parecidos porque as perguntas são vizinhas; os `kind` que eles produzem
+  // não se sobrepõem em nada.
+  //
+  // Sem chave de config, pela mesma razão de `market-history`: a fonte é o nosso
+  // próprio banco. Não há credencial para faltar, limite de taxa para estourar
+  // nem terceiro para ficar fora do ar — não há o que desligar em incidente.
+  registerEnricher(matchHistoryEnricher);
   registerEnricher(polymarketContextEnricher);
   // Registrado SEMPRE, e desligado por dentro. O registry é síncrono e a decisão
   // de ligar depende de `system_config` (leitura assíncrona) e de duas variáveis
@@ -35,6 +45,7 @@ export function registerBuiltInEnrichers(): void {
 }
 
 export { marketHistoryEnricher } from './market-history.js';
+export { matchHistoryEnricher } from './match-history.js';
 export { polymarketContextEnricher } from './polymarket-context.js';
 export { liquipediaEnricher } from './liquipedia.js';
 export { oddspapiEnricher } from './oddspapi.js';

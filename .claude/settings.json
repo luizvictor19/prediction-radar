@@ -10,6 +10,7 @@
       "Bash(git log *)",
       "Bash(git add *)",
       "Bash(supabase migration new *)",
+      "Bash(npm run oddspapi:probe *)",
       "Edit(src/**)",
       "Write(src/**)",
       "Write(supabase/migrations/**)",

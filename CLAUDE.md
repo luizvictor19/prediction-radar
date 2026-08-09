@@ -6,8 +6,22 @@ Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
 ## Regras inegociáveis
 - NUNCA aplicar migrations. Escrever o .sql com `supabase migration new` e parar.
   Quem aplica é o dono do projeto.
-- NUNCA rodar SQL contra o banco, nem leitura.
+- Banco: **leitura pode, escrita não.**
+  - Permitido: `SELECT` para diagnóstico e medição.
+  - Proibido: `INSERT`, `UPDATE`, `DELETE`, DDL e `supabase db push`.
 - Nunca ler .env.
+
+### Leitura pesada não é inofensiva só por ser leitura
+Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
+`esports_snapshots`, `system_logs` — deve ser MOSTRADA antes de rodar.
+
+O `retention_job` já derrubou o banco com uma query mal planejada: um `LIKE ANY`
+com pattern vindo de variável não usava `idx_events_slug_prefix`, e o que sobrava
+era seq scan dos 711 MB de `events` (ver `20260807230005_retention_old_branch_plan.sql`).
+`events` tem ~551k linhas e o timeout do PostgREST é de 8s — um `SELECT` sem
+índice ali é incidente de produção, não consulta.
+
+Na dúvida sobre o plano, mostrar a query e esperar.
 
 ## Onde está o quê
 - Schema atual: `supabase/migrations/20260804054445_remote_schema.sql` (baseline).
