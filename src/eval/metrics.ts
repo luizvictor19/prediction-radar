@@ -28,6 +28,17 @@ export interface EvalPoint {
   /** P(time A vence), do mercado no mesmo `as_of`. `null` = sem preço gravado. */
   marketMid: number | null;
   liquidity: number | null;
+  /**
+   * `best_ask - best_bid` no `as_of`, em unidades de probabilidade. `null` = sem
+   * os dois lados do book gravados.
+   *
+   * Não entra em nenhuma métrica de acerto: entra na LEITURA delas. O eval
+   * compara contra o mid, e quem negocia atravessa o book — um gap de 0,01 num
+   * mercado de spread 0,04 é acerto de medição e prejuízo de execução. É o
+   * denominador da única pergunta que importa no fim: o erro é maior que meio
+   * spread?
+   */
+  spread: number | null;
   /** 1 = o time A venceu. */
   outcome: 0 | 1;
 }
@@ -38,6 +49,55 @@ export type Forecaster = (point: EvalPoint) => number | null;
 export const AGENT: Forecaster = (point) => point.probability;
 export const MARKET: Forecaster = (point) => point.marketMid;
 export const COIN: Forecaster = () => 0.5;
+
+/**
+ * Os limites do previsor com viés subtraído.
+ *
+ * Existem porque `p - viés` sai de [0,1] sempre que a previsão está mais perto
+ * da borda do que o viés é grande — com viés de +0,07, tudo abaixo de 0,07 vira
+ * probabilidade negativa. Travar em 0,01/0,99 e não em 0/1 porque zero absoluto
+ * é uma afirmação que nenhum previsor honesto faz, e porque um único ponto
+ * travado em 0 com desfecho 1 sozinho soma 1,0 ao numerador do Brier.
+ */
+export const CLAMP_LO = 0.01;
+export const CLAMP_HI = 0.99;
+
+/**
+ * O agente com uma constante subtraída de toda previsão.
+ *
+ * É o transformador mais barato que existe — não toca prompt, não toca modelo,
+ * não precisa de treino. Também é o mais CEGO: desloca a previsão de 0,50 tanto
+ * quanto a de 0,95, quando o espaço em que o erro de um previsor costuma ser
+ * constante é o logit e não a probabilidade. O sintoma de estar usando o
+ * transformador errado é o contador de travamento — ver `countClamped`.
+ *
+ * Fábrica e não constante porque o deslocamento é ESTIMADO, e de onde ele foi
+ * estimado é a diferença entre medir e se enganar: ver `debiasEvaluation`.
+ */
+export function debiasedAgent(offset: number): Forecaster {
+  return (point) => {
+    const p = point.probability;
+    return Math.min(CLAMP_HI, Math.max(CLAMP_LO, p - offset));
+  };
+}
+
+/**
+ * Quantos pontos a subtração jogou para fora de [0,01; 0,99].
+ *
+ * Não é diagnóstico secundário: é o teste de que a subtração é o transformador
+ * certo. Ponto travado teve o deslocamento aplicado PELA METADE (ou nem isso), o
+ * que significa que o previsor corrigido não é o que a fórmula diz que é. Com
+ * travamento em volume, a correção certa é deslocar em espaço logit, onde as
+ * bordas são inalcançáveis por construção e nada precisa ser travado.
+ */
+export function countClamped(points: readonly EvalPoint[], offset: number): number {
+  let clamped = 0;
+  for (const point of points) {
+    const raw = point.probability - offset;
+    if (raw < CLAMP_LO || raw > CLAMP_HI) clamped += 1;
+  }
+  return clamped;
+}
 
 /**
  * Brier score: média de (p - y)². Zero é perfeito, 0,25 é a moeda, 1 é o pior
@@ -121,12 +181,38 @@ export function bias(points: readonly EvalPoint[], forecast: Forecaster): number
 // Calibração
 // ---------------------------------------------------------------------------
 
+/**
+ * O mínimo que uma linha precisa ter para entrar num reliability diagram.
+ *
+ * Existe para a mesma máquina de baldes servir a duas amostras diferentes sem
+ * que uma tenha que se disfarçar da outra: a de ANÁLISES (`EvalPoint`, uma linha
+ * por análise pontuável) e a de PREÇOS (`MarketPoint`, uma linha por partida ×
+ * checkpoint, sem agente nenhum envolvido). Fabricar um `EvalPoint` com
+ * `probability` e `promptVersion` inventados para reaproveitar esta função faria
+ * as duas amostras mentirem — `matchSlug` e `outcome` é tudo de que a conta
+ * precisa, e é só isso que se exige aqui.
+ */
+export interface CalibratablePoint {
+  /** A unidade de informação independente. Ver `ReliabilityBucket.distinctMatches`. */
+  matchSlug: string;
+  outcome: 0 | 1;
+}
+
 export interface ReliabilityBucket {
   /** Piso do balde, inclusivo. */
   from: number;
   /** Teto do balde, exclusivo — menos no último, que inclui 1,0. */
   to: number;
   n: number;
+  /**
+   * Partidas DISTINTAS por trás dos `n` pontos.
+   *
+   * A unidade de informação independente é a partida, não a análise: os dois
+   * checkpoints da mesma partida compartilham o mesmo desfecho, e contar os dois
+   * como amostra separada infla `n` sem acrescentar evidência nenhuma. Um balde
+   * com n = 30 sobre 12 partidas tem o poder estatístico de 12, não de 30.
+   */
+  distinctMatches: number;
   /** Média do que foi previsto dentro do balde. */
   meanPredicted: number;
   /** Fração que de fato aconteceu. É o "das vezes que disse 70%, quantas deram". */
@@ -147,11 +233,16 @@ const BUCKET_COUNT = 10;
  * Baldes vazios saem da lista: imprimir dez linhas das quais sete dizem `n=0`
  * dá aparência de cobertura que a amostra não tem.
  */
-export function reliabilityBuckets(
-  points: readonly EvalPoint[],
-  forecast: Forecaster = AGENT,
+export function reliabilityBuckets<T extends CalibratablePoint>(
+  points: readonly T[],
+  forecast: (point: T) => number | null,
 ): ReliabilityBucket[] {
-  const sums = Array.from({ length: BUCKET_COUNT }, () => ({ n: 0, predicted: 0, observed: 0 }));
+  const sums = Array.from({ length: BUCKET_COUNT }, () => ({
+    n: 0,
+    predicted: 0,
+    observed: 0,
+    matches: new Set<string>(),
+  }));
 
   for (const point of points) {
     const p = forecast(point);
@@ -166,6 +257,7 @@ export function reliabilityBuckets(
     bucket.n += 1;
     bucket.predicted += p;
     bucket.observed += point.outcome;
+    bucket.matches.add(point.matchSlug);
   }
 
   const buckets: ReliabilityBucket[] = [];
@@ -175,12 +267,77 @@ export function reliabilityBuckets(
       from: index * BUCKET_WIDTH,
       to: (index + 1) * BUCKET_WIDTH,
       n: bucket.n,
+      distinctMatches: bucket.matches.size,
       meanPredicted: bucket.predicted / bucket.n,
       observedRate: bucket.observed / bucket.n,
     });
   }
 
   return buckets;
+}
+
+/**
+ * O spread típico da amostra, em unidades de probabilidade.
+ *
+ * MEDIANA e não média: a distribuição de spread tem cauda longa à direita (um
+ * mercado esquecido com book de 0,40 existe e não é raro), e a média deixaria um
+ * punhado deles definir a barra que todo balde tem que superar. A mediana
+ * responde "quanto custa atravessar o book no mercado do meio", que é a pergunta.
+ *
+ * `null` quando nenhum ponto tem os dois lados do book gravados — e aí a barra
+ * não existe e o relatório tem que dizer isso, não assumir um spread plausível.
+ */
+export function typicalSpread(points: ReadonlyArray<{ spread: number | null }>): number | null {
+  const spreads = points
+    .map((point) => point.spread)
+    .filter((s): s is number => s !== null)
+    .sort((a, b) => a - b);
+
+  if (spreads.length === 0) return null;
+
+  const mid = Math.floor(spreads.length / 2);
+  if (spreads.length % 2 === 1) return spreads[mid] ?? null;
+  return ((spreads[mid - 1] ?? 0) + (spreads[mid] ?? 0)) / 2;
+}
+
+/** Quanto o balde prometeu a mais do que entregou. Positivo = lado caro demais. */
+export function bucketGap(bucket: ReliabilityBucket): number {
+  return bucket.meanPredicted - bucket.observedRate;
+}
+
+/**
+ * A barra que um gap tem que superar para valer dinheiro: MEIO spread.
+ *
+ * O eval mede contra o mid; quem opera atravessa o book e paga metade do spread
+ * em cada ponta. Gap menor que isso existe, é real, e não paga a travessia.
+ *
+ * `null` quando a amostra não tem nenhum spread gravado — e aí não há barra, e
+ * nenhum balde pode ser chamado de candidato a edge.
+ */
+export function executionBar(spread: number | null): number | null {
+  return spread === null ? null : spread / 2;
+}
+
+export type BucketVerdict =
+  /** Menos de `MIN_MATCHES_FOR_BUCKET` partidas distintas: não responde nada. */
+  | 'nao_conclusivo'
+  /** Não há spread na amostra, logo não há barra contra a qual comparar. */
+  | 'sem_spread'
+  | 'acima_da_barra'
+  | 'abaixo_da_barra';
+
+/**
+ * O veredito de um balde, na ordem em que as perguntas se respondem.
+ *
+ * A ordem é a regra: amostra primeiro, barra depois. Um balde com gap enorme e
+ * seis partidas não é "acima da barra com ressalva" — é uma linha que ainda não
+ * tem o direito de responder, e chamá-la de candidato a edge com uma nota de
+ * rodapé é exatamente como um eval limpo vira uma posição perdida.
+ */
+export function bucketVerdict(bucket: ReliabilityBucket, bar: number | null): BucketVerdict {
+  if (bucket.distinctMatches < MIN_MATCHES_FOR_BUCKET) return 'nao_conclusivo';
+  if (bar === null) return 'sem_spread';
+  return Math.abs(bucketGap(bucket)) > bar ? 'acima_da_barra' : 'abaixo_da_barra';
 }
 
 /**
@@ -334,3 +491,176 @@ export function cut(points: readonly EvalPoint[], key: (point: EvalPoint) => str
  * concluir que o agente tem edge.
  */
 export const MIN_N_FOR_SIGNAL = 20;
+
+/**
+ * Abaixo disto, um balde de calibração não conclui nada.
+ *
+ * Contado em PARTIDAS distintas e não em análises, pelo motivo em
+ * `ReliabilityBucket.distinctMatches`: `n` de análises é inflável por
+ * checkpoint, e um balde com 40 análises de 9 partidas não tem 40 desfechos
+ * independentes — tem 9.
+ */
+export const MIN_MATCHES_FOR_BUCKET = 20;
+
+// ---------------------------------------------------------------------------
+// Correção de viés, e a validação que a torna checável
+// ---------------------------------------------------------------------------
+
+/**
+ * Corte da amostra pela metade no tempo.
+ *
+ * Ordenado por `as_of` — o instante da análise, não o da partida — porque a
+ * pergunta é se um viés medido no passado ainda vale no futuro, e é `as_of` que
+ * define o que era passado no momento de estimar.
+ *
+ * O corte é por CONTAGEM (metade dos pontos), não por data no meio do intervalo:
+ * a taxa de análises por dia varia muito com o calendário de partidas, e um
+ * corte no meio do calendário deixaria as duas metades com tamanhos muito
+ * diferentes. Empate exato de `as_of` na fronteira cai para o teste; é no máximo
+ * um ponto e não muda estimativa nenhuma.
+ */
+export function splitByDate(points: readonly EvalPoint[]): {
+  train: EvalPoint[];
+  test: EvalPoint[];
+} {
+  const sorted = [...points].sort((a, b) => (a.asOf < b.asOf ? -1 : a.asOf > b.asOf ? 1 : 0));
+  const half = Math.floor(sorted.length / 2);
+  return { train: sorted.slice(0, half), test: sorted.slice(half) };
+}
+
+export interface DebiasArm {
+  n: number;
+  agent: number | null;
+  debiased: number | null;
+  market: number | null;
+  coin: number | null;
+  /** Pontos cuja subtração saiu de [0,01; 0,99] e foram travados. */
+  clamped: number;
+}
+
+export interface DebiasEvaluation {
+  /** O deslocamento estimado na PRIMEIRA metade. É o que a validação usa. */
+  offset: number | null;
+  /** Viés do agente na primeira metade — o mesmo número que `offset`. */
+  agentBiasTrain: number | null;
+  /**
+   * Viés do MERCADO na primeira metade.
+   *
+   * A checagem que pode invalidar a correção inteira. Se o mercado erra na mesma
+   * direção e na mesma ordem de grandeza, o que os dois estão medindo é a
+   * composição da amostra — a frequência com que o lado convencionado "time A"
+   * venceu —, e subtrair isso só do agente é sintonizar ruído de amostragem.
+   */
+  marketBiasTrain: number | null;
+  agentBiasFull: number | null;
+  marketBiasFull: number | null;
+  /** O número principal: estimado na primeira metade, medido na segunda. */
+  outOfSample: DebiasArm;
+  /**
+   * Estimado e aplicado na MESMA amostra. Existe só como referência do teto —
+   * não é comparável com o de cima e não sustenta decisão nenhuma.
+   */
+  inSample: DebiasArm;
+  /**
+   * Partidas que aparecem nas DUAS metades.
+   *
+   * Vazamento residual do corte por data: dois checkpoints da mesma partida têm
+   * `as_of` diferentes e podem cair em lados opostos, e aí o desfecho que o teste
+   * deveria não conhecer já ajudou a estimar o deslocamento. Não invalida a
+   * medição enquanto for pequeno, mas tem que ser IMPRESSO — fora-da-amostra com
+   * vazamento não contado é dentro-da-amostra com outro nome.
+   */
+  straddlingMatches: number;
+  /**
+   * Composição por versão de prompt de cada metade.
+   *
+   * O corte por data é o certo para a pergunta e tem um efeito colateral que só
+   * aparece olhando: versão de prompt também muda com o tempo. Quando uma versão
+   * está inteira de um lado do corte, o deslocamento foi estimado num prompt e
+   * cobrado noutro, e o que a segunda metade mede deixa de ser "o viés
+   * sobrevive ao tempo" para virar "o viés de v1 vale para v2" — que é outra
+   * pergunta, com outra resposta. Impresso sempre, porque é invisível no Brier.
+   */
+  composition: {
+    train: Array<{ key: string; n: number }>;
+    test: Array<{ key: string; n: number }>;
+    /** Versões que aparecem no teste e não no treino. Vazio = corte limpo. */
+    unseenInTrain: string[];
+  };
+}
+
+function byVersion(points: readonly EvalPoint[]): Array<{ key: string; n: number }> {
+  const counts = new Map<string, number>();
+  for (const point of points) counts.set(point.promptVersion, (counts.get(point.promptVersion) ?? 0) + 1);
+  return [...counts].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n);
+}
+
+function arm(points: readonly EvalPoint[], offset: number | null): DebiasArm {
+  return {
+    n: points.length,
+    agent: brierScore(points, AGENT),
+    debiased: offset === null ? null : brierScore(points, debiasedAgent(offset)),
+    market: brierScore(points, MARKET),
+    coin: brierScore(points, COIN),
+    clamped: offset === null ? 0 : countClamped(points, offset),
+  };
+}
+
+/**
+ * A correção de viés com a validação que a torna uma medição e não um enfeite.
+ *
+ * Estimar o deslocamento e aplicá-lo na mesma amostra melhora o Brier por
+ * construção — a subtração da média é o minimizador exato daquele termo naquele
+ * conjunto. O número resultante é bonito, é reprodutível, e não prevê nada. Por
+ * isso o principal aqui é a segunda metade: deslocamento estimado num período,
+ * cobrado noutro, que é a única forma de o viés provar que é propriedade do
+ * agente e não do pedaço de calendário em que foi medido.
+ */
+export function debiasEvaluation(points: readonly EvalPoint[]): DebiasEvaluation {
+  const { train, test } = splitByDate(points);
+
+  const offset = bias(train, AGENT);
+  const offsetFull = bias(points, AGENT);
+
+  const trainVersions = new Set(train.map((p) => p.promptVersion));
+  const trainMatches = new Set(train.map((p) => p.matchSlug));
+  const straddling = new Set(test.filter((p) => trainMatches.has(p.matchSlug)).map((p) => p.matchSlug));
+
+  return {
+    offset,
+    agentBiasTrain: offset,
+    marketBiasTrain: bias(train, MARKET),
+    agentBiasFull: offsetFull,
+    marketBiasFull: bias(points, MARKET),
+    outOfSample: arm(test, offset),
+    inSample: arm(points, offsetFull),
+    straddlingMatches: straddling.size,
+    composition: {
+      train: byVersion(train),
+      test: byVersion(test),
+      unseenInTrain: [...new Set(test.map((p) => p.promptVersion))].filter(
+        (v) => !trainVersions.has(v),
+      ),
+    },
+  };
+}
+
+/**
+ * Acima desta fração de pontos travados, a subtração é o transformador errado.
+ *
+ * Não é um limiar teórico: é o ponto em que "previsor com viés subtraído" deixa
+ * de descrever o que o código faz para uma parte visível da amostra.
+ */
+export const CLAMP_WARN_FRACTION = 0.1;
+
+/**
+ * Abaixo desta fração do erro do previsor cru, a correção não move nada.
+ *
+ * O sinal do delta do Brier é fácil de ler como veredito — "melhorou, logo o
+ * viés é real" — quando a melhora é da quarta casa decimal. Um por cento do erro
+ * é o piso do que sobreviveria a qualquer perturbação da amostra; abaixo disso o
+ * relatório tem que dizer que o número é positivo E irrelevante, porque as duas
+ * coisas são verdade ao mesmo tempo e omitir a segunda é o que transforma uma
+ * medição correta numa decisão errada.
+ */
+export const MIN_BRIER_DELTA_FRACTION = 0.01;

@@ -1,17 +1,24 @@
 import {
   AGENT,
+  CLAMP_WARN_FRACTION,
   COIN,
   MARKET,
+  MIN_BRIER_DELTA_FRACTION,
+  MIN_MATCHES_FOR_BUCKET,
   MIN_N_FOR_SIGNAL,
   bias,
   brierScore,
+  bucketVerdict,
   calibrationError,
   cut,
+  debiasEvaluation,
+  executionBar,
   liquidityBand,
   murphyDecomposition,
   pairedSample,
   reliabilityBuckets,
   skillScore,
+  typicalSpread,
   type CutRow,
   type EvalPoint,
 } from './metrics.js';
@@ -246,11 +253,353 @@ function calibration(points: readonly EvalPoint[]): string {
   return lines.join('\n');
 }
 
+/**
+ * A mesma máquina de calibração apontada para o PREÇO.
+ *
+ * Muda a pergunta inteira. A calibração do agente pergunta se ele acredita no
+ * que diz; esta pergunta se o mercado erra de forma sistemática em alguma faixa
+ * de preço — azarão caro demais, favorito barato demais. Se errar, o edge é
+ * mecânico: não precisa de modelo, de agente, nem de fragmento. Precisa só da
+ * faixa e de disciplina.
+ *
+ * Roda sobre a interseção porque um ponto sem `market_mid` não tem faixa de
+ * preço a que pertencer.
+ */
+function marketCalibration(points: readonly EvalPoint[]): string {
+  const paired = pairedSample(points);
+  const buckets = reliabilityBuckets(paired, MARKET);
+  const spread = typicalSpread(paired);
+  const bar = executionBar(spread);
+
+  const mark = (b: (typeof buckets)[number]): string => {
+    switch (bucketVerdict(b, bar)) {
+      case 'nao_conclusivo':
+        return 'não conclusivo';
+      case 'sem_spread':
+        return 'sem spread';
+      case 'acima_da_barra':
+        return 'CANDIDATO A EDGE';
+      case 'abaixo_da_barra':
+        return 'abaixo da barra';
+    }
+  };
+
+  const lines = [
+    section('4. Calibração do MERCADO — o preço erra em alguma faixa?'),
+    'Os mesmos baldes de 10pp, agora sobre o preço do mercado. A pergunta não é',
+    'sobre o agente: é se o próprio preço erra sistematicamente em alguma faixa.',
+    'Se errar, o edge é mecânico — declarável antes do desfecho e sem modelo nenhum.',
+    '',
+    table(
+      ['balde', 'n', 'partidas', 'previsto', 'observado', 'gap', ''],
+      buckets.map((b) => [
+        `${b.from.toFixed(1)}–${b.to.toFixed(1)}`,
+        String(b.n),
+        String(b.distinctMatches),
+        num(b.meanPredicted, 3),
+        num(b.observedRate, 3),
+        signed(b.meanPredicted - b.observedRate),
+        mark(b),
+      ]),
+      [6],
+    ),
+    '',
+    `  gap positivo  = o preço pedia mais do que aconteceu (lado caro demais)`,
+    `  gap negativo  = o preço pedia menos do que aconteceu (lado barato demais)`,
+    `  erro de calibração do mercado (ECE): ${num(calibrationError(buckets), 4)}`,
+    `  viés global do mercado (média prevista − frequência observada): ${signed(bias(paired, MARKET))}`,
+  ];
+
+  lines.push(
+    '',
+    'A LEITURA QUE IMPORTA',
+    '---------------------',
+    '  O eval compara contra o MID. Quem opera atravessa o book e paga o ask. Um gap',
+    '  medido no mid só vira dinheiro se sobreviver à travessia, e a travessia custa',
+    '  metade do spread em cada ponta. Logo a barra não é "gap ≠ 0": é',
+    '',
+    ...(bar === null
+      ? [
+          '    |gap| > ½ spread típico — e o spread típico NÃO EXISTE nesta amostra:',
+          '    nenhum ponto tem os dois lados do book gravados. Sem esse número não há',
+          '    barra, e nenhum balde acima pode ser chamado de candidato a edge.',
+        ]
+      : [`    |gap| > ${num(bar, 4)}  (½ de um spread típico de ${num(spread, 4)})`]),
+    '',
+    '  Gap CONSISTENTE e acima dessa barra é candidato a edge mecânico. Gap abaixo',
+    '  dela é academicamente interessante e operacionalmente inútil: existe, é real,',
+    '  e não paga a travessia do book. Não é um achado fraco — é um não-achado, e',
+    '  tratá-lo como achado fraco é como um eval limpo vira uma posição perdida.',
+    '',
+    '  "Consistente" é a segunda exigência, e ela não sai desta tabela: um balde',
+    '  isolado acima da barra entre dez baldes é o que se espera de ruído. O que',
+    '  sustenta a leitura é gap na MESMA direção em faixas vizinhas — a assinatura do',
+    '  favorito-azarão é gap negativo em cima e positivo embaixo, não um pico solto.',
+  );
+
+  const conclusive = buckets.filter((b) => b.distinctMatches >= MIN_MATCHES_FOR_BUCKET);
+  const clearing = conclusive.filter((b) => bucketVerdict(b, bar) === 'acima_da_barra');
+
+  lines.push(
+    '',
+    `  Baldes conclusivos (≥ ${MIN_MATCHES_FOR_BUCKET} partidas distintas): ${conclusive.length} de ${buckets.length}.`,
+    `  Desses, acima da barra de meio spread: ${clearing.length}.`,
+  );
+
+  if (conclusive.length === 0) {
+    lines.push(
+      '',
+      '  NENHUM balde é conclusivo. Toda linha acima está apoiada em menos de',
+      `  ${MIN_MATCHES_FOR_BUCKET} partidas distintas, e a contagem que vale é a de partidas e não a de`,
+      '  análises: dois checkpoints da mesma partida dividem o mesmo desfecho e não',
+      '  são duas evidências. Não há candidato a edge nesta amostra — o que há é uma',
+      '  tabela que ainda não tem o direito de responder à pergunta.',
+    );
+  } else if (clearing.length === 0) {
+    lines.push(
+      '',
+      '  Nenhum balde conclusivo supera meio spread. O mercado pode estar torto, mas',
+      '  não o bastante para pagar a travessia — não há edge mecânico declarável aqui.',
+    );
+  } else {
+    lines.push(
+      '',
+      '  Há balde conclusivo acima da barra. Antes de chamar de edge: conferir se a',
+      '  direção se repete em faixa vizinha, e que a regra seja declarável a partir do',
+      '  PREÇO — que é observável antes do desfecho — e não do resultado.',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * A correção mais barata que existe, e a validação que decide se ela é real.
+ *
+ * O relatório imprime o fora-da-amostra como número principal e o
+ * dentro-da-amostra rotulado, nessa ordem e nunca lado a lado sem rótulo, porque
+ * a única leitura errada que esta seção pode induzir é comparar os dois.
+ */
+function debias(points: readonly EvalPoint[]): string {
+  const paired = pairedSample(points);
+  const ev = debiasEvaluation(paired);
+
+  const lines = [
+    section('5. AGENT_DEBIASED — o viés sobrevive fora da amostra?'),
+    'Viés é a coisa mais barata de corrigir: subtrair uma constante, sem tocar em',
+    'prompt nem em modelo. Também é a mais fácil de fingir — estimar o deslocamento',
+    'e cobrá-lo na mesma amostra melhora o Brier POR CONSTRUÇÃO. Por isso o número',
+    'principal aqui é o da segunda metade do calendário, com o deslocamento',
+    'estimado só na primeira.',
+    '',
+    'ANTES DE TUDO: o mercado tem o mesmo viés?',
+    '------------------------------------------',
+    table(
+      ['previsor', 'viés (1ª metade)', 'viés (amostra toda)'],
+      [
+        ['agente', signed(ev.agentBiasTrain), signed(ev.agentBiasFull)],
+        ['mercado', signed(ev.marketBiasTrain), signed(ev.marketBiasFull)],
+      ],
+    ),
+    '',
+    '  Se os dois erram na mesma direção e na mesma ordem de grandeza, o que ambos',
+    '  estão medindo é a COMPOSIÇÃO da amostra — a frequência com que o lado',
+    '  convencionado "time A" venceu —, e não um defeito do agente. Corrigir só o',
+    '  agente nesse caso é sintonizar ruído de amostragem: o número melhora, e o que',
+    '  ele mede é o quanto o time A ganhou neste pedaço de calendário.',
+  ];
+
+  const agentB = ev.agentBiasFull;
+  const marketB = ev.marketBiasFull;
+  if (agentB !== null && marketB !== null) {
+    const sameDirection = agentB * marketB > 0;
+    const ratio = Math.abs(marketB) / Math.max(Math.abs(agentB), 1e-9);
+    lines.push(
+      '',
+      sameDirection && ratio >= 0.5
+        ? '  VEREDITO: o mercado tem viés parecido, mesma direção e mesma ordem de\n' +
+          '  grandeza. A leitura que se sustenta é COMPOSIÇÃO DA AMOSTRA, não otimismo do\n' +
+          '  agente — e esta seção inteira vira ruído sintonizado. Ver o número abaixo\n' +
+          '  como confirmação disso, não como correção que valha aplicar.'
+        : sameDirection
+          ? '  VEREDITO: mesma direção, mas o viés do mercado é bem menor. Parte do viés do\n' +
+            '  agente é composição da amostra; o excedente sobre o do mercado é o que pode\n' +
+            '  ser dele. Corrigir pelo viés TOTAL corrige as duas coisas de uma vez.'
+          : '  VEREDITO: os dois vieses apontam em direções opostas. O do agente não é\n' +
+            '  composição da amostra — o mercado viu a mesma amostra e errou para o outro\n' +
+            '  lado. Aqui a correção mede algo do agente.',
+    );
+  }
+
+  if (ev.offset === null || ev.outOfSample.n === 0) {
+    lines.push(
+      '',
+      '  Amostra pequena demais para dividir em duas metades. Sem fora-da-amostra não',
+      '  há o que reportar: o dentro-da-amostra sozinho não é evidência de nada.',
+    );
+    return lines.join('\n');
+  }
+
+  const oos = ev.outOfSample;
+  const ins = ev.inSample;
+
+  lines.push(
+    '',
+    'O NÚMERO PRINCIPAL — fora da amostra',
+    '------------------------------------',
+    `  Deslocamento estimado na 1ª metade (n = ${ev.inSample.n - oos.n}): ${signed(ev.offset)}`,
+    `  Cobrado na 2ª metade (n = ${oos.n}), que não participou da estimativa.`,
+    '',
+    table(
+      ['previsor', 'n', 'Brier', 'skill vs mercado'],
+      [
+        ['agente (cru)', String(oos.n), num(oos.agent), signed(skillScore(oos.agent, oos.market))],
+        [
+          'agente (viés subtraído)',
+          String(oos.n),
+          num(oos.debiased),
+          signed(skillScore(oos.debiased, oos.market)),
+        ],
+        ['mercado (as_of)', String(oos.n), num(oos.market), '—'],
+        ['50/50', String(oos.n), num(oos.coin), signed(skillScore(oos.coin, oos.market))],
+      ],
+    ),
+  );
+
+  if (oos.agent !== null && oos.debiased !== null) {
+    const delta = oos.agent - oos.debiased;
+    // Em fração do erro do agente cru: 0,0006 sobre um Brier de 0,20 é 0,3%, e é
+    // essa razão — não o sinal — que diz se a correção move alguma coisa.
+    const relative = oos.agent === 0 ? 0 : Math.abs(delta) / oos.agent;
+
+    lines.push(
+      '',
+      delta > 0
+        ? `  A correção MELHORA o Brier fora da amostra em ${num(delta, 4)} (${pct(relative)} do erro do`
+        : `  A correção PIORA o Brier fora da amostra em ${num(-delta, 4)} (${pct(relative)} do erro do`,
+      '  agente cru).',
+    );
+
+    if (relative < MIN_BRIER_DELTA_FRACTION) {
+      lines.push(
+        '',
+        `  EFEITO DESPREZÍVEL. Menos de ${pct(MIN_BRIER_DELTA_FRACTION, 0)} do erro. O sinal do delta é positivo e não`,
+        '  significa nada operacionalmente: uma correção deste tamanho não muda decisão',
+        '  de aposta nenhuma, e trocaria de sinal com um punhado de partidas a mais. O',
+        '  que se conclui daqui é que NÃO HÁ viés a corrigir com esta amostra — não que',
+        '  a correção funciona pouco.',
+      );
+    } else if (delta > 0) {
+      lines.push(
+        '',
+        '  O viés sobrevive à troca de período — é propriedade do agente e não do',
+        '  calendário em que foi medido. Sujeito ao veredito do mercado, acima: se o',
+        '  mercado erra igual, o que sobreviveu é a composição da amostra, não o agente.',
+      );
+    } else {
+      lines.push(
+        '',
+        '  O viés medido na 1ª metade não valia na 2ª: era do pedaço de calendário e não',
+        '  do agente. Aplicar esta correção em produção degradaria a previsão.',
+      );
+    }
+  }
+
+  if (oos.n < MIN_N_FOR_SIGNAL) {
+    lines.push(
+      '',
+      `  AMOSTRA CURTA (n = ${oos.n}, mínimo ${MIN_N_FOR_SIGNAL}). A diferença acima é ruído amostral.`,
+      '  O sinal do delta não decide nada com esta metade.',
+    );
+  }
+
+  const versions = (entries: ReadonlyArray<{ key: string; n: number }>): string =>
+    entries.length === 0 ? '—' : entries.map((e) => `${e.key}×${e.n}`).join(', ');
+
+  lines.push(
+    '',
+    `  Versão de prompt na 1ª metade: ${versions(ev.composition.train)}`,
+    `  Versão de prompt na 2ª metade: ${versions(ev.composition.test)}`,
+  );
+
+  if (ev.composition.unseenInTrain.length > 0) {
+    lines.push(
+      '',
+      `  CONFUNDIMENTO: ${ev.composition.unseenInTrain.join(', ')} não aparece na 1ª metade.`,
+      '  Versão de prompt muda com o tempo, e o corte por data separou as versões junto',
+      '  com o calendário. O deslocamento foi estimado num prompt e cobrado noutro, então',
+      '  a 2ª metade não responde "o viés sobrevive ao tempo" — responde "o viés de uma',
+      '  versão vale para a outra", que é outra pergunta. Para a pergunta original, rodar',
+      '  o eval com --since/--until dentro de uma única versão.',
+    );
+  }
+
+  if (ev.straddlingMatches > 0) {
+    lines.push(
+      '',
+      `  VAZAMENTO: ${ev.straddlingMatches} partida(s) aparecem nas DUAS metades — checkpoints da mesma`,
+      '  partida com as_of diferentes caíram em lados opostos do corte. O desfecho que a',
+      '  2ª metade não deveria conhecer já ajudou a estimar o deslocamento, então o',
+      '  "fora da amostra" acima é otimista nessa proporção.',
+    );
+  }
+
+  const clampedPct = oos.n === 0 ? 0 : oos.clamped / oos.n;
+  lines.push(
+    '',
+    'TRAVAMENTO — a subtração é o transformador certo?',
+    '-------------------------------------------------',
+    `  p_corrigido = p − viés, travado em [0,01; 0,99], com viés = ${signed(ev.offset)}.`,
+    `  Pontos travados fora da amostra: ${oos.clamped} de ${oos.n} (${pct(clampedPct)}).`,
+    `  Pontos travados na amostra toda: ${ins.clamped} de ${ins.n}.`,
+  );
+
+  lines.push(
+    '',
+    clampedPct > CLAMP_WARN_FRACTION
+      ? '  TRAVAMENTO ALTO. A subtração é o transformador ERRADO para esta amostra: em\n' +
+        '  mais de um décimo dos pontos o deslocamento foi aplicado pela metade ou nem\n' +
+        '  isso, então o previsor acima não é o que a fórmula diz que é. O certo é\n' +
+        '  deslocar em espaço LOGIT — logit(p) − k —, onde as bordas são inalcançáveis\n' +
+        '  por construção, nada precisa ser travado, e o deslocamento vale igual no meio\n' +
+        '  e nas pontas. Registrado aqui em vez de escondido porque o travamento é\n' +
+        '  exatamente o sintoma que denuncia isso, e ele some da vista se só o Brier for\n' +
+        '  impresso.'
+      : '  Travamento baixo. A subtração se comporta como a fórmula diz nesta amostra —\n' +
+        '  a correção é o que está escrito nela. Se o travamento subir em amostras\n' +
+        '  futuras, a correção certa passa a ser deslocamento em espaço logit.',
+  );
+
+  lines.push(
+    '',
+    'REFERÊNCIA — dentro da amostra (OVERFIT, NÃO COMPARÁVEL)',
+    '-------------------------------------------------------',
+    `  Deslocamento estimado e cobrado nos MESMOS ${ins.n} pontos: ${signed(ev.agentBiasFull)}`,
+    '',
+    table(
+      ['previsor', 'n', 'Brier'],
+      [
+        ['agente (cru)', String(ins.n), num(ins.agent)],
+        ['agente (viés subtraído)', String(ins.n), num(ins.debiased)],
+      ],
+    ),
+    '',
+    '  Este número NÃO é comparável com o de cima e não sustenta decisão nenhuma.',
+    '  Subtrair a média da própria amostra é o minimizador exato daquele termo do',
+    '  Brier naquele conjunto — a melhora é garantida por álgebra, não por acerto, e',
+    '  apareceria igual em dados aleatórios. Existe aqui só como TETO: é o melhor que',
+    '  a correção poderia parecer se o viés fosse perfeitamente estável. A distância',
+    '  entre ele e o fora-da-amostra é o quanto dessa aparência era ilusão.',
+  );
+
+  return lines.join('\n');
+}
+
 function fidelity(data: EvalDataset): string {
   const { claims, failures } = data;
 
   const lines = [
-    section('4. Fidelidade — ele inventa fato?'),
+    section('6. Fidelidade — ele inventa fato?'),
     'Dimensão separada da calibração: dá para acertar a probabilidade e sustentar a',
     'tese em coisa que não existe.',
     '',
@@ -309,7 +658,7 @@ function abstentions(data: EvalDataset): string {
   }
 
   return [
-    section('5. Abstenções — fora da métrica, dentro do relatório'),
+    section('7. Abstenções — fora da métrica, dentro do relatório'),
     'Não entram no Brier (não há probabilidade para pontuar). Estão aqui porque são',
     'o dado que permite calibrar os limiares do portão com evidência.',
     '',
@@ -351,7 +700,7 @@ function coverage(data: EvalDataset): string {
   ];
 
   return [
-    section('6. Cobertura — o que ficou de fora, e por quê'),
+    section('8. Cobertura — o que ficou de fora, e por quê'),
     'Amostra que encolhe em silêncio é como um eval mente. Toda análise lida aparece',
     'aqui ou na métrica.',
     '',
@@ -396,6 +745,8 @@ export function renderReport(data: EvalDataset): string {
     headline(data.points),
     cuts(data.points),
     calibration(data.points),
+    marketCalibration(data.points),
+    debias(data.points),
     fidelity(data),
     abstentions(data),
     coverage(data),

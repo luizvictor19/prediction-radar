@@ -162,6 +162,7 @@ async function loadAnalyses(options: EvalOptions): Promise<Row[]> {
       .select(
         'id, match_id, checkpoint_minutes, as_of, status, probability, ' +
           'abstain_reason, abstain_source, team_a_id, market_mid, market_liquidity, ' +
+          'market_spread, ' +
           'model, prompt_version',
       )
       .order('as_of', { ascending: true })
@@ -419,6 +420,7 @@ export async function loadEvalDataset(options: EvalOptions = {}): Promise<EvalDa
       probability,
       marketMid: asNumber(row['market_mid']),
       liquidity: asNumber(row['market_liquidity']),
+      spread: asNumber(row['market_spread']),
       outcome: resolved.outcome,
     });
   }

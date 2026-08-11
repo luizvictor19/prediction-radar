@@ -9,17 +9,24 @@ process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
 const {
   AGENT,
+  CLAMP_HI,
+  CLAMP_LO,
   COIN,
   MARKET,
   bias,
   brierScore,
   calibrationError,
+  countClamped,
   cut,
+  debiasEvaluation,
+  debiasedAgent,
   liquidityBand,
   murphyDecomposition,
   pairedSample,
   reliabilityBuckets,
   skillScore,
+  splitByDate,
+  typicalSpread,
 } = await import('./metrics.js');
 
 const { resolveOutcome } = await import('./dataset.js');
@@ -37,6 +44,7 @@ function point(overrides: Partial<EvalPoint> = {}): EvalPoint {
     probability: 0.6,
     marketMid: 0.55,
     liquidity: 12_000,
+    spread: 0.02,
     outcome: 1,
     ...overrides,
   };
@@ -314,4 +322,181 @@ test('sem lado ou com lado incoerente, o ponto sai da amostra', () => {
     }),
     { excluded: 'lado_incoerente' },
   );
+});
+
+// ---------------------------------------------------------------------------
+// Calibração do mercado — baldes sobre o preço, e a barra de meio spread
+// ---------------------------------------------------------------------------
+
+test('os baldes do MERCADO caem pelo preço, não pela previsão do agente', () => {
+  // O agente diz 0,9 nos dois; o mercado diz 0,15 e 0,75. Se os baldes caíssem
+  // pela previsão do agente, a tabela do mercado responderia outra pergunta.
+  const points = [
+    point({ probability: 0.9, marketMid: 0.15, outcome: 0 }),
+    point({ probability: 0.9, marketMid: 0.75, outcome: 1 }),
+  ];
+
+  const buckets = reliabilityBuckets(points, MARKET);
+  assert.deepEqual(
+    buckets.map((b) => [b.from.toFixed(1), b.n]),
+    [
+      ['0.1', 1],
+      ['0.7', 1],
+    ],
+  );
+});
+
+test('o balde conta PARTIDAS distintas, não análises — checkpoint não é evidência nova', () => {
+  // Mesma partida em dois checkpoints: dois pontos, um desfecho só. Contar dois
+  // infla n sem acrescentar informação, e é assim que um balde de 40 análises
+  // sobre 9 partidas passa por conclusivo.
+  const points = [
+    point({ matchSlug: 'cs2-navi-faze', checkpointMinutes: 360, marketMid: 0.65, outcome: 1 }),
+    point({ matchSlug: 'cs2-navi-faze', checkpointMinutes: 60, marketMid: 0.68, outcome: 1 }),
+    point({ matchSlug: 'cs2-g2-vita', checkpointMinutes: 360, marketMid: 0.62, outcome: 0 }),
+  ];
+
+  const bucket = reliabilityBuckets(points, MARKET)[0];
+  assert.equal(bucket?.n, 3);
+  assert.equal(bucket?.distinctMatches, 2);
+});
+
+test('o spread típico é a MEDIANA, para um book esquecido não definir a barra', () => {
+  const points = [
+    point({ spread: 0.02 }),
+    point({ spread: 0.03 }),
+    point({ spread: 0.04 }),
+    point({ spread: 0.9 }), // o mercado esquecido; a média daria 0.2475
+  ];
+  assert.equal(typicalSpread(points), 0.035);
+});
+
+test('spread típico com número ímpar de pontos, e ausência total vira null', () => {
+  assert.equal(typicalSpread([point({ spread: 0.02 }), point({ spread: 0.1 }), point({ spread: 0.04 })]), 0.04);
+  // Sem os dois lados do book não há barra — e o relatório tem que dizer isso em
+  // vez de assumir um spread plausível.
+  assert.equal(typicalSpread([point({ spread: null })]), null);
+  assert.equal(typicalSpread([]), null);
+});
+
+test('ponto sem spread sai da mediana sem virar zero', () => {
+  // `null` tratado como 0 puxaria a barra para baixo e promoveria a candidato a
+  // edge um gap que não paga a travessia.
+  assert.equal(typicalSpread([point({ spread: null }), point({ spread: 0.05 })]), 0.05);
+});
+
+// ---------------------------------------------------------------------------
+// AGENT_DEBIASED — a correção e a validação que decide se ela é real
+// ---------------------------------------------------------------------------
+
+test('o previsor corrigido subtrai a constante e trava nas bordas', () => {
+  const forecast = debiasedAgent(0.2);
+  assert.equal(forecast(point({ probability: 0.7 }))?.toFixed(6), '0.500000');
+  // 0,05 − 0,2 = −0,15, que não é probabilidade.
+  assert.equal(forecast(point({ probability: 0.05 })), CLAMP_LO);
+  // Deslocamento negativo empurra para o outro lado.
+  assert.equal(debiasedAgent(-0.5)(point({ probability: 0.95 })), CLAMP_HI);
+});
+
+test('o travamento é contado, porque é o sintoma de o transformador estar errado', () => {
+  const points = [
+    point({ probability: 0.05 }), // trava
+    point({ probability: 0.5 }),
+    point({ probability: 0.9 }),
+  ];
+  assert.equal(countClamped(points, 0.2), 1);
+  assert.equal(countClamped(points, 0.0), 0);
+});
+
+test('o corte é por as_of e por contagem, com a fronteira caindo no teste', () => {
+  const points = [
+    point({ asOf: '2026-08-03T00:00:00.000Z', analysisId: 'c' }),
+    point({ asOf: '2026-08-01T00:00:00.000Z', analysisId: 'a' }),
+    point({ asOf: '2026-08-02T00:00:00.000Z', analysisId: 'b' }),
+  ];
+
+  const { train, test: held } = splitByDate(points);
+  assert.deepEqual(train.map((p) => p.analysisId), ['a']);
+  assert.deepEqual(held.map((p) => p.analysisId), ['b', 'c']);
+});
+
+/** Quatro pontos em ordem de `as_of`, com números que fecham à mão. */
+function debiasSample(): ReturnType<typeof point>[] {
+  return [
+    point({ asOf: '2026-08-01T00:00:00Z', matchSlug: 'm1', probability: 0.8, marketMid: 0.7, outcome: 1 }),
+    point({ asOf: '2026-08-02T00:00:00Z', matchSlug: 'm2', probability: 0.6, marketMid: 0.5, outcome: 0 }),
+    point({ asOf: '2026-08-03T00:00:00Z', matchSlug: 'm3', probability: 0.9, marketMid: 0.8, outcome: 1 }),
+    point({ asOf: '2026-08-04T00:00:00Z', matchSlug: 'm4', probability: 0.7, marketMid: 0.6, outcome: 0 }),
+  ];
+}
+
+test('o deslocamento sai SÓ da primeira metade, e é cobrado só na segunda', () => {
+  const ev = debiasEvaluation(debiasSample());
+
+  // 1ª metade: prevista (0,8+0,6)/2 = 0,7; observada (1+0)/2 = 0,5.
+  assert.equal(ev.offset?.toFixed(6), '0.200000');
+  assert.equal(ev.outOfSample.n, 2);
+
+  // 2ª metade corrigida: 0,9−0,2 = 0,7 e 0,7−0,2 = 0,5.
+  // ((0,7−1)² + (0,5−0)²)/2 = (0,09 + 0,25)/2 = 0,17.
+  assert.equal(ev.outOfSample.debiased?.toFixed(6), '0.170000');
+  // Crua: ((0,9−1)² + 0,7²)/2 = (0,01 + 0,49)/2 = 0,25.
+  assert.equal(ev.outOfSample.agent?.toFixed(6), '0.250000');
+});
+
+test('o viés do MERCADO é medido na mesma amostra — é o que pode invalidar a correção', () => {
+  const ev = debiasEvaluation(debiasSample());
+  // Mercado na 1ª metade: (0,7+0,5)/2 − 0,5 = 0,1.
+  assert.equal(ev.marketBiasTrain?.toFixed(6), '0.100000');
+  // Amostra toda: agente 0,75−0,5 = 0,25; mercado 0,65−0,5 = 0,15.
+  assert.equal(ev.agentBiasFull?.toFixed(6), '0.250000');
+  assert.equal(ev.marketBiasFull?.toFixed(6), '0.150000');
+});
+
+test('o dentro-da-amostra é o teto, e melhora por álgebra e não por acerto', () => {
+  const ev = debiasEvaluation(debiasSample());
+  // Estimado e cobrado nos mesmos 4 pontos, com deslocamento 0,25.
+  assert.equal(ev.inSample.n, 4);
+  assert.equal(ev.inSample.agent?.toFixed(6), '0.225000');
+  assert.equal(ev.inSample.debiased?.toFixed(6), '0.162500');
+});
+
+test('subtrair a média da própria amostra NUNCA piora o Brier — por isso não vale nada', () => {
+  // A propriedade que torna o dentro-da-amostra não comparável: a melhora é
+  // garantida por construção e apareceria igual em dados aleatórios. Se este
+  // teste falhar, o rótulo "overfit" no relatório está mentindo por baixo.
+  for (const seed of [0.13, 0.37, 0.61, 0.88]) {
+    const points = Array.from({ length: 12 }, (_, i) => {
+      const p = ((i * seed) % 1) * 0.98 + 0.01;
+      return point({ probability: p, marketMid: 0.5, outcome: i % 3 === 0 ? 1 : 0, matchSlug: `m${i}` });
+    });
+
+    const ev = debiasEvaluation(points);
+    assert.ok(ev.inSample.agent !== null && ev.inSample.debiased !== null);
+    // Só vale sem travamento: ponto travado não recebeu o deslocamento inteiro.
+    if (ev.inSample.clamped === 0) {
+      assert.ok(
+        ev.inSample.debiased <= ev.inSample.agent + 1e-12,
+        `seed ${seed}: corrigido ${ev.inSample.debiased} > cru ${ev.inSample.agent}`,
+      );
+    }
+  }
+});
+
+test('partida nas duas metades é contada como vazamento, não escondida', () => {
+  const points = debiasSample();
+  // m1 está na 1ª metade; o terceiro ponto (2ª metade) passa a ser a mesma
+  // partida em outro checkpoint — o desfecho vaza para a estimativa.
+  points[2] = point({ ...points[2]!, matchSlug: 'm1' });
+
+  assert.equal(debiasEvaluation(points).straddlingMatches, 1);
+  assert.equal(debiasEvaluation(debiasSample()).straddlingMatches, 0);
+});
+
+test('amostra curta demais para dividir não inventa um fora-da-amostra', () => {
+  const ev = debiasEvaluation([point()]);
+  // Um ponto: a 1ª metade fica vazia, e sem ela não há deslocamento a estimar.
+  assert.equal(ev.offset, null);
+  assert.equal(ev.outOfSample.debiased, null);
+  assert.equal(debiasEvaluation([]).outOfSample.n, 0);
 });
