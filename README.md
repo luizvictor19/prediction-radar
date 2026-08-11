@@ -127,29 +127,70 @@ abbreviation matched the slug code in 2,307 of 2,307 cases.
 
 ## Results
 
-**Not enough data to say anything.** Reported because reporting a null result is the
-point of building the harness.
+**The agent does not beat the price.** Reported because reporting a negative result is
+the point of building the harness.
 
-At n = 12 scorable forecasts:
+At n = 131 scorable forecasts (2026-08-11):
 
-| forecaster       | Brier  | skill vs market |
-| ---------------- | ------ | --------------- |
-| agent            | 0.1017 | −0.011          |
-| market at `as_of`| 0.1006 | —               |
-| 50/50            | 0.2500 | −1.484          |
+| forecaster        | Brier  | skill vs market |
+| ----------------- | ------ | --------------- |
+| agent             | 0.1691 | −0.045          |
+| market at `as_of` | 0.1618 | —               |
+| 50/50             | 0.2500 | −0.545          |
 
-Both beat the coin flip decisively. The agent and the market are indistinguishable at
-this sample size — the difference is noise, and the harness says so in the output
-rather than letting the reader infer significance that isn't there.
+Both beat the coin flip decisively. The agent does not beat the market, and without
+that there is no edge — the rest is diagnosis.
 
-The eval also reports the Murphy decomposition, because a Brier score alone hides the
-quiet failure mode: an agent that answers ~0.5 to everything is well calibrated, scores
-acceptably, and is useless. Resolution ≈ uncertainty here, so that's not what's
-happening.
+**By prompt version.** `v2` introduced an explicit source hierarchy telling the model
+which evidence outranks which:
 
-A plausible reading, to be tested: the agent ties the market because its only inputs
-are the price and a generic summary. It has no information the market lacks. That's
-the case for external sources, and it's what the current work is about.
+| version | n  | agent  | market | skill  |
+| ------- | -- | ------ | ------ | ------ |
+| v1      | 91 | 0.1503 | 0.1406 | −0.069 |
+| v2      | 40 | 0.2120 | 0.2100 | −0.009 |
+
+That looks like a large improvement and the sample cannot support the claim. Two
+reasons. The `v2` sample is harder — the *market* scores 0.2100 on it versus 0.1406 on
+`v1`'s. And the report carries its own noise ruler: `v1` moved from −0.099 (n=75) to
+−0.069 (n=91) on 16 additional observations. One step of noise is worth 0.030 here;
+the gap between versions is 0.060.
+
+The hierarchy did change behaviour, measurably: citations of the venue's own
+LLM-generated blurb fell from 58.1% to 3.4%, and citations of measured head-to-head
+and recent form rose from 0.6% to 64.0%. Whether that translates into accuracy is
+still open.
+
+**By liquidity — the finding worth acting on:**
+
+| band      | n  | skill  |
+| --------- | -- | ------ |
+| 5k–20k    | 60 | −0.098 |
+| 20k–100k  | 40 | +0.002 |
+| ≥ 100k    | 31 | −0.017 |
+
+The agent is worst in the band immediately above the gate's US$ 5,000 floor. Thin
+markets move on noise, and the agent still grounds roughly a quarter of its claims in
+price movement — it is reading noise as signal. Raising the floor is the obvious
+experiment, and it has to be run forward: raising it *because* a band scored badly in
+one sample is choosing on the outcome.
+
+**A note on what "beating the market" would have to mean.** The eval compares against
+the mid. Trading happens against the ask. With a mid of 0.50 and a 0.04 spread, an
+estimate of 0.51 is "better than the market" and still loses money. So the operational
+bar is not skill > 0; it is skill positive by enough to clear half the spread, on a
+subset declarable *before* the outcome is known. No band above clears it today.
+
+**Calibration.** Global bias fell from +0.115 to +0.011 — the earlier number was
+sample composition, not optimism. ECE is 0.1024, with the residual structure in the
+0.1–0.4 buckets: when the agent says a side has 20–40%, it happens less often than
+that. Murphy decomposition gives resolution 0.0969 against uncertainty 0.2493, so the
+quiet failure mode — answering ~0.5 to everything, scoring acceptably, being useless —
+is not what is happening.
+
+**Fidelity.** 574 recorded claims, 574 pointing at a fragment that was actually in the
+prompt, zero analyses discarded in validation. The model is not inventing citations.
+That is enforced structurally: a claim citing a label that was never supplied causes
+the whole analysis to be dropped rather than stored.
 
 ---
 
