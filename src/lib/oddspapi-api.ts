@@ -76,6 +76,57 @@ export const MONTHLY_BILLABLE_LIMIT = 250;
  */
 export const BILLABLE_RESERVE = 40;
 
+/**
+ * TTL da resposta de `/v4/fixtures`. Oito horas, e o número é aritmética — não
+ * preferência, não "parece razoável".
+ *
+ * Medido no painel deles: 78/250 em 10/08 06:46 UTC e 93/250 em 11/08 03:14 UTC.
+ * São 15 requisições em 20,5h = 17,6/dia, e as duas leituras já são POSTERIORES
+ * à correção do cache compartilhado — não é o defeito antigo ainda drenando.
+ *
+ * Restavam 117 até a reserva de 40 (`BILLABLE_RESERVE`) cortar, e o ciclo vira
+ * por volta de 07/09, 27 dias depois da segunda leitura. O teto por CHAVE de
+ * cache é 86400/TTL, e o gasto é ele vezes o número de chaves ativas por dia:
+ *
+ *     TTL 1h → 24/chave — três vezes o orçamento inteiro
+ *     TTL 6h →  4/chave × 1,143 = 4,57/dia → 117 duram 25,6 dias, esgota 05/09
+ *               e o ciclo só vira 07/09: FALTA 1,5 dia
+ *     TTL 8h →  3/chave × 1,143 = 3,43/dia → 117 duram 34 dias: SOBRA 7 dias
+ *
+ * ## A premissa frágil é 1,143, não o TTL
+ *
+ * O 1,143 é `(6 dias × 1 chave + 1 dia × 2 chaves) / 7` — o modelo de quantas
+ * chaves de `DISCOVERY_BLOCK_DAYS` ficam ativas por dia, supondo que o lookahead
+ * do enricher só atravessa a fronteira do bloco no dia da virada. Isso NÃO foi
+ * medido; depende de com que frequência o lookahead alcança o bloco seguinte.
+ *
+ * Terminar 1,5 dia curto apoiado num modelo não validado é apostar que o erro
+ * vai para o lado bom. É por isso que o TTL subiu para 8h: os 7 dias de margem
+ * são a folga para o 1,143 estar errado. Quem confirma ou derruba o modelo é a
+ * medição das 24h seguintes ao deploy — leia o painel deles de novo e compare o
+ * consumo real com 3,43/dia. Se der mais, o número de chaves é maior que o
+ * modelado, e é o modelo que estava errado, não o TTL.
+ *
+ * ## Por que 8h custa pouco
+ *
+ * Por causa da guarda de procedência, e só por causa dela: lista velha que não
+ * acha a fixture NÃO carimba mais `oddspapi_missing_at` (ver `mergeFixtureIds`
+ * no enricher). A partida é reavaliada de graça a cada ciclo e entra assim que a
+ * lista renovar. Ou seja, staleness virou ATRASO, não exclusão — o custo de um
+ * TTL maior é a partida entrar algumas horas depois, não ficar de fora.
+ *
+ * Se alguém reverter aquela guarda, este raciocínio some junto e 8h passa a
+ * significar até 32h de silêncio por partida (8h de lista velha + 24h de
+ * carimbo). As duas coisas são uma só.
+ *
+ * ## Qual dial girar
+ *
+ * ESTE. TTL não tem teto rígido e o efeito no orçamento é linear e imediato.
+ * `DISCOVERY_BLOCK_DAYS` não — ele esbarra no limite de 10 dias da API e engorda
+ * a lista devolvida, que é o que `describeTruncationRisk` existe para vigiar.
+ */
+export const FIXTURES_CACHE_SECONDS = 8 * 3_600;
+
 /** Quanto tempo o cliente fica quieto depois de um corte de acesso. */
 export const SUSPENDED_COOLDOWN_MS = 6 * 3_600_000;
 
@@ -394,6 +445,38 @@ function retryMsOf(body: unknown): number | null {
   return typeof ms === 'number' ? ms : null;
 }
 
+/**
+ * De onde veio uma resposta. Rede ou cache — e a diferença é uma AFIRMAÇÃO
+ * diferente sobre o mundo.
+ *
+ * `network` significa "a OddsPapi respondeu isto agora". `cache` significa
+ * "a OddsPapi respondeu isto em algum momento das últimas 6h". A segunda não
+ * sustenta conclusão sobre ausência: uma fixture que não está numa lista de 5h
+ * atrás pode ter sido cadastrada há 4h.
+ */
+export type ResponseSource = 'network' | 'cache';
+
+/**
+ * Um valor com a procedência grudada.
+ *
+ * A procedência viaja no RETORNO, e não numa variável de módulo do tipo
+ * `ultimaChamadaVeioDoCache`. Estado mutável de módulo já produziu três
+ * incidentes neste repo — o cursor do resolver, o `lastAttemptAt` do enricher e
+ * o próprio cache deste cliente — e o modo de falha é sempre o mesmo: o
+ * comportamento logo depois do deploy é diferente do comportamento em regime,
+ * então o teste passa, a primeira passada passa, e o defeito aparece na quarta
+ * hora de produção. Aqui não há instante em que a resposta e a procedência
+ * estejam separadas: quem tem uma tem a outra.
+ *
+ * Só isto não IMPEDE de esquecer — `.value` é acessível sem olhar `.source`. O
+ * que impede está no ponto onde a distinção importa: `FixtureOutcome` no
+ * enricher não deixa construir uma ausência sem declarar a procedência dela.
+ */
+export interface Sourced<T> {
+  readonly source: ResponseSource;
+  readonly value: T;
+}
+
 interface CallOptions {
   readonly path: string;
   readonly params: Readonly<Record<string, string>>;
@@ -408,12 +491,12 @@ interface CallOptions {
  * A ordem das guardas é a ordem do custo: primeiro o que não gasta nada (cache,
  * suspensão, configuração, orçamento), depois a espera, e só então a rede.
  */
-async function call(opts: CallOptions, attempt = 0): Promise<unknown> {
+async function call(opts: CallOptions, attempt = 0): Promise<Sourced<unknown>> {
   const now = Date.now();
 
   const hit = cacheRead(opts.path, opts.params, opts.cacheSeconds, now);
   if (hit !== undefined) {
-    return hit.body;
+    return { source: 'cache', value: hit.body };
   }
 
   const suspended = suspendedForMs(now);
@@ -513,7 +596,7 @@ async function call(opts: CallOptions, attempt = 0): Promise<unknown> {
 
   cacheWrite(opts.path, opts.params, opts.cacheSeconds, body);
 
-  return body;
+  return { source: 'network', value: body };
 }
 
 // ---------------------------------------------------------------------------
@@ -567,12 +650,101 @@ export function toFixture(row: Record<string, unknown>): OddsPapiFixture | null 
 }
 
 /**
- * Fixtures de um esporte numa janela.
+ * Contagens que cheiram a teto de página em vez de a fim de lista.
+ *
+ * Nenhuma delas é prova: 250 fixtures de CS2 numa janela de 9 dias é um número
+ * perfeitamente possível. O que elas são é o único sinal barato que existe —
+ * a doc não promete ausência de paginação, e ninguém mediu.
+ */
+export const SUSPICIOUS_PAGE_SIZES: readonly number[] = [100, 250, 500, 1000];
+
+/** Nomes de campo que denunciam resposta paginada, em qualquer capitalização. */
+const PAGINATION_KEYS: ReadonlySet<string> = new Set([
+  'cursor',
+  'nextcursor',
+  'next',
+  'nextpage',
+  'hasmore',
+  'hasnext',
+  'page',
+  'pages',
+  'pagecount',
+  'pagesize',
+  'perpage',
+  'limit',
+  'offset',
+  'total',
+  'totalcount',
+  'totalpages',
+]);
+
+/**
+ * Campos de paginação na ENVELOPAGEM da resposta.
+ *
+ * Não desce em array de propósito. As fixtures são o array, e uma delas pode
+ * muito bem ter um campo `total` ou `limit` seu — varrer as 350 produziria
+ * alarme toda vez. O que interessa é o envelope em volta da lista.
+ */
+export function paginationHintsOf(body: unknown, depth = 0): string[] {
+  if (depth > 3 || !isRecord(body)) return [];
+
+  const found: string[] = [];
+  for (const [key, value] of Object.entries(body)) {
+    if (PAGINATION_KEYS.has(key.toLowerCase().replace(/[_-]/g, ''))) {
+      found.push(`${key}=${JSON.stringify(value)?.slice(0, 40) ?? 'null'}`);
+    }
+    if (isRecord(value)) found.push(...paginationHintsOf(value, depth + 1));
+  }
+
+  return found;
+}
+
+/**
+ * O aviso de truncamento, ou `null` quando nada cheira mal.
+ *
+ * Por que isto existe: a janela passou de 3 para 9 dias (`DISCOVERY_BLOCK_DAYS`
+ * no enricher), e a lista que volta é da ordem de centenas em vez de dezenas. Se
+ * `/v4/fixtures` cortar num teto qualquer, o excesso some em SILÊNCIO — e uma
+ * fixture ausente por truncamento é indistinguível de uma fixture que não
+ * existe. O enricher registraria a segunda leitura como fato sobre a partida.
+ *
+ * É o modo de falha mais caro que sobrou neste caminho: a cobertura está em 41%,
+ * e uma perda por truncamento entraria nessa conta sem deixar rastro.
+ */
+export function describeTruncationRisk(count: number, body: unknown): string | null {
+  const hints = paginationHintsOf(body);
+  const roundNumber = SUSPICIOUS_PAGE_SIZES.includes(count);
+
+  if (!roundNumber && hints.length === 0) return null;
+
+  const causes: string[] = [];
+  if (roundNumber) {
+    causes.push(`a contagem é exatamente ${count}, um teto de página plausível`);
+  }
+  if (hints.length > 0) {
+    causes.push(`a resposta traz campo de paginação (${hints.join(', ')})`);
+  }
+
+  return (
+    `possível TRUNCAMENTO em /v4/fixtures: ${causes.join(' e ')}. ` +
+    `Fixture cortada é indistinguível de fixture inexistente, e o enricher ` +
+    `carimbaria a partida como não coberta. Confirme com a sonda antes de confiar ` +
+    `na cobertura desta janela.`
+  );
+}
+
+/**
+ * Fixtures de um esporte numa janela, COM a procedência da resposta.
  *
  * BILLABLE. A janela é limitada a 9 dias porque a API rejeita acima de 10
  * (medido: `INVALID_PARAMETER`, "must be under 10 days apart") — e quem chama
  * deve preferir a MENOR janela que resolva, porque cada janela é uma requisição
  * do orçamento mensal.
+ *
+ * Devolve `Sourced` e não a lista crua porque, com TTL de
+ * `FIXTURES_CACHE_SECONDS`, "não achei nesta lista" deixou de ser um fato sobre
+ * a partida e passou a ser um fato sobre a IDADE DA LISTA. Quem chama precisa
+ * saber qual dos dois tem na mão antes de gravar conclusão em lugar nenhum.
  */
 export async function fixtures(opts: {
   sportId: number;
@@ -580,27 +752,40 @@ export async function fixtures(opts: {
   to: string;
   cacheSeconds?: number;
   reserve?: number;
-}): Promise<OddsPapiFixture[]> {
-  const body = await call({
+}): Promise<Sourced<OddsPapiFixture[]>> {
+  const response = await call({
     path: '/v4/fixtures',
     params: {
       sportId: String(opts.sportId),
       from: safeParam('from', opts.from),
       to: safeParam('to', opts.to),
     },
-    // Uma hora. A janela de descoberta é o dia da partida, e fixture nova entra
-    // com dias de antecedência — reconsultar de hora em hora é folgado, e cada
-    // reconsulta custa do orçamento mensal.
-    cacheSeconds: opts.cacheSeconds ?? 3_600,
+    cacheSeconds: opts.cacheSeconds ?? FIXTURES_CACHE_SECONDS,
     ...(opts.reserve === undefined ? {} : { reserve: opts.reserve }),
   });
 
-  const rows = firstObjectArray(body);
+  const rows = firstObjectArray(response.value);
   if (rows === null) {
     throw new OddsPapiError('shape', '/v4/fixtures não devolveu lista de objetos');
   }
 
-  return rows.map(toFixture).filter((f): f is OddsPapiFixture => f !== null);
+  // Só na resposta de REDE. Do cache, o mesmo corpo voltaria a cada ciclo e o
+  // aviso viraria ruído de log — e a contagem já foi registrada quando a lista
+  // chegou. É a mesma distinção que governa o `missing_at` no enricher: o que
+  // se aprende sobre a fonte se aprende quando a fonte responde.
+  if (response.source === 'network') {
+    console.log(
+      `[${COMPONENT}] /v4/fixtures ${opts.from}..${opts.to}: ${rows.length} fixture(s) da rede`,
+    );
+
+    const risk = describeTruncationRisk(rows.length, response.value);
+    if (risk !== null) console.warn(`[${COMPONENT}] ${risk}`);
+  }
+
+  return {
+    source: response.source,
+    value: rows.map(toFixture).filter((f): f is OddsPapiFixture => f !== null),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -751,7 +936,10 @@ export async function historicalOdds(opts: {
     throw new OddsPapiError('unsafe_param', 'nenhuma casa pedida');
   }
 
-  const body = await call({
+  // A procedência é descartada de propósito aqui, e é o único lugar onde isso é
+  // certo: nada a jusante de `/v4/historical-odds` grava conclusão sobre
+  // ausência. Casa que não aparece na resposta vira `coverage`, não carimbo.
+  const { value: body } = await call({
     path: '/v4/historical-odds',
     params: {
       fixtureId: safeParam('fixtureId', opts.fixtureId),

@@ -20,6 +20,11 @@ const {
   cacheRead,
   cacheWrite,
   MAX_CACHE_ENTRIES,
+  fixtures,
+  FIXTURES_CACHE_SECONDS,
+  describeTruncationRisk,
+  paginationHintsOf,
+  SUSPICIOUS_PAGE_SIZES,
 } = await import('./oddspapi-api.js');
 
 type OddsEntry = Parameters<typeof collectOdds>[1][number];
@@ -246,6 +251,153 @@ test('a rotatividade do endpoint livre não despeja a entrada billable', () => {
   // Passado o TTL ela vence normalmente — a proteção é contra despejo, não contra
   // o vencimento.
   assert.equal(cacheRead('/v4/fixtures', fixturesParams, 3_600, t0 + 3_601_000), undefined);
+});
+
+// ---------------------------------------------------------------------------
+// TTL de 6h e a procedência da resposta
+// ---------------------------------------------------------------------------
+
+const FIXTURE_PARAMS = { sportId: '17', from: '2026-08-10', to: '2026-08-12' };
+const FIXTURE_ARGS = { sportId: 17, from: '2026-08-10', to: '2026-08-12' };
+const FIXTURE_BODY = [
+  { fixtureId: 'f1', participant1Name: 'Natus Vincere', participant2Name: 'Team Spirit' },
+];
+
+/** Nenhum teste deste arquivo fala com a OddsPapi: a cota está em 93/250. */
+function forbidNetwork(): { calls: () => number; restore: () => void } {
+  const real = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new Error('rede proibida no teste');
+  }) as typeof globalThis.fetch;
+
+  return {
+    calls: () => calls,
+    restore: () => {
+      globalThis.fetch = real;
+    },
+  };
+}
+
+test('a resposta de fixtures diz de onde veio', async () => {
+  // Sem isto o chamador não tem como distinguir "a OddsPapi não tem esta
+  // partida" de "a lista que eu tenho na mão é de 5h atrás" — e grava a segunda
+  // como se fosse a primeira. Ver `mergeFixtureIds` no enricher.
+  resetOddsPapiState();
+  const net = forbidNetwork();
+
+  try {
+    cacheWrite('/v4/fixtures', FIXTURE_PARAMS, FIXTURES_CACHE_SECONDS, FIXTURE_BODY);
+
+    const res = await fixtures(FIXTURE_ARGS);
+    assert.equal(res.source, 'cache');
+    assert.equal(res.value.length, 1);
+    assert.equal(res.value[0]?.fixtureId, 'f1');
+    assert.equal(net.calls(), 0);
+  } finally {
+    net.restore();
+    resetOddsPapiState();
+  }
+});
+
+test('o TTL de fixtures é de 8h — entrada de 7h ainda serve, e não vai à rede', async () => {
+  // O número é orçamento, não preferência: 4,3 requisições/dia disponíveis
+  // contra 17,6 sendo queimadas. 6h dava 4,57/dia e esgotava 1,5 dia ANTES de o
+  // ciclo virar; 8h dá 3,43/dia e sobra margem de 7 dias — margem que existe
+  // porque o modelo de chaves ativas por dia não foi medido. Uma entrada de 7h
+  // atrás é exatamente o caso que separa os dois TTLs.
+  resetOddsPapiState();
+  const saved = process.env['ODDSPAPI_API_KEY'];
+  process.env['ODDSPAPI_API_KEY'] = 'chave-de-teste';
+  const net = forbidNetwork();
+
+  try {
+    assert.equal(FIXTURES_CACHE_SECONDS, 8 * 3_600);
+
+    const seteHoras = Date.now() - 7 * 3_600_000;
+    cacheWrite('/v4/fixtures', FIXTURE_PARAMS, FIXTURES_CACHE_SECONDS, FIXTURE_BODY, seteHoras);
+
+    const dentro = await fixtures(FIXTURE_ARGS);
+    assert.equal(dentro.source, 'cache');
+    assert.equal(net.calls(), 0, 'com TTL de 1h ou 6h esta chamada teria ido à rede');
+
+    // Passadas as 8h a entrada vence e a rede é tentada — a proteção é contra
+    // reconsulta cedo demais, não contra reconsulta.
+    resetOddsPapiState();
+    const noveHoras = Date.now() - 9 * 3_600_000;
+    cacheWrite('/v4/fixtures', FIXTURE_PARAMS, FIXTURES_CACHE_SECONDS, FIXTURE_BODY, noveHoras);
+
+    await assert.rejects(() => fixtures(FIXTURE_ARGS), /rede proibida no teste/);
+    assert.equal(net.calls(), 1);
+  } finally {
+    net.restore();
+    if (saved === undefined) delete process.env['ODDSPAPI_API_KEY'];
+    else process.env['ODDSPAPI_API_KEY'] = saved;
+    resetOddsPapiState();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Truncamento — a guarda que a janela de 9 dias exige
+// ---------------------------------------------------------------------------
+
+test('lista de tamanho comum e sem campo de paginação não vira alarme', () => {
+  // O aviso tem que ser raro para ser lido. 347 fixtures é o número plausível
+  // para 9 dias de CS2 e não deve produzir nada.
+  assert.equal(describeTruncationRisk(347, [{ fixtureId: 'f1' }]), null);
+  assert.equal(describeTruncationRisk(0, []), null);
+  assert.equal(describeTruncationRisk(38, { fixtures: [{ fixtureId: 'f1' }] }), null);
+});
+
+test('contagem exatamente num teto redondo é tratada como suspeita', () => {
+  // Nenhuma prova — 250 fixtures é possível. Mas fixture cortada é
+  // indistinguível de fixture inexistente, e o enricher carimbaria a partida
+  // como não coberta. O custo de um falso alarme é uma linha de log; o de um
+  // truncamento silencioso é cobertura perdida sem rastro.
+  for (const teto of SUSPICIOUS_PAGE_SIZES) {
+    const aviso = describeTruncationRisk(teto, [{ fixtureId: 'f1' }]);
+    assert.notEqual(aviso, null, `${teto} deveria alarmar`);
+    assert.match(aviso ?? '', /TRUNCAMENTO/);
+  }
+
+  assert.equal(describeTruncationRisk(249, [{ fixtureId: 'f1' }]), null);
+  assert.equal(describeTruncationRisk(251, [{ fixtureId: 'f1' }]), null);
+});
+
+test('campo de paginação na envelopagem alarma mesmo com contagem inocente', () => {
+  const aviso = describeTruncationRisk(37, {
+    data: [{ fixtureId: 'f1' }],
+    meta: { nextCursor: 'abc123', total: 900 },
+  });
+
+  assert.notEqual(aviso, null);
+  assert.match(aviso ?? '', /nextCursor/);
+  assert.match(aviso ?? '', /total/);
+});
+
+test('campo dentro das FIXTURES não alarma — só a envelopagem conta', () => {
+  // Sem isto, uma fixture com campo `limit` ou `total` seu produziria o aviso em
+  // toda janela, e um aviso que aparece sempre não é lido nunca.
+  assert.equal(
+    describeTruncationRisk(37, [
+      { fixtureId: 'f1', limit: 5000, total: 2 },
+      { fixtureId: 'f2', page: 1 },
+    ]),
+    null,
+  );
+
+  assert.deepEqual(paginationHintsOf([{ cursor: 'x' }]), []);
+  assert.deepEqual(paginationHintsOf(null), []);
+  assert.deepEqual(paginationHintsOf('texto'), []);
+});
+
+test('o nome do campo de paginação é reconhecido em qualquer grafia', () => {
+  for (const key of ['nextCursor', 'next_cursor', 'has_more', 'totalPages', 'perPage', 'OFFSET']) {
+    assert.equal(paginationHintsOf({ [key]: 1 }).length, 1, key);
+  }
+  // E um campo que só PARECE paginação não conta.
+  assert.deepEqual(paginationHintsOf({ sportId: 17, participant1Name: 'NAVI' }), []);
 });
 
 test('o cache livre despeja o vencido antes do válido, e nunca zera inteiro', () => {

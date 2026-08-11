@@ -26,7 +26,10 @@ const {
   buildSuspensionSummary,
   matchFixture,
   readCachedFixture,
+  mergeFixtureIds,
   discoveryWindow,
+  DISCOVERY_BLOCK_DAYS,
+  DISCOVERY_PAD_DAYS,
   safeBookmakers,
   normalize,
   CONSENSUS_MAX_STALE_SECONDS,
@@ -533,10 +536,230 @@ test('o cache negativo é o que protege o orçamento mensal', () => {
   assert.equal(readCachedFixture({ oddspapi_fixture_id: 'f9' }, now).kind, 'unknown');
 });
 
-test('a janela de descoberta é o dia da partida, não o mês', () => {
-  const { from, to } = discoveryWindow(new Date('2026-07-10T18:00:00.000Z'));
-  assert.equal(from, '2026-07-09');
-  assert.equal(to, '2026-07-11');
+// ---------------------------------------------------------------------------
+// Só a rede sustenta conclusão sobre ausência
+// ---------------------------------------------------------------------------
+
+test('ausência apurada em lista de CACHE não vira carimbo de 24h', () => {
+  // A interação entre os dois caches, que é o defeito que o TTL de 6h criaria:
+  // lista em cache com 5h + fixture cadastrada nesse meio-tempo = partida não
+  // encontrada, carimbada por 24h. Atraso de 6h deles vira 30h de silêncio
+  // nosso — e o carimbo estaria registrando como FATO SOBRE A PARTIDA o que foi
+  // só uma lista desatualizada.
+  const now = new Date('2026-08-11T12:00:00.000Z');
+  const current = { polymarket_slug: 'navi-vs-spirit' };
+
+  const merged = mergeFixtureIds(current, { kind: 'absent', source: 'cache' }, now);
+
+  assert.equal(merged, null, 'resposta de cache não sustenta conclusão sobre ausência');
+
+  // E o efeito que importa: sem carimbo, a partida continua `unknown` e é
+  // reavaliada no ciclo seguinte — que também será cache hit, e portanto não
+  // gasta billable nenhum até a lista renovar.
+  assert.equal(readCachedFixture(current, now).kind, 'unknown');
+});
+
+test('ausência apurada na REDE vira carimbo de 24h', () => {
+  // O cache negativo continua existindo e continua protegendo o orçamento: o
+  // CS2 de tier baixo não interessa a casa nenhuma, e sem carimbo essas partidas
+  // custariam uma janela billable por ciclo, para sempre.
+  const now = new Date('2026-08-11T12:00:00.000Z');
+
+  const merged = mergeFixtureIds(
+    { polymarket_slug: 'navi-vs-spirit' },
+    { kind: 'absent', source: 'network' },
+    now,
+  );
+
+  assert.notEqual(merged, null);
+  assert.equal(merged?.['oddspapi_missing_at'], now.toISOString());
+  assert.equal(merged?.['polymarket_slug'], 'navi-vs-spirit', 'o merge preserva o que já havia');
+  assert.equal(readCachedFixture(merged, now).kind, 'missing');
+
+  // Dezenove horas depois ainda cala; passadas as 24h, procura de novo.
+  const dezenove = new Date(now.getTime() + 19 * 3_600_000);
+  const vinteECinco = new Date(now.getTime() + 25 * 3_600_000);
+  assert.equal(readCachedFixture(merged, dezenove).kind, 'missing');
+  assert.equal(readCachedFixture(merged, vinteECinco).kind, 'unknown');
+});
+
+test('fixture encontrada apaga o carimbo, venha de onde vier a lista', () => {
+  const now = new Date('2026-08-11T12:00:00.000Z');
+
+  const merged = mergeFixtureIds(
+    { oddspapi_missing_at: '2026-08-10T00:00:00.000Z' },
+    {
+      kind: 'found',
+      link: { fixtureId: 'f7', aliasesA: ['NAVI'], aliasesB: ['Spirit'], sideAIndex: 2, tier: 'canonical' },
+    },
+    now,
+  );
+
+  assert.equal(merged?.['oddspapi_fixture_id'], 'f7');
+  assert.equal(merged?.['oddspapi_side_a_index'], 2);
+  assert.equal(merged?.['oddspapi_match_tier'], 'canonical');
+  assert.equal('oddspapi_missing_at' in (merged ?? {}), false);
+  assert.equal(readCachedFixture(merged, now).kind, 'fixture');
+});
+
+// ---------------------------------------------------------------------------
+// A janela de descoberta — a função com mais consequência do arquivo
+// ---------------------------------------------------------------------------
+
+/** Dias entre as duas pontas da janela, que a API exige abaixo de 10. */
+function spanDays({ from, to }: { from: string; to: string }): number {
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+}
+
+/**
+ * A faixa que a API de fato cobre: `[from, to)`.
+ *
+ * MEDIDO — `to` é exclusivo (ver `DISCOVERY_PAD_DAYS`). Testar com `<=` no fim
+ * afirmaria cobertura de um dia que não vem, que é justamente o defeito que
+ * passou despercebido enquanto ninguém tinha medido a semântica.
+ */
+function covers({ from, to }: { from: string; to: string }, day: string): boolean {
+  return from <= day && day < to;
+}
+
+function dayOf(epochDay: number): string {
+  return new Date(epochDay * 86_400_000).toISOString().slice(0, 10);
+}
+
+function blockStartOf(date: Date): number {
+  return (
+    Math.floor(Math.floor(date.getTime() / 86_400_000) / DISCOVERY_BLOCK_DAYS) *
+    DISCOVERY_BLOCK_DAYS
+  );
+}
+
+test('partidas em dias DIFERENTES do mesmo bloco compartilham a janela', () => {
+  // A razão de existir da mudança. Com a janela antiga (D-1..D+1) cada dia era
+  // uma chave de cache: duas janelas em voo, 8 chamadas/dia contra 4,3
+  // disponíveis, e as duas pagando pelo quase mesmo conjunto de fixtures.
+  const segunda = discoveryWindow(new Date('2026-08-10T18:00:00.000Z'));
+  const terca = discoveryWindow(new Date('2026-08-11T02:00:00.000Z'));
+  const quarta = discoveryWindow(new Date('2026-08-12T23:59:59.000Z'));
+
+  assert.deepEqual(segunda, terca);
+  assert.deepEqual(segunda, quarta);
+});
+
+test('a partida na BORDA do bloco continua dentro da janela, pela folga', () => {
+  // A folga existe porque a data da fixture deles pode diferir em um dia da
+  // nossa `scheduled_at` (fuso, partida de madrugada UTC). Sem ela a partida da
+  // borda não acha a própria fixture — e a perda viraria "não coberta".
+  const dentro = new Date('2026-08-11T12:00:00.000Z');
+  const janela = discoveryWindow(dentro);
+
+  const inicioBloco = blockStartOf(dentro);
+  const primeiroDia = dayOf(inicioBloco);
+  const ultimoDia = dayOf(inicioBloco + DISCOVERY_BLOCK_DAYS - 1);
+
+  // As duas pontas do bloco produzem a MESMA janela, e ela cobre as duas datas.
+  assert.deepEqual(discoveryWindow(new Date(`${primeiroDia}T00:00:00Z`)), janela);
+  assert.deepEqual(discoveryWindow(new Date(`${ultimoDia}T23:59:59Z`)), janela);
+  assert.ok(covers(janela, primeiroDia));
+  assert.ok(covers(janela, ultimoDia));
+
+  // E a folga é de um dia de cada lado, não zero.
+  assert.ok(janela.from < primeiroDia);
+  assert.equal(janela.from, dayOf(inicioBloco - DISCOVERY_PAD_DAYS));
+});
+
+test('a folga do FIM é consultada de fato — o `to` da API é exclusivo', () => {
+  // MEDIDO em 11/08/2026: pedir `2026-08-10..2026-08-12` devolve só 10 e 11, e a
+  // janela maior prova que havia 16 fixtures em 12/08. A faixa é `[from, to)`.
+  //
+  // Enquanto o fim era calculado como se fosse inclusivo, o dia de folga depois
+  // do bloco caía fora e a folga só existia no começo — a partida do último dia
+  // do bloco, com fixture um dia à frente por fuso, não era encontrada.
+  const dentro = new Date('2026-08-11T12:00:00.000Z');
+  const janela = discoveryWindow(dentro);
+  const inicioBloco = blockStartOf(dentro);
+
+  const diaDeFolgaDoFim = dayOf(inicioBloco + DISCOVERY_BLOCK_DAYS);
+  assert.ok(
+    covers(janela, diaDeFolgaDoFim),
+    `${diaDeFolgaDoFim} deveria estar coberto por [${janela.from}, ${janela.to})`,
+  );
+
+  // O `to` é o primeiro dia FORA, e é um a mais que o último coberto.
+  assert.equal(janela.to, dayOf(inicioBloco + DISCOVERY_BLOCK_DAYS + DISCOVERY_PAD_DAYS));
+  assert.equal(janela.to, dayOf(inicioBloco + 8));
+  assert.ok(!covers(janela, janela.to));
+
+  // Nove datas cobertas: `blocoInício - 1` até `blocoInício + 7`.
+  assert.equal(spanDays(janela), DISCOVERY_BLOCK_DAYS + 2 * DISCOVERY_PAD_DAYS);
+  assert.equal(spanDays(janela), 9);
+});
+
+test('blocos vizinhos produzem janelas diferentes', () => {
+  const DAY = 86_400_000;
+  const agora = new Date('2026-08-11T12:00:00.000Z');
+  const anterior = new Date(agora.getTime() - DISCOVERY_BLOCK_DAYS * DAY);
+  const seguinte = new Date(agora.getTime() + DISCOVERY_BLOCK_DAYS * DAY);
+
+  assert.notDeepEqual(discoveryWindow(anterior), discoveryWindow(agora));
+  assert.notDeepEqual(discoveryWindow(seguinte), discoveryWindow(agora));
+  // Blocos vizinhos se tocam pela folga, mas não são a mesma chave de cache.
+  assert.ok(discoveryWindow(anterior).from < discoveryWindow(agora).from);
+});
+
+test('to − from fica abaixo de 10 dias para toda data — mês, ano e bissexto', () => {
+  // O limite é medido, não suposto: acima de 10 a API devolve
+  // `INVALID_PARAMETER`, "must be under 10 days apart". Uma janela grande demais
+  // não degrada, ela falha inteira.
+  const datas = [
+    '2026-01-01T00:00:00.000Z',
+    '2026-01-31T23:59:59.000Z',
+    '2026-02-28T12:00:00.000Z',
+    '2024-02-29T12:00:00.000Z', // bissexto
+    '2024-12-31T23:59:59.000Z', // virada de ano
+    '2025-01-01T00:00:00.000Z',
+    '2026-08-11T12:00:00.000Z',
+    '2026-12-31T00:00:00.000Z',
+    '2027-03-01T00:00:00.000Z',
+  ];
+
+  for (const iso of datas) {
+    const janela = discoveryWindow(new Date(iso));
+    assert.ok(spanDays(janela) < 10, `${iso}: janela de ${spanDays(janela)} dias`);
+    assert.ok(covers(janela, iso.slice(0, 10)), `${iso}: fora da própria janela`);
+  }
+
+  // E para 400 dias corridos, que cobre todo alinhamento possível do bloco. A
+  // cada dia se confere também que a folga do fim entrou — o span de 9 dias só
+  // vale se ele continuar abaixo de 10 em toda virada de mês, ano e bissexto.
+  const inicio = Date.parse('2026-01-01T06:00:00Z');
+  for (let i = 0; i < 400; i += 1) {
+    const dia = new Date(inicio + i * 86_400_000);
+    const janela = discoveryWindow(dia);
+    const bloco = blockStartOf(dia);
+
+    assert.ok(spanDays(janela) < 10, `${dia.toISOString()}: span ${spanDays(janela)}`);
+    assert.ok(covers(janela, dia.toISOString().slice(0, 10)));
+    assert.ok(covers(janela, dayOf(bloco - DISCOVERY_PAD_DAYS)), 'folga do começo');
+    assert.ok(covers(janela, dayOf(bloco + DISCOVERY_BLOCK_DAYS)), 'folga do fim');
+  }
+});
+
+test('a fronteira do bloco NÃO depende de "hoje"', () => {
+  // Se a fronteira andasse com o relógio, toda partida mudaria de janela à
+  // meia-noite e o cache de 6h se invalidaria sozinho todo dia — a mudança
+  // inteira perderia o efeito sem nada parecer errado.
+  const partida = new Date('2026-08-11T12:00:00.000Z');
+  const esperada = discoveryWindow(partida);
+
+  const realNow = Date.now;
+  try {
+    for (const fakeNow of ['2026-08-09T00:00:00Z', '2026-08-14T23:00:00Z', '2027-01-01T00:00:00Z']) {
+      Date.now = () => Date.parse(fakeNow);
+      assert.deepEqual(discoveryWindow(partida), esperada, `mudou com "hoje" = ${fakeNow}`);
+    }
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test('a lista de casas respeita o teto de 3 e descarta slug torto', () => {

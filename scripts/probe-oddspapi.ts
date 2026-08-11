@@ -50,7 +50,15 @@ import 'dotenv/config';
  *
  * O Free dá 250 requisições/mês, e a contagem é por CHAMADA a endpoint billable
  * — tamanho da resposta não importa. Uma passada completa desta sonda gasta
- * **2 requisições billable** (`/v4/bookmakers` e `/v4/fixtures`). `/v4/account` e
+ * **2 requisições billable** (`/v4/bookmakers` e `/v4/fixtures`) — e só gasta
+ * isso porque o default de `--from`/`--to` é UMA janela de 9 datas. Um range
+ * maior é partido por `windows()` em pedaços de 9 dias, e cada pedaço é uma
+ * chamada paga: `--from=2026-07-01 --to=2026-07-31` custa 5, não 2.
+ *
+ * `--truncation` é o modo mais barato e mais conclusivo: 2 billable exatas,
+ * duas janelas encaixadas, e a resposta definitiva sobre se `/v4/fixtures`
+ * corta a lista. Sai no topo do `main` para não arrastar nenhuma outra chamada
+ * paga junto. `/v4/account` e
  * `/v4/historical-odds` são declarados não-billable pela doc, e confirmar isso é
  * justamente o item 1. O contador abaixo separa as duas categorias e o relatório
  * final compara com o que a conta diz.
@@ -61,7 +69,8 @@ import 'dotenv/config';
  * ## Uso
  *
  *   npm run oddspapi:probe
- *   npm run oddspapi:probe -- --from=2026-07-01 --to=2026-07-31
+ *   npm run oddspapi:probe -- --from=2026-08-07 --to=2026-08-15
+ *   npm run oddspapi:probe -- --truncation           # 2 billable, e só elas
  *   npm run oddspapi:probe -- --bookmakers=pinnacle,ggbet,thunderpick
  *   npm run oddspapi:probe -- --fixture=id1704591169167084
  *   npm run oddspapi:probe -- --with-db      # cruza os nomes com esports_teams
@@ -1511,6 +1520,10 @@ async function probeHistorical(
 // tardia de dado, que o cache pode tolerar com TTL mas o replay não.
 
 const SNAPSHOT_KIND = 'oddspapi-historical-odds-snapshot';
+
+/** O `kind` das respostas de `/v4/fixtures` — formato igual, endpoint outro. */
+const FIXTURES_SNAPSHOT_KIND = 'oddspapi-fixtures-snapshot';
+
 const SNAPSHOT_DIR = 'probes/oddspapi';
 
 interface Snapshot {
@@ -1558,12 +1571,13 @@ async function writeSnapshot(
   endpoint: string,
   params: Record<string, string>,
   res: CallResult,
+  kind: string = SNAPSHOT_KIND,
 ): Promise<void> {
   const { mkdir, writeFile } = await import('node:fs/promises');
   const { dirname } = await import('node:path');
 
   const snapshot: Snapshot = {
-    kind: SNAPSHOT_KIND,
+    kind,
     version: 1,
     fetchedAt: new Date().toISOString(),
     endpoint,
@@ -1767,6 +1781,288 @@ async function compareSnapshot(file: string, coincidenceMs: number): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
+// `--truncation` — /v4/fixtures corta a lista em algum teto?
+// ---------------------------------------------------------------------------
+
+/** Datas da janela pequena (A) e da grande (B). B contém A inteira. */
+const TRUNCATION_INNER_DATES = 3;
+const TRUNCATION_OUTER_DATES = 9;
+
+function isoDay(epochDay: number): string {
+  return new Date(epochDay * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Quantas fixtures por data de `startTime`, para ler a semântica da faixa. */
+function byStartDate(body: unknown): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const row of firstObjectArray(body) ?? []) {
+    const day = (str(row['startTime']) ?? '????-??-??').slice(0, 10);
+    out.set(day, (out.get(day) ?? 0) + 1);
+  }
+  return new Map([...out].sort(([x], [y]) => x.localeCompare(y)));
+}
+
+/** Ids de fixture da resposta crua, na ordem em que vieram. */
+function fixtureIdsOf(body: unknown): string[] {
+  const rows = firstObjectArray(body) ?? [];
+  return rows
+    .map((row) => str(row['fixtureId']) ?? str(row['id']))
+    .filter((id): id is string => id !== null);
+}
+
+/**
+ * A envelopagem CRUA, que é o que ninguém neste projeto jamais viu.
+ *
+ * `firstObjectArray` cava até o primeiro array de objetos e devolve só ele —
+ * então todo campo em volta da lista (cursor, total, página) foi descartado
+ * antes de qualquer código enxergar. Este passo existe para acabar com isso.
+ */
+function describeEnvelope(label: string, body: unknown): void {
+  console.log(`\n[${LABEL}]   --- envelopagem de ${label} ---`);
+
+  if (Array.isArray(body)) {
+    console.log(`[${LABEL}]     raiz: ARRAY cru de ${body.length} item(ns) — não há envelope.`);
+  } else if (isRecord(body)) {
+    console.log(`[${LABEL}]     raiz: objeto com ${Object.keys(body).length} chave(s):`);
+    for (const [k, v] of Object.entries(body)) {
+      const tipo = Array.isArray(v)
+        ? `array[${v.length}]`
+        : v === null
+          ? 'null'
+          : isRecord(v)
+            ? `objeto{${Object.keys(v).join(',').slice(0, 60)}}`
+            : `${typeof v} = ${JSON.stringify(v)?.slice(0, 60)}`;
+      console.log(`[${LABEL}]       ${k}: ${tipo}`);
+    }
+  } else {
+    console.log(`[${LABEL}]     raiz: ${typeof body}`);
+  }
+
+  const rows = firstObjectArray(body) ?? [];
+  const first = rows[0];
+  if (first !== undefined) {
+    console.log(`[${LABEL}]     campos da 1ª fixture: ${Object.keys(first).join(', ')}`);
+  }
+}
+
+/**
+ * Modo `--truncation`: duas janelas, uma dentro da outra, e a pergunta que só
+ * elas respondem.
+ *
+ * ## Por que inclusão de conjunto, e não contagem
+ *
+ * O aviso que roda em produção (`describeTruncationRisk`) é heurística: número
+ * redondo e campo de paginação. 200 e 50 são tetos tão comuns quanto 250, e
+ * nenhum número prova nada sozinho.
+ *
+ * Este teste é conclusivo. B contém A no tempo, então B tem que conter A no
+ * conjunto: toda fixture devolvida na janela de 3 datas OBRIGATORIAMENTE aparece
+ * na de 9 datas. Se faltar uma, B foi cortada — e isso é prova, não indício,
+ * porque independe de o teto ser redondo, de estar documentado ou de a
+ * envelopagem confessar.
+ *
+ * O secundário é a razão das contagens: sem teto, B ≈ 3 × A. Contagens parecidas
+ * com janelas de tamanhos diferentes é teto batendo nas duas.
+ *
+ * ## Orçamento
+ *
+ * EXATAMENTE 2 requisições billable, e nada mais. Este modo sai antes do fluxo
+ * normal da sonda justamente por isso: `/v4/bookmakers`, descoberta e
+ * `--coverage` não rodam. `/v4/account` é declarado livre e é lido duas vezes,
+ * antes e depois, para conferir o que a contabilidade deles diz.
+ */
+async function probeTruncation(center: string): Promise<void> {
+  const centerDay = Math.floor(Date.parse(`${center}T00:00:00Z`) / 86_400_000);
+  if (!Number.isFinite(centerDay)) {
+    console.error(`[${LABEL}] --truncation=${center} não é uma data válida (YYYY-MM-DD)`);
+    process.exit(1);
+  }
+
+  const innerPad = (TRUNCATION_INNER_DATES - 1) / 2;
+  const outerPad = (TRUNCATION_OUTER_DATES - 1) / 2;
+
+  const a = { from: isoDay(centerDay - innerPad), to: isoDay(centerDay + innerPad) };
+  const b = { from: isoDay(centerDay - outerPad), to: isoDay(centerDay + outerPad) };
+
+  console.log(
+    `[${LABEL}] ===== TRUNCAMENTO de /v4/fixtures =====\n` +
+      `[${LABEL}]   A (${TRUNCATION_INNER_DATES} datas): ${a.from}..${a.to}\n` +
+      `[${LABEL}]   B (${TRUNCATION_OUTER_DATES} datas): ${b.from}..${b.to}\n` +
+      `[${LABEL}]   B contém A: ${b.from <= a.from && a.to <= b.to ? 'sim' : 'NÃO — teste inválido'}\n` +
+      `[${LABEL}]   Custo: EXATAMENTE 2 billable. Nenhuma outra chamada paga neste modo.\n`,
+  );
+
+  if (!(b.from <= a.from && a.to <= b.to)) {
+    console.error(`[${LABEL}] janelas mal formadas — abortado antes de gastar cota.`);
+    process.exit(1);
+  }
+
+  const antes = await readAccount('ANTES');
+
+  const params = (w: { from: string; to: string }): Record<string, string> => ({
+    sportId: String(SPORT_CS2),
+    from: w.from,
+    to: w.to,
+  });
+
+  const resA = await call('/v4/fixtures', params(a));
+  const resB = await call('/v4/fixtures', params(b));
+
+  const depois = await readAccount('DEPOIS');
+
+  if (!resA.ok || !resB.ok) {
+    console.error(`[${LABEL}] uma das janelas falhou (A=${resA.status} B=${resB.status}) — sem veredito.`);
+    return;
+  }
+
+  // O corpo cru das duas, antes de qualquer conclusão: é a primeira resposta de
+  // `/v4/fixtures` registrada neste projeto, e vale mais que o teste.
+  await writeSnapshot(
+    `${SNAPSHOT_DIR}/fixtures-${a.from}_${a.to}.json`,
+    '/v4/fixtures',
+    params(a),
+    resA,
+    FIXTURES_SNAPSHOT_KIND,
+  );
+  await writeSnapshot(
+    `${SNAPSHOT_DIR}/fixtures-${b.from}_${b.to}.json`,
+    '/v4/fixtures',
+    params(b),
+    resB,
+    FIXTURES_SNAPSHOT_KIND,
+  );
+
+  describeEnvelope(`A (${a.from}..${a.to})`, resA.body);
+  describeEnvelope(`B (${b.from}..${b.to})`, resB.body);
+
+  const idsA = fixtureIdsOf(resA.body);
+  const idsB = fixtureIdsOf(resB.body);
+  const setB = new Set(idsB);
+  const faltando = idsA.filter((id) => !setB.has(id));
+
+  console.log(`\n[${LABEL}] ===== RESULTADO =====`);
+  console.log(`[${LABEL}]   A: ${idsA.length} fixture(s) em ${TRUNCATION_INNER_DATES} datas`);
+  console.log(`[${LABEL}]   B: ${idsB.length} fixture(s) em ${TRUNCATION_OUTER_DATES} datas`);
+  // A razão é o teste SECUNDÁRIO, e é fraco quando a janela cruza o "agora":
+  // eles publicam fixture com pouca antecedência, então as datas futuras vêm
+  // quase vazias e as passadas cheias. Razão muito acima de 3× é isso, não teto.
+  // Quem decide é a inclusão de conjunto acima.
+  console.log(
+    `[${LABEL}]   razão B/A: ${idsA.length === 0 ? '—' : (idsB.length / idsA.length).toFixed(2)}` +
+      ` (esperado ~${(TRUNCATION_OUTER_DATES / TRUNCATION_INNER_DATES).toFixed(1)}× com densidade uniforme;` +
+      ` janela que cruza o presente distorce isso)`,
+  );
+  console.log(`[${LABEL}]   ids de A ausentes em B: ${faltando.length}`);
+
+  // A distribuição por data é o que revela a SEMÂNTICA da faixa, e ela não está
+  // documentada. Sem isto, a razão B/A parece anômala sem explicação — e a
+  // explicação muda o que a janela de produção cobre de verdade.
+  const histA = byStartDate(resA.body);
+  const histB = byStartDate(resB.body);
+  const fmt = (h: Map<string, number>): string =>
+    [...h].map(([d, n]) => `${d.slice(5)}:${n}`).join('  ') || '(vazio)';
+  console.log(`[${LABEL}]   A por data de início: ${fmt(histA)}`);
+  console.log(`[${LABEL}]   B por data de início: ${fmt(histB)}`);
+
+  // O teste da borda: B (que contém A) enxerga fixtures na data `to` de A?
+  // Se enxerga e A não devolveu nenhuma, o `to` de A não entrou na faixa.
+  const naDataTo = histB.get(a.to) ?? 0;
+  const aTrouxeTo = histA.get(a.to) ?? 0;
+  const naDataFrom = histA.get(a.from) ?? 0;
+
+  console.log(`\n[${LABEL}]   SEMÂNTICA DA FAIXA (medida, não documentada):`);
+  if (naDataTo > 0 && aTrouxeTo === 0) {
+    console.log(
+      `[${LABEL}]     \`to\` é EXCLUSIVO. B tem ${naDataTo} fixture(s) em ${a.to} e A, cujo\n` +
+        `[${LABEL}]     \`to\` é exatamente ${a.to}, não devolveu nenhuma delas.\n` +
+        `[${LABEL}]     Consequência para o enricher: a janela cobre [from, to), então o dia\n` +
+        `[${LABEL}]     de folga do FIM (DISCOVERY_PAD_DAYS) não é consultado — só o do começo.`,
+    );
+  } else if (aTrouxeTo > 0) {
+    console.log(`[${LABEL}]     \`to\` é INCLUSIVO: A devolveu ${aTrouxeTo} fixture(s) em ${a.to}.`);
+  } else {
+    console.log(
+      `[${LABEL}]     INDETERMINADO: não há fixture em ${a.to} nem em A nem em B, então a\n` +
+        `[${LABEL}]     borda superior não foi exercitada. Repita num período mais denso.`,
+    );
+  }
+  console.log(
+    `[${LABEL}]     \`from\` parece ${naDataFrom > 0 ? 'INCLUSIVO' : 'não exercitado'}` +
+      ` (A tem ${naDataFrom} fixture(s) em ${a.from}).`,
+  );
+
+  // O aviso que roda em produção, medido contra a resposta real: ele dispararia?
+  const { describeTruncationRisk, paginationHintsOf } = await import('../src/lib/oddspapi-api.js');
+  for (const [nome, res, ids] of [
+    ['A', resA, idsA],
+    ['B', resB, idsB],
+  ] as const) {
+    const hints = paginationHintsOf(res.body);
+    const risco = describeTruncationRisk(ids.length, res.body);
+    console.log(
+      `[${LABEL}]   guarda de produção em ${nome}: ${risco === null ? 'silenciosa' : 'DISPARARIA'}` +
+        ` (campos de paginação: ${hints.length === 0 ? 'nenhum' : hints.join(', ')})`,
+    );
+  }
+
+  console.log(`\n[${LABEL}]   VEREDITO:`);
+  if (idsA.length === 0) {
+    console.log(
+      `[${LABEL}]     INCONCLUSIVO — a janela A voltou vazia. Escolha um período com CS2\n` +
+        `[${LABEL}]     denso: --truncation=YYYY-MM-DD. As 2 requisições foram gastas.`,
+    );
+  } else if (faltando.length > 0) {
+    // Uma ou duas ausências não fecham o caso: as duas chamadas são separadas
+    // por segundos, e uma fixture cadastrada nesse intervalo apareceria em A e
+    // faltaria em B sem nenhum truncamento envolvido. Truncamento é sistemático
+    // — corta muitas, e a contagem de B para num teto.
+    const provavelCorrida = faltando.length <= 2;
+    console.log(
+      `[${LABEL}]     ${faltando.length} fixture(s) de A não aparecem em B, que a contém no tempo.\n` +
+        `[${LABEL}]     Contagem de B: ${idsB.length}.\n` +
+        `[${LABEL}]     Ausentes: ${faltando.slice(0, 10).join(', ')}\n` +
+        (provavelCorrida
+          ? `[${LABEL}]     AMBÍGUO: são poucas, e as duas chamadas distam segundos — cabe\n` +
+            `[${LABEL}]     corrida (fixture cadastrada entre A e B) tanto quanto truncamento.\n` +
+            `[${LABEL}]     Repita o modo para separar: corrida não se repete, teto sim.`
+          : `[${LABEL}]     TRUNCAMENTO CONFIRMADO — é sistemático demais para ser corrida.\n` +
+            `[${LABEL}]     Teto observado: ${idsB.length} fixture(s).\n` +
+            `[${LABEL}]     PARE aqui: DISCOVERY_BLOCK_DAYS precisa encolher, e o tamanho novo\n` +
+            `[${LABEL}]     muda a conta de orçamento inteira. Não é decisão da sonda.`),
+    );
+  } else {
+    console.log(
+      `[${LABEL}]     SEM TRUNCAMENTO nesta amostra. Toda fixture de A aparece em B, e B\n` +
+        `[${LABEL}]     é ${(idsB.length / idsA.length).toFixed(2)}× maior — a janela de ${TRUNCATION_OUTER_DATES} datas devolve a lista completa.\n` +
+        `[${LABEL}]     Vale para ESTE tamanho de lista (${idsB.length}); um teto acima disso\n` +
+        `[${LABEL}]     continuaria invisível, e é o que a guarda em produção vigia.`,
+    );
+  }
+
+  const diff = [...depois.entries()].map(([k, v]) => `${k}: ${antes.get(k) ?? '—'} → ${v}`);
+  console.log(`\n[${LABEL}]   /v4/account antes vs depois:`);
+  if (diff.length === 0) {
+    console.log(
+      `[${LABEL}]     NENHUM contador observável, nem no corpo nem em header — confirma a\n` +
+        `[${LABEL}]     medição anterior. A diferença de 2 não é verificável do lado deles;\n` +
+        `[${LABEL}]     o que se pode afirmar é que ESTA sonda fez 2 chamadas billable\n` +
+        `[${LABEL}]     (contador interno abaixo). Confira o painel para o número real.`,
+    );
+  } else {
+    for (const line of diff) console.log(`[${LABEL}]     ${line}`);
+  }
+
+  console.log(
+    `\n[${LABEL}]   contador interno desta passada: ${billableSpent} billable, ${freeSpent} livre(s).`,
+  );
+  if (billableSpent !== 2) {
+    console.error(
+      `[${LABEL}]   ATENÇÃO: eram para ser exatamente 2 billable e foram ${billableSpent}.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   if ((process.env['ODDSPAPI_API_KEY'] ?? '').length === 0) {
@@ -1774,8 +2070,20 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const from = flag('from') ?? '2026-07-01';
-  const to = flag('to') ?? '2026-07-31';
+  // Uma ÚNICA janela de 9 datas, terminando em torno de hoje.
+  //
+  // O default era 2026-07-01..2026-07-31, e isso custava caro sem dizer: um mês
+  // não é uma requisição, é QUATRO — `windows()` o parte em pedaços de 9 dias
+  // porque a API rejeita range acima de 10, e cada pedaço é uma chamada
+  // billable. A sonda anunciava "2 billable" no topo e gastava 5 em qualquer
+  // invocação sem flags. O default agora é o que a linha do topo promete.
+  //
+  // Derivar de "hoje" aqui é o certo, ao contrário de `discoveryWindow` no
+  // enricher: lá a fronteira móvel invalidaria o cache todo dia, aqui não há
+  // cache nenhum e o que se quer é justamente o período recente e denso.
+  const hoje = Math.floor(Date.now() / 86_400_000);
+  const from = flag('from') ?? isoDay(hoje - 4);
+  const to = flag('to') ?? isoDay(hoje + 4);
   const withDb = flag('with-db') !== null;
 
   const coincidenceRaw = Number(flag('coincidence-ms') ?? '');
@@ -1787,6 +2095,17 @@ async function main(): Promise<void> {
   const compareFile = flag('compare');
   if (compareFile !== null && compareFile.length > 0) {
     await compareSnapshot(compareFile, coincidenceMs);
+    return;
+  }
+
+  // `--truncation` é modo próprio pelo mesmo motivo que `--compare`, e aqui o
+  // motivo é orçamento: ele gasta EXATAMENTE 2 billable e sair no topo é o que
+  // garante isso. Abaixo desta linha vêm `/v4/bookmakers`, a descoberta e o
+  // resto — nenhum deles roda neste modo.
+  const truncation = flag('truncation');
+  if (truncation !== null) {
+    const center = truncation.length > 0 ? truncation : isoDay(Math.floor(Date.now() / 86_400_000));
+    await probeTruncation(center);
     return;
   }
 

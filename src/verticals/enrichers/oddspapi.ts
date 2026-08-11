@@ -12,8 +12,10 @@ import {
   OddsPapiError,
   SPORT_ID_BY_VERTICAL,
   MAX_BOOKMAKERS_PER_CALL,
+  FIXTURES_CACHE_SECONDS,
   type OddsEntry,
   type OddsPapiFixture,
+  type ResponseSource,
 } from '../../lib/oddspapi-api.js';
 import { lastFragmentAsOf, noteEnricherSkip, remainingMs } from '../enricher.js';
 import type { ContextFragment, Enricher, EnricherContext } from '../enricher.js';
@@ -230,6 +232,11 @@ const MAX_BLOCKS_IN_PAYLOAD = 20;
  * Cache negativo, e ele é o que protege o orçamento: sem isso, partida que a
  * OddsPapi não cobre — e são muitas, o CS2 de tier baixo não interessa a casa
  * nenhuma — gastaria uma janela billable a cada ciclo, para sempre.
+ *
+ * O carimbo só pode ser gravado a partir de resposta de REDE. Ver
+ * `mergeFixtureIds`: com `FIXTURES_CACHE_SECONDS` em horas, os dois caches se
+ * multiplicavam e um atraso de cadastro do lado deles virava mais de um dia de
+ * silêncio nosso.
  */
 const MISSING_RECHECK_HOURS = 24;
 
@@ -1037,6 +1044,91 @@ export function readCachedFixture(
 }
 
 /**
+ * O resultado de uma busca de fixture, com a procedência quando deu em nada.
+ *
+ * O ramo `absent` EXIGE `source`, e é aí que o tipo faz o trabalho: não existe
+ * como registrar uma ausência sem antes dizer se ela veio da rede ou de uma
+ * lista em cache. Um booleano opcional no retorno de `fixtures()` seria
+ * esquecível — este não é. É a razão de a procedência não morar numa variável
+ * de módulo: `ultimaChamadaVeioDoCache` seria consultável de qualquer lugar,
+ * inclusive dos lugares errados, e não obrigaria ninguém a nada.
+ */
+export type FixtureOutcome =
+  | { readonly kind: 'found'; readonly link: FixtureLink & { tier?: MatchTier } }
+  | { readonly kind: 'absent'; readonly source: ResponseSource };
+
+/**
+ * O que gravar em `external_ids` depois de uma busca — ou `null` para não gravar.
+ *
+ * ## A interação entre dois caches, que é o defeito que esta função conserta
+ *
+ * São dois, com prazos diferentes e propósitos diferentes:
+ *
+ *   - o cache de RESPOSTA de `/v4/fixtures` (`FIXTURES_CACHE_SECONDS`, 8h) — a
+ *     lista de fixtures do dia;
+ *   - o cache NEGATIVO por partida (`oddspapi_missing_at`, 24h) — "procurei, não
+ *     achei, não procuro de novo hoje".
+ *
+ * Com a lista valendo 1h eles quase não se encostavam. Com 8h, sim: se a lista
+ * em mãos tem 7h e a OddsPapi cadastrou a fixture nesse meio-tempo, a partida
+ * não é encontrada, leva o carimbo, e o carimbo a tranca por mais 24h. Um atraso
+ * de 8h deles vira 32h de silêncio nosso.
+ *
+ * E o pior nem é o atraso: o carimbo estaria REGISTRANDO COMO FATO SOBRE A
+ * PARTIDA ("a OddsPapi não cobre isto") o que foi só uma lista desatualizada.
+ * Resposta de cache não sustenta conclusão sobre ausência — ela é uma afirmação
+ * sobre as últimas 8h, não sobre agora.
+ *
+ * ## Por que (a): não gravar nada, em vez de um carimbo curto de 1h
+ *
+ * As duas resolvem o defeito. (a) foi escolhida porque o custo dela é medível e
+ * pequeno, e porque não inventa um terceiro prazo para alguém interpretar depois.
+ *
+ * Com (a), a partida é reavaliada a cada ciclo enquanto a lista em cache não
+ * renovar — no pior caso 8h, ou ~96 ciclos no tick de 5 min. O que cada uma
+ * dessas reavaliações custa:
+ *
+ *   - billable: ZERO. `call` lê o cache ANTES de tudo, e o cache hit não gasta
+ *     orçamento, não dorme cooldown e não toca a rede.
+ *   - tempo de ciclo: uma passada de `matchFixture` em memória sobre a lista do
+ *     dia, por partida não casada (~26 delas). São comparações de string sobre
+ *     dezenas de fixtures — ordem de milissegundos contra um ciclo de 4 min.
+ *   - banco: MENOS que hoje. Devolvendo `null`, `rememberFixture` nem faz o
+ *     UPDATE que hoje faz a cada não-encontrada.
+ *
+ * Cabe no orçamento de tempo do ciclo com folga de ordens de grandeza, então (b)
+ * não se justifica. E (a) tem um ganho que (b) não tem: no ciclo em que a lista
+ * finalmente renova pela rede, a partida é reavaliada imediatamente contra a
+ * lista nova, em vez de esperar o prazo de um carimbo vencer.
+ *
+ * O laço é limitado: quando a lista renova e a fixture continua ausente, a
+ * resposta é `network`, o carimbo de 24h é gravado, e a partida sai da roda.
+ */
+export function mergeFixtureIds(
+  current: Record<string, unknown> | null,
+  outcome: FixtureOutcome,
+  now: Date,
+): Record<string, unknown> | null {
+  if (outcome.kind === 'absent') {
+    if (outcome.source === 'cache') return null;
+    return { ...(current ?? {}), oddspapi_missing_at: now.toISOString() };
+  }
+
+  const merged: Record<string, unknown> = { ...(current ?? {}) };
+  merged['oddspapi_fixture_id'] = outcome.link.fixtureId;
+  merged['oddspapi_aliases_a'] = [...outcome.link.aliasesA];
+  merged['oddspapi_aliases_b'] = [...outcome.link.aliasesB];
+  merged['oddspapi_side_a_index'] = outcome.link.sideAIndex;
+  // O degrau que produziu o casamento. Alias confirmado é o que este bloco
+  // inteiro é: da próxima vez o casador nem roda, e se o casamento se revelar
+  // errado o degrau diz qual regra o produziu.
+  if (outcome.link.tier !== undefined) merged['oddspapi_match_tier'] = outcome.link.tier;
+  delete merged['oddspapi_missing_at'];
+
+  return merged;
+}
+
+/**
  * Palavras que enfeitam o nome da organização e não distinguem time nenhum.
  *
  * Saem dos padrões medidos nas falhas: `DENDELE CS` / `Dendele`, `NIO` /
@@ -1314,17 +1406,110 @@ export function matchFixture(
 }
 
 /**
- * A janela de descoberta: o dia da partida.
+ * Tamanho do bloco de descoberta, em dias.
  *
- * O menor intervalo que resolve, porque cada janela é uma requisição do
- * orçamento mensal — e a resposta fica em cache por uma hora, então todas as
- * partidas do mesmo dia processadas no mesmo ciclo custam UMA.
+ * Todas as partidas cujo `scheduled_at` cai no mesmo bloco produzem a MESMA
+ * janela, e portanto a mesma chave de cache de `/v4/fixtures`. É isso que a
+ * constante compra, e é a terceira e última peça do orçamento.
+ */
+export const DISCOVERY_BLOCK_DAYS = 7;
+
+/**
+ * Folga de cada lado do bloco.
+ *
+ * Existe porque a data da fixture na OddsPapi pode diferir em um dia da nossa
+ * `scheduled_at` — fuso, e partida de madrugada UTC. Sem a folga, a partida na
+ * BORDA do bloco não encontraria a própria fixture, e a perda seria silenciosa:
+ * viraria "a OddsPapi não cobre" em vez de "eu procurei no intervalo errado".
+ *
+ * ## Por que ela quase não existiu na borda de cima
+ *
+ * `npm run oddspapi:probe -- --truncation` mediu, em 11/08/2026, a semântica da
+ * faixa, que não é documentada: **`from` inclusivo, `to` EXCLUSIVO**. A janela
+ * pedida `2026-08-10..2026-08-12` devolveu 6 fixtures, todas de 10 e 11 — e a
+ * janela maior que a contém mostrou que existiam 16 em 12/08. Nenhuma veio.
+ *
+ * Enquanto `discoveryWindow` calculava o fim como se a faixa fosse inclusiva,
+ * esta folga só existia no COMEÇO: o bloco vinha inteiro, mas a partida do
+ * último dia dele com fixture um dia à frente por fuso não era encontrada. O
+ * `to` já compensa a exclusividade — ver `discoveryWindow`.
+ */
+export const DISCOVERY_PAD_DAYS = 1;
+
+/**
+ * A janela de descoberta: o BLOCO alinhado que contém a partida, com folga.
+ *
+ * ## Por que bloco alinhado, e não o dia da partida
+ *
+ * A janela antiga era `D-1..D+1`, derivada da data da PARTIDA. Duas partidas em
+ * dias diferentes davam duas chaves de cache diferentes — e, com o lookahead do
+ * enricher alcançando o dia seguinte, duas janelas em voo era o caso NORMAL:
+ *
+ *     2 janelas × 3 chamadas/dia (`FIXTURES_CACHE_SECONDS` = 8h) = 6/dia
+ *     contra 4,3/dia disponíveis
+ *
+ * E as duas se sobrepunham quase inteiras: 10–12/08 e 11–13/08 são duas
+ * requisições pagas pelo quase mesmo conjunto de fixtures.
+ *
+ * Com bloco de 7 dias há UMA janela ativa quase sempre, e duas só no dia em que
+ * o bloco vira — um dia em sete:
+ *
+ *     (6 dias × 1 janela + 1 dia × 2 janelas) / 7 = 8/7 ≈ 1,14 janelas/dia
+ *     1,14 × 3 chamadas/dia ≈ 3,4/dia
+ *
+ * O 1,14 é MODELO, não medida — ver a nota em `FIXTURES_CACHE_SECONDS`.
+ *
+ * ## A fronteira vem da ÉPOCA, não de "hoje"
+ *
+ * `floor(diaDaÉpoca / 7)` ancora o bloco num marco fixo (quinta-feira, porque
+ * 1970-01-01 foi quinta). Ancorar em "hoje" seria o mesmo defeito de sempre
+ * disfarçado: a fronteira andaria um dia por dia, toda partida mudaria de janela
+ * à meia-noite, e o cache de 8h seria invalidado diariamente por construção — a
+ * mudança inteira perderia o efeito sem nada parecer errado.
+ *
+ * ## O intervalo consultado, e por que o `to` leva um dia a mais
+ *
+ * MEDIDO (11/08/2026, `--truncation`): a faixa da API é `[from, to)` — `from`
+ * inclusivo, `to` EXCLUSIVO. Não é documentado; foi medido pedindo
+ * `2026-08-10..2026-08-12` e recebendo só 10 e 11, com a janela maior provando
+ * que existiam 16 fixtures em 12/08.
+ *
+ * Por isso o fim é `blocoInício + DISCOVERY_BLOCK_DAYS + DISCOVERY_PAD_DAYS`, e
+ * não um dia menos: o último dia que se QUER coberto é `blocoInício + 7` (o dia
+ * de folga depois do último dia do bloco, que é `blocoInício + 6`), e para que
+ * ele entre numa faixa de fim exclusivo o `to` tem que ser `blocoInício + 8`.
+ * Sem esse dia, a folga do fim não existia — o bloco vinha inteiro, mas a
+ * partida do último dia dele com fixture um dia à frente por fuso não era
+ * encontrada, que é exatamente o caso que `DISCOVERY_PAD_DAYS` existe para
+ * cobrir.
+ *
+ * Datas cobertas: `blocoInício - 1` até `blocoInício + 7`, nove ao todo.
+ * `to - from` = 9 dias, e o limite medido é "must be under 10 days apart" —
+ * segue abaixo, com um dia de margem. O orçamento não muda: mesmo número de
+ * chaves de cache, mesma contagem de chamadas.
+ *
+ * ## Se ainda ficar apertado
+ *
+ * O dial a girar é o TTL (`FIXTURES_CACHE_SECONDS`), NÃO o bloco. Bloco maior
+ * esbarra no teto de 10 dias da API em duas semanas, e cada dia a mais aumenta a
+ * lista devolvida — que é justamente o que o aviso de truncamento em
+ * `describeTruncationRisk` existe para vigiar. TTL é um número sem teto rígido e
+ * com efeito linear e imediato no orçamento.
  */
 export function discoveryWindow(scheduledAt: Date): { from: string; to: string } {
-  const day = 86_400_000;
+  const DAY = 86_400_000;
+
+  const epochDay = Math.floor(scheduledAt.getTime() / DAY);
+  const blockStart = Math.floor(epochDay / DISCOVERY_BLOCK_DAYS) * DISCOVERY_BLOCK_DAYS;
+
+  const fromDay = blockStart - DISCOVERY_PAD_DAYS;
+  // Sem o `- 1` que o intervalo inclusivo pediria: o `to` é exclusivo (medido),
+  // então este é o primeiro dia FORA, e o último coberto é o de folga.
+  const toDay = blockStart + DISCOVERY_BLOCK_DAYS + DISCOVERY_PAD_DAYS;
+
   return {
-    from: new Date(scheduledAt.getTime() - day).toISOString().slice(0, 10),
-    to: new Date(scheduledAt.getTime() + day).toISOString().slice(0, 10),
+    from: new Date(fromDay * DAY).toISOString().slice(0, 10),
+    to: new Date(toDay * DAY).toISOString().slice(0, 10),
   };
 }
 
@@ -1400,23 +1585,13 @@ async function loadMatch(
 async function rememberFixture(
   matchId: string,
   current: Record<string, unknown> | null,
-  link: (FixtureLink & { tier?: MatchTier }) | null,
+  outcome: FixtureOutcome,
 ): Promise<void> {
-  const merged: Record<string, unknown> = { ...(current ?? {}) };
+  const merged = mergeFixtureIds(current, outcome, new Date());
 
-  if (link === null) {
-    merged['oddspapi_missing_at'] = new Date().toISOString();
-  } else {
-    merged['oddspapi_fixture_id'] = link.fixtureId;
-    merged['oddspapi_aliases_a'] = [...link.aliasesA];
-    merged['oddspapi_aliases_b'] = [...link.aliasesB];
-    merged['oddspapi_side_a_index'] = link.sideAIndex;
-    // O degrau que produziu o casamento. Alias confirmado é o que este bloco
-    // inteiro é: da próxima vez o casador nem roda, e se o casamento se revelar
-    // errado o degrau diz qual regra o produziu.
-    if (link.tier !== undefined) merged['oddspapi_match_tier'] = link.tier;
-    delete merged['oddspapi_missing_at'];
-  }
+  // `null` = ausência apurada em lista de cache. Não há o que gravar: não se
+  // aprendeu nada sobre a partida, só sobre a idade da lista.
+  if (merged === null) return;
 
   const { error } = await supabase
     .from('esports_matches')
@@ -1497,15 +1672,27 @@ async function resolveFixture(
     return null;
   }
 
-  const rows = await fixtures({ sportId, from, to });
-  const link = matchFixture(rows, row.keyA, row.keyB, scheduled);
+  const response = await fixtures({ sportId, from, to });
+  const link = matchFixture(response.value, row.keyA, row.keyB, scheduled);
 
-  await rememberFixture(row.id, row.external_ids, link);
+  await rememberFixture(
+    row.id,
+    row.external_ids,
+    link === null ? { kind: 'absent', source: response.source } : { kind: 'found', link },
+  );
 
   if (link === null) {
+    // As duas ausências são coisas diferentes e o log as separa: uma é
+    // conclusão sobre a partida, a outra é conclusão sobre a lista que tínhamos
+    // em mãos. Sem a distinção aqui, uma lista velha e uma partida realmente
+    // descoberta pela OddsPapi produzem a mesma linha de log.
     console.log(
-      `[${ODDSPAPI_ID}] ${nameA} x ${nameB} sem fixture na OddsPapi (${from}..${to}) — ` +
-        `não reprocura por ${MISSING_RECHECK_HOURS}h`,
+      response.source === 'network'
+        ? `[${ODDSPAPI_ID}] ${nameA} x ${nameB} sem fixture na OddsPapi (${from}..${to}) — ` +
+            `não reprocura por ${MISSING_RECHECK_HOURS}h`
+        : `[${ODDSPAPI_ID}] ${nameA} x ${nameB} sem fixture na lista em cache (${from}..${to}) — ` +
+            `sem carimbo; reavalia a cada ciclo até a lista renovar ` +
+            `(no máximo ${FIXTURES_CACHE_SECONDS / 3_600}h), sem custo billable`,
     );
   } else if (link.tier !== 'exact') {
     // Casamento abaixo do exato é o que a correção de cobertura passou a
