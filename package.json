@@ -33,7 +33,10 @@
     "backfill:match-outcomes": "tsx scripts/backfill-match-outcomes.ts",
     "live:reversion": "tsx scripts/probe-live-reversion.ts",
     "liquipedia:probe": "tsx scripts/probe-liquipedia.ts",
-    "oddspapi:probe": "tsx scripts/probe-oddspapi.ts"
+    "oddspapi:probe": "tsx scripts/probe-oddspapi.ts",
+    "xtracker:probe": "tsx scripts/probe-xtracker.ts",
+    "xtracker:calib": "tsx scripts/probe-xtracker-calibration.ts",
+    "xtracker:reanalyze": "tsx scripts/analyze-xtracker-calibration.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

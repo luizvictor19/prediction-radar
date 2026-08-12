@@ -1,0 +1,120 @@
+{
+  "kind": "xtracker-user-snapshot",
+  "version": 1,
+  "fetchedAt": "2026-08-12T04:35:07.648Z",
+  "endpoint": "/users/elonmusk",
+  "params": {
+    "platform": "x"
+  },
+  "status": 200,
+  "etag": null,
+  "lastModified": null,
+  "rawSha256": "da1738aebe0ae0919d1166bb7bd216f7b4bfe473cea942bdb2018a310b63776e",
+  "canonicalSha256": "e74abfcdc8da69e716b19a11848411bea067780807cbaa24b2d6553970c9984a",
+  "body": {
+    "success": true,
+    "data": {
+      "id": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+      "handle": "elonmusk",
+      "name": "Elon Musk",
+      "platform": "X",
+      "platformId": "44196397",
+      "avatarUrl": "https://pbs.twimg.com/profile_images/1983681414370619392/oTT3nm5Z_normal.jpg",
+      "bio": "",
+      "verified": false,
+      "lastSync": "2026-08-12T04:31:37.760Z",
+      "lastSyncError": null,
+      "createdAt": "2025-11-18T16:43:48.609Z",
+      "updatedAt": "2026-08-12T04:31:37.761Z",
+      "trackings": [
+        {
+          "id": "f9b0df7f-1245-4641-a99a-8c3c16f8d2c2",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets in August 2026?",
+          "startDate": "2026-08-01T04:00:00.000Z",
+          "endDate": "2026-09-01T03:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-2026",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-07-24T04:00:12.367Z",
+          "updatedAt": "2026-07-24T04:00:12.367Z"
+        },
+        {
+          "id": "b865ef16-421b-4ba2-9348-a44903b28df0",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets August 14 - August 21, 2026?",
+          "startDate": "2026-08-14T16:00:00.000Z",
+          "endDate": "2026-08-21T15:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-14-august-21",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-08-11T04:00:21.169Z",
+          "updatedAt": "2026-08-11T04:00:21.169Z"
+        },
+        {
+          "id": "93a83549-623e-44a8-b472-29528870948c",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets August 11 - August 18, 2026?",
+          "startDate": "2026-08-11T16:00:00.000Z",
+          "endDate": "2026-08-18T15:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-11-august-18",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-08-08T04:00:13.846Z",
+          "updatedAt": "2026-08-08T04:00:13.846Z"
+        },
+        {
+          "id": "5ad9f5d0-42b3-483d-8bf2-13668e83a974",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets August 13 - August 15, 2026?",
+          "startDate": "2026-08-13T16:00:00.000Z",
+          "endDate": "2026-08-15T15:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-13-august-15",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-08-10T16:07:03.723Z",
+          "updatedAt": "2026-08-10T16:07:03.723Z"
+        },
+        {
+          "id": "8b4bedec-ae86-4b91-a6ec-6fac101d0ec3",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets August 7 - August 14, 2026?",
+          "startDate": "2026-08-07T16:00:00.000Z",
+          "endDate": "2026-08-14T15:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-7-august-14",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-08-04T04:00:11.362Z",
+          "updatedAt": "2026-08-04T04:00:11.362Z"
+        },
+        {
+          "id": "feedd1da-0b5b-4e38-beee-08062cfe9a45",
+          "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+          "title": "Elon Musk # tweets August 10 - August 12, 2026?",
+          "startDate": "2026-08-10T16:00:00.000Z",
+          "endDate": "2026-08-12T15:59:59.000Z",
+          "target": null,
+          "marketLink": "https://polymarket.com/event/elon-musk-of-tweets-august-10-august-12",
+          "isActive": true,
+          "metrics": {},
+          "config": {},
+          "createdAt": "2026-08-08T16:07:03.404Z",
+          "updatedAt": "2026-08-08T16:07:03.404Z"
+        }
+      ],
+      "_count": {
+        "posts": 11318
+      }
+    }
+  }
+}

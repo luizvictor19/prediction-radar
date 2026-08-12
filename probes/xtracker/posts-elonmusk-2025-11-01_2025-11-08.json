@@ -1,0 +1,1398 @@
+{
+  "kind": "xtracker-posts-snapshot",
+  "version": 1,
+  "fetchedAt": "2026-08-12T04:35:07.646Z",
+  "endpoint": "/users/elonmusk/posts",
+  "params": {
+    "platform": "x",
+    "startDate": "2025-11-01",
+    "endDate": "2025-11-08"
+  },
+  "status": 200,
+  "etag": null,
+  "lastModified": null,
+  "rawSha256": "792f5979c87ccca08aba4b2018dbf20ee4cca0d51f1a5e668aef642fa1cf7b7e",
+  "canonicalSha256": "fc11b54779d7c8df120c8448c99b332c3dcaf851c6d30c68f97a2702784b27a0",
+  "body": {
+    "success": true,
+    "data": [
+      {
+        "id": "cmicri0ub00dsjr04sxajagjy",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986886238411104432",
+        "content": "Grok upgrades https://t.co/iL7iiHhg6U",
+        "createdAt": "2025-11-07T19:59:28.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dtjr04v8gcxhf6",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986836508092080197",
+        "content": "The reason government programs are so inefficient is that, unlike a commercial company, the feedback loop for improvement is broken, because they have a state-mandated monopoly and can’t go out of business if customers are unhappy.\n\nNo matter how bad the service is at your DMV",
+        "createdAt": "2025-11-07T16:41:51.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dujr04xmhsdeqk",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986834022069379553",
+        "content": "Grok can search 𝕏 and analyze or summarize anything https://t.co/tfnuF1jZhz",
+        "createdAt": "2025-11-07T16:31:59.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dvjr04kqkm2krc",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986833451946025145",
+        "content": "RT @elonmusk: @RolandForTexas You are a taker, not a maker. All you’ve done your whole life is take from the makers of the world. \n\nThe zer…",
+        "createdAt": "2025-11-07T16:29:43.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dwjr04ur0guu0p",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986828495885054347",
+        "content": "RT @cb_doge: This picture was taken on Mars today. https://t.co/1UON0RzoEk",
+        "createdAt": "2025-11-07T16:10:01.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dxjr04v1abduqj",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986828446107107464",
+        "content": "RT @JonBbC_TechGeek: These are the coolest mugs ever! https://t.co/egahRl4b8y",
+        "createdAt": "2025-11-07T16:09:49.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dyjr0439wadfot",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986828293505794480",
+        "content": "RT @Pontifex: The media cannot and must not separate itself from the destiny of truth. Transparency of sources and ownership, accountabilit…",
+        "createdAt": "2025-11-07T16:09:13.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00dzjr04edibnm7x",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986806273879482857",
+        "content": "RT @Pontifex: Technological innovation can be a form of participation in the divine act of creation. It carries an ethical and spiritual we…",
+        "createdAt": "2025-11-07T14:41:43.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e0jr04dik2ov5c",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986773240665239674",
+        "content": "RT @fermatslibrary: Andrew Wiles on the morning he discovered how to fix his proof of Fermat's Last Theorem https://t.co/7zoAAgEa6A",
+        "createdAt": "2025-11-07T12:30:27.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e1jr04cxsefle4",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986763077891850339",
+        "content": "RT @libsoftiktok: Newly re-elected Minneapolis Mayor Jacob Frey gave his victory speech in Somalian\nhttps://t.co/y8zyPYFlWp",
+        "createdAt": "2025-11-07T11:50:04.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e2jr04fobwrj7b",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986757815248245016",
+        "content": "RT @libsoftiktok: OMG. Mamdani doing MULTIPLE Nazi salutes\n\nI’m sure the media will be all over this! https://t.co/w36wFiI8Te",
+        "createdAt": "2025-11-07T11:29:09.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e3jr04mmaotfck",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986757775779905608",
+        "content": "RT @ray4tesla: Does that look like a Nazi solute? That’s what Elon was called out for and yet MSN remains silent on this one. What’s going…",
+        "createdAt": "2025-11-07T11:29:00.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e4jr043mq4vb70",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986753752913854795",
+        "content": "As soon as you understand that the government is just the DMV at large scale, it makes perfect sense https://t.co/Ww9DYGIAmB",
+        "createdAt": "2025-11-07T11:13:01.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e5jr0468m07cc6",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986673418872496255",
+        "content": "RT @SawyerMerritt: Elon Musk: \"Have you watched any other shareholder meeting. They are snoozefests. Ours are bangers!\" https://t.co/Mex3NV…",
+        "createdAt": "2025-11-07T05:53:48.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e6jr048706wi89",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986673038696632335",
+        "content": "Time to pull a LOT of rabbits out of the hat",
+        "createdAt": "2025-11-07T05:52:17.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e7jr046uvoz5g0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986672212242538859",
+        "content": "RT @XFreeze: Elon Musk: What we're about to embark upon is not merely a new chapter of the future of Tesla, but a whole new book and Optimu…",
+        "createdAt": "2025-11-07T05:49:00.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e8jr049ejt1kpt",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986671994558140760",
+        "content": "RT @SawyerMerritt: NEWS: Elon Musk says in the next month or two Tesla will allow you to text while using FSD and reduce the attention moni…",
+        "createdAt": "2025-11-07T05:48:08.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00e9jr046n2jkh7p",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986671585227644931",
+        "content": "RT @cb_doge: Elon Musk on Optimus:\n\n\"The robots are just walking around the office, 24/7 with no one minding them &amp; then they go charge the…",
+        "createdAt": "2025-11-07T05:46:31.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eajr04j4v0ivmc",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986670002473467931",
+        "content": "RT @TurkeyBeaver: With today’s launch, @SpaceX has hit 170 launches on a rolling 365 day clock 🚀😍\n\nThis is made possible by a hardcore focu…",
+        "createdAt": "2025-11-07T05:40:13.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00ebjr044pamf12c",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986669732402241879",
+        "content": "RT @thejefflutz: Two robots dancing at the Tesla shareholders meeting 🕺🏻😄 https://t.co/6KgJoajo2L",
+        "createdAt": "2025-11-07T05:39:09.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00ecjr04l75m8l5a",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986668008543224085",
+        "content": "RT @joeroganhq: Gad Saad: \"So empathy is an emotion that has evolved for very clear evolutionary reasons. It can compel us forward... But t…",
+        "createdAt": "2025-11-07T05:32:18.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00edjr040vq8ahwc",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986663917163323407",
+        "content": "RT @cb_doge: ELON MUSK: \"Optimus will actually eliminate poverty. Optimus will actually give people incredible medical care. Optimus will u…",
+        "createdAt": "2025-11-07T05:16:02.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eejr04i6qlk5fx",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986663152554230271",
+        "content": "https://t.co/KTNB0bRs7S",
+        "createdAt": "2025-11-07T05:13:00.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00efjr045xse056f",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986636519231438914",
+        "content": "https://t.co/QfwWwVUvLa",
+        "createdAt": "2025-11-07T03:27:10.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00egjr04v7n48zgb",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986636451761824177",
+        "content": "Grok Imagine prompt:\n\nthe lion sits up, his friends the zebra and giraffe come over, the camera follows him them vlog style, the animals stand together for a group shot,  the lion is in the middle of the shot, the giraffe bends down, they pose https://t.co/wBG8T2xFGC",
+        "createdAt": "2025-11-07T03:26:54.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00ehjr04t7uc6jso",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986628858679038003",
+        "content": "RT @Tesla: We love y’all",
+        "createdAt": "2025-11-07T02:56:44.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eijr04ozhvkhyk",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986605306626122077",
+        "content": "This is just the V2 Optimus hand. The V3 hand is another level beyond this. \n\nExquisite engineering. https://t.co/h9JkcCcRd0",
+        "createdAt": "2025-11-07T01:23:09.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00ejjr04cf44af3o",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986603223793475786",
+        "content": "RT @Tesla: Every day, we're working towards making sure everyone can get any good or service they want without sacrificing our resources.…",
+        "createdAt": "2025-11-07T01:14:52.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00ekjr04o0jb1g27",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986549512350146664",
+        "content": "RT @elonmusk: @xdNiBoR If civilization drops below the tech level needed for interplanetary spaceflight before making life multiplanetary,…",
+        "createdAt": "2025-11-06T21:41:26.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eljr045udunkep",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986549450517717327",
+        "content": "RT @iam_smx: Two big tech bros casually chatting about the future. Only on X https://t.co/MTKsQMzOky",
+        "createdAt": "2025-11-06T21:41:11.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00emjr042728qai1",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986548022097158665",
+        "content": "RT @YunTaTsai1: I cannot think of any company hold the shareholder meeting at the factory.\n\nFor most companies, they bring people to the de…",
+        "createdAt": "2025-11-06T21:35:31.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00enjr04ff41731d",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986544343919043012",
+        "content": "https://t.co/RB5Yqwc6nO",
+        "createdAt": "2025-11-06T21:20:54.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eojr046nx9ynaf",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986540720816288197",
+        "content": "Tesla Annual meeting starting now\n https://t.co/j1KHf3k6ch",
+        "createdAt": "2025-11-06T21:06:30.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00epjr04i6bb3270",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986474620971851939",
+        "content": "RT @SawyerMerritt: NEWS: British Airways has signed a deal with @SpaceX to make Starlink internet available at no cost to every passenger s…",
+        "createdAt": "2025-11-06T16:43:51.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eqjr04snkyi7hf",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986333945542431036",
+        "content": "RT @EvaFoxU: Elon Musk explains why government efficiency matters:\n\n“I mean, North Korea, they're starving. South Korea, it's like amazing.…",
+        "createdAt": "2025-11-06T07:24:51.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00erjr04ltbselu4",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986333833017630909",
+        "content": "RT @MarioNawfal: 🚨🇺🇸 XAI: TODAY, ON SITE, WE HAVE OVER 2,000 WORKERS BUILDING THE WORLD’S MOST POWERFUL COMPUTER\n\n“Today, on site, we have…",
+        "createdAt": "2025-11-06T07:24:24.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00esjr043znzrspz",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986332486738325735",
+        "content": "Try https://t.co/op5s4ZiSwh https://t.co/krkqVdT5nS",
+        "createdAt": "2025-11-06T07:19:03.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00etjr04nwsw5t89",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986332034407776402",
+        "content": "RT @LimitingThe: It looks like xAI is about 6 months ahead in terms of building the most powerful AI data center. \n\nAs the rest of the thre…",
+        "createdAt": "2025-11-06T07:17:15.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0ub00eujr04wqxkx17k",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986233988479172635",
+        "content": "RT @cb_doge: This picture was taken on Mars yesterday. https://t.co/auyKZUlikd",
+        "createdAt": "2025-11-06T00:47:39.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00evjr047ao8rjhr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986233687269421219",
+        "content": "RT @XFreeze: I've been through my last 6 months of Grok chat history, I couldn’t find a single day where I didn’t use it..... \n\nIt's incred…",
+        "createdAt": "2025-11-06T00:46:28.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ewjr04yb0dze7g",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986231663798722773",
+        "content": "RT @MarioNawfal: 🚨 WHEN FEELINGS KILL COMMON SENSE\n\nBeing nice isn’t bad... until it breaks your country.\n\nSome people care so much about e…",
+        "createdAt": "2025-11-06T00:38:25.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00exjr043ebhwiak",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986230712836759872",
+        "content": "RT @KalenaKBrown: Living in a rural area, Starlink is an absolute game changer.\n\n1. Don't have to worry about not having LTE connectivity -…",
+        "createdAt": "2025-11-06T00:34:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00eyjr047jq6t7nx",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986207120891781636",
+        "content": "RT @SawyerMerritt: BREAKING: SpaceX has announced that @Starlink now has over 8 million customers, up from 7M in August and 6M in June 2025…",
+        "createdAt": "2025-11-05T23:00:54.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ezjr04mqie4ym9",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986150705317749007",
+        "content": "Wow\n https://t.co/9HQ4HWyCB0",
+        "createdAt": "2025-11-05T19:16:43.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f0jr04pq5fr87o",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986106192603791480",
+        "content": "And there is a clear path to a doubling of performance on all metrics for AI6 within 10 to 12 months of AI5 shipping https://t.co/ziI6dNkrKk",
+        "createdAt": "2025-11-05T16:19:51.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f1jr04toyg80bz",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986105471452008610",
+        "content": "🎯 https://t.co/Kn0P5nP2xY",
+        "createdAt": "2025-11-05T16:16:59.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f2jr0434l0a1ox",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986104967229509992",
+        "content": "RT @ArthurMacwaters: @elonmusk Empathy is good. \n\nEmpathy that allows for destruction is suicidal. \n\nWe must learn to know and articulate t…",
+        "createdAt": "2025-11-05T16:14:58.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f3jr04crm6bt9j",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986103240187064654",
+        "content": "Western Civilization is doomed, unless the core weakness of suicidal empathy is recognized and actions are taken that are hard, but necessary for survival https://t.co/aIVbe1fRKS",
+        "createdAt": "2025-11-05T16:08:07.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f4jr04hczp4oqa",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1986102027760607448",
+        "content": "RT @xAIMemphis: Today on site we have over 2000 workers building the world’s most powerful computer. Thank you to the amazing, hard working…",
+        "createdAt": "2025-11-05T16:03:18.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f5jr04420yab4r",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985943290181796155",
+        "content": "RT @XFreeze: SpaceX Launches More Rockets Than the Rest of Earth Combined\n\nIn 2025 (to date):\nSpaceX launched: 144 (139 Falcon 9 + 5 Starsh…",
+        "createdAt": "2025-11-05T05:32:32.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f6jr04kcsjhqyr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985934999028437392",
+        "content": "RT @tesla_na: Cybear at Tesla Engineering HQ in Palo Alto https://t.co/oXVCzxO2RU",
+        "createdAt": "2025-11-05T04:59:35.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f7jr04e5czz9ps",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985933424558031224",
+        "content": "RT @Tesla: 😀 https://t.co/0bH2N3T0AU",
+        "createdAt": "2025-11-05T04:53:19.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f8jr04wcc1qyxs",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985857930827378707",
+        "content": "RT @rookisaacman: Thank you, Mr. President @POTUS, for this opportunity. It will be an honor to serve my country under your leadership. I a…",
+        "createdAt": "2025-11-04T23:53:20.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00f9jr043ws5li3p",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985850967888445645",
+        "content": "♥️🚀🇺🇸 https://t.co/3SVR8U7lrO",
+        "createdAt": "2025-11-04T23:25:40.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fajr040pd6ciit",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985823544333435300",
+        "content": "RT @abustin: Newly unveiled California \"Cyberbear\" statue @ Tesla Engineering HQ, Palo Alto. https://t.co/5NJJhje62t",
+        "createdAt": "2025-11-04T21:36:42.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fbjr04n41awpp4",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985788944383164706",
+        "content": "RT @Tesla: Like us, Counterpoint Global, a shareholder who invests for the long term, believes it’s in our shareholders’ best interest if E…",
+        "createdAt": "2025-11-04T19:19:13.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fcjr0426i8jnl1",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985786665970102407",
+        "content": "RT @TheSonOfWalkley: BREAKING: ROBINHOOD CEO OFFERS POTENTIAL 2% BONUS FOR MOVING $TSLA SHARES THERE 👀\n\nThey are better than legacy brokers…",
+        "createdAt": "2025-11-04T19:10:09.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fdjr04b9ma4ch7",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985786303699697721",
+        "content": "RT @ID_AA_Carmack: I appreciate how Grok doesn’t sugar coat corrections. https://t.co/b511QzNASc",
+        "createdAt": "2025-11-04T19:08:43.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fejr04ndcnik2s",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985746162033246426",
+        "content": "RT @profstonge: A friend posted his actual NYC ballot. Zohran appears twice, Sliwa twice, and Eric Adams is still on the ballot despite dro…",
+        "createdAt": "2025-11-04T16:29:13.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ffjr048ehkawl5",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985746037361758504",
+        "content": "RT @micsolana: california's medi-cal budget crisis would end overnight if the state stopped funding free healthcare for illegal immigrants.…",
+        "createdAt": "2025-11-04T16:28:43.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fgjr043iii9bme",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985745765692481715",
+        "content": "Amazing https://t.co/09vzvMDTRp",
+        "createdAt": "2025-11-04T16:27:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fhjr04twrexo1p",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985745191618101571",
+        "content": "🎯 https://t.co/aTZZD4xSmr",
+        "createdAt": "2025-11-04T16:25:21.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fijr04r92965kp",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985699323099713668",
+        "content": "🤔 https://t.co/IVbZyqtWDq",
+        "createdAt": "2025-11-04T13:23:05.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fjjr0484y79gtk",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985695624575037810",
+        "content": "RT @beffjezos: The budget for the US govt is $7T\n\nEach member of the house of representatives or senate are effectively decabillionaires in…",
+        "createdAt": "2025-11-04T13:08:23.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fkjr041kqxw6hq",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985695208294740249",
+        "content": "RT @micsolana: remarkable that people are somehow *just* discovering that zohran quoted karl marx, happily in public, just a few years ago.…",
+        "createdAt": "2025-11-04T13:06:44.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fljr0402ke8o5e",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985694346818023838",
+        "content": "Given that he’s on the ballot twice, maybe he can win twice too 🤦‍♂️ https://t.co/xDFC1imeha",
+        "createdAt": "2025-11-04T13:03:19.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fmjr04hw9t574d",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985693470644691293",
+        "content": "Thanks Ron ❤️ https://t.co/wgvEzUbCPx",
+        "createdAt": "2025-11-04T12:59:50.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fnjr04ap9yd2jj",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985692814873690422",
+        "content": "RT @EricLDaugh: 🚨 UPDATE: In a suspicious development, it's been exposed that a whopping ~41,000 WISCONSIN VOTERS' registration files do NO…",
+        "createdAt": "2025-11-04T12:57:14.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fojr04gvgo8vzo",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985692613010502114",
+        "content": "The New York City ballot form is a scam!\n\n- No ID is required\n- Other mayoral candidates appear twice\n- Cuomo’s name is last in bottom right https://t.co/676VODWFRI",
+        "createdAt": "2025-11-04T12:56:25.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fpjr04be34zg7b",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985690282420064515",
+        "content": "RT @C_3C_3: 99% of American citizens 18 and older have a valid form of government issued ID.\n\nEither a non-expired driver's license, passpo…",
+        "createdAt": "2025-11-04T12:47:10.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fqjr04isfq7qdx",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985687834045661486",
+        "content": "RT @DefiyantlyFree: If I need to show my ID to get Sudafed at Walgreens, you need to show your ID to vote. \n\nIf Florida and Texas can count…",
+        "createdAt": "2025-11-04T12:37:26.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00frjr04xykos5cw",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985686661620002912",
+        "content": "🚀 https://t.co/hXiWEbPvhP",
+        "createdAt": "2025-11-04T12:32:47.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fsjr04zeexlm1g",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985686582222061625",
+        "content": "Indeed https://t.co/j0vZXJOPpT",
+        "createdAt": "2025-11-04T12:32:28.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ftjr04gwww07lk",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985684241150046273",
+        "content": "RT @xdNiBoR: Cost-plus contracting enables companies to basically scam NASA (and the US taxpayer) for an absurd amount.\n\nThe SLS Mobile Lau…",
+        "createdAt": "2025-11-04T12:23:09.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fujr04afnk4a6w",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985684014733131887",
+        "content": "RT @ZubyMusic: Good luck, New York City. 💜",
+        "createdAt": "2025-11-04T12:22:15.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fvjr04e24m5g89",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985582342824407118",
+        "content": "RT @GoodwinMJ: What our 'leaders' will never talk about:\n\nIn the last week alone, in the UK, in just one week, we've gone from reading abou…",
+        "createdAt": "2025-11-04T05:38:15.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fwjr04ss6tpz89",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985567412796997865",
+        "content": "RT @SERobinsonJr: STARLINK: Ontario will miss its 2025 rural broadband goal, pushing it to mid-2028. This is due to Ontario Premier Doug Fo…",
+        "createdAt": "2025-11-04T04:38:55.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fxjr04q0xjlkja",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985567342844338481",
+        "content": "Megapack will carry a lot of the world’s load in energy, as it allows power plants to run continuously. https://t.co/ZT8oZGLqAp",
+        "createdAt": "2025-11-04T04:38:39.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fyjr04aorwt3zr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985554964094337418",
+        "content": "RT @jasondebolt: Hey @CharlesSchwab - I need to speak with someone from Schwab Private Wealth Services this week. Please reach out via emai…",
+        "createdAt": "2025-11-04T03:49:27.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00fzjr0426kreiug",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985553750627688770",
+        "content": "RT @kchau: I am moving my $1M Roth account out of @CharlesSchwab today.",
+        "createdAt": "2025-11-04T03:44:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g0jr04zqkdfmn0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985524176648831041",
+        "content": "RT @Starlink: In response to Hurricane Melissa, the Starlink team has been working to provide vital connectivity to support relief and reco…",
+        "createdAt": "2025-11-04T01:47:07.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g1jr042bnfc0h4",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985523712901398967",
+        "content": "Wow https://t.co/K96J9k9tgI",
+        "createdAt": "2025-11-04T01:45:17.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g2jr04ggd6eert",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985461834259054967",
+        "content": "RT @TRobinsonNewEra: Another day.\n\nAnother gang of usual suspects arrested for gang raping British children.\n\nAll bailed. https://t.co/UAtV…",
+        "createdAt": "2025-11-03T21:39:24.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g3jr04ig0pc0sf",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985461004566925714",
+        "content": "RT @AndrThie: Remarkable milestone in our young history. Less than 9 months after launching Model Y Premium, we now launched the all new Mo…",
+        "createdAt": "2025-11-03T21:36:06.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g4jr04sj4mfl0a",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985459861321367982",
+        "content": "11 people stabbed on a train in the UK https://t.co/PxwgaP3tSP",
+        "createdAt": "2025-11-03T21:31:33.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g5jr04r11uwm4e",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985458564207628356",
+        "content": "RT @Teslaconomics: If you want to be inspired, this is all you need to see",
+        "createdAt": "2025-11-03T21:26:24.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g6jr04oky8u9po",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985458525225771335",
+        "content": "RT @Paddy_film: I just filed a formal complaint with the European Ombudsman about a potential conflict of interest involving Mr. Krüger fro…",
+        "createdAt": "2025-11-03T21:26:15.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g7jr04952m0t6i",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985457412065935656",
+        "content": "It’s crazy not to require proof of citizenship to vote in any country’s election https://t.co/WGOGnuNgXy",
+        "createdAt": "2025-11-03T21:21:49.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g8jr043eb94b1q",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985439237823688938",
+        "content": "RT @TheRabbitHole84: People underestimate the number of illegals who entered the country under the Biden-Harris administration.\n\nVery Liber…",
+        "createdAt": "2025-11-03T20:09:36.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00g9jr04kg1n563e",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985433270507749664",
+        "content": "Remember to vote tomorrow in New York!\n\nBear in mind that a vote for Curtis is really a vote for Mumdumi or whatever his name is.\n\nVOTE CUOMO!",
+        "createdAt": "2025-11-03T19:45:53.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gajr043thmzrip",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985428295064993967",
+        "content": "RT @JamesOKeefeIII: WATCH: Nonprofit Executive Caught Instructing Illegal Immigrant to Vote in NYC Mayoral Election.\n\nLa Jornada Executive…",
+        "createdAt": "2025-11-03T19:26:07.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gbjr04dj3mbp94",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985427418933575945",
+        "content": "True https://t.co/35yU369y7p",
+        "createdAt": "2025-11-03T19:22:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gcjr04mtdjtz3x",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985427254713991341",
+        "content": "Very important to appreciate that the debate is not about whether illegals will sway future US elections due to census apportionment, but just by how much!\n\nLeft-leaving organizations like Pew Research represent the low end of estimates. \nhttps://t.co/4uORBFcHKt https://t.co/whvpOys7at",
+        "createdAt": "2025-11-03T19:21:59.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gdjr04yavmyblu",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985426227721908689",
+        "content": "RT @cb_doge: BREAKING: Grok just claimed the #1 spot on the Roo Code Daily and Monthly leaderboards! 🏆 https://t.co/PGL7GVN2mT",
+        "createdAt": "2025-11-03T19:17:54.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gejr04wharetx0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985413219121578398",
+        "content": "RT @cb_doge: You can upload 4-hour long videos on 𝕏\n\nPerfect for long podcasts, movies, documentaries, short films, pretty much everything.…",
+        "createdAt": "2025-11-03T18:26:13.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gfjr048j4vg0rr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985412612453241087",
+        "content": "RT @boringcompany: Preparation for Music City Loop continues with controlled blasting to excavate the TBM launch shaft - the final depth wi…",
+        "createdAt": "2025-11-03T18:23:48.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ggjr04q57oehx6",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985393411047010565",
+        "content": "RT @MarioNawfal: HOW TO USE GROK LIKE A PRO (WITHOUT SOUNDING LIKE A BOT)\n\nGrok isn’t your typical AI - it’s the chaos whisperer. Born from…",
+        "createdAt": "2025-11-03T17:07:30.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00ghjr0423hut78y",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985392087408505122",
+        "content": "RT @Tesla: FSD Supervised gives people back their freedom",
+        "createdAt": "2025-11-03T17:02:15.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gijr040ijvfwno",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985372810043355200",
+        "content": "RT @MarioNawfal: 12 EX-OPENAI EMPLOYEES CALL OUT SAM ALTMAN IN COURT FILING\n\nHarvard law professor Lawrence Lessig just filed an amicus bri…",
+        "createdAt": "2025-11-03T15:45:39.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gjjr04wm0270tq",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985302971366920391",
+        "content": "Yes https://t.co/BgcsqPb8zk",
+        "createdAt": "2025-11-03T11:08:08.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gkjr049l71y75a",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985302862491205858",
+        "content": "RT @Scobleizer: Hey Grok, what are your favorite Robert Scoble or Elon Musk videos?\n\nEveryone is missing how useful Grok has gotten. It kno…",
+        "createdAt": "2025-11-03T11:07:42.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gljr04l747i6to",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985302748263506206",
+        "content": "RT @MarioNawfal: SPINOZA: YOU DON'T NEED A GOD TO DO GOOD\n\nBaruch Spinoza, the 17th-century heretic philosopher excommunicated from Judaism…",
+        "createdAt": "2025-11-03T11:07:14.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gmjr04injpejxm",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985300481741398265",
+        "content": "Starlink is improving fast https://t.co/Y7j13HG61h",
+        "createdAt": "2025-11-03T10:58:14.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gnjr04uzhotby3",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985300355677364287",
+        "content": "This are simply facts. https://t.co/w987t0Omir",
+        "createdAt": "2025-11-03T10:57:44.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gojr04oizznxqp",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985300206079139884",
+        "content": "RT @YunTaTsai1: One reason I asked my family to replace their ICE cars with Tesla is that I kept being asked how to repair their cars.\n\nWit…",
+        "createdAt": "2025-11-03T10:57:08.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gpjr04grkm91lr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985300086914789385",
+        "content": "RT @teslaownersSV: The two most important apps for honest and truthful information \n\n𝕏 and Grok https://t.co/2LYhKc8Q6x",
+        "createdAt": "2025-11-03T10:56:40.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gqjr04lq9tg56x",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985299316467200329",
+        "content": "RT @XFreeze: Switch to Grokipedia for accurate, bias-free knowledge\n\nDitch WhatsApp and move to 𝕏 Chat for privacy-first messaging https://…",
+        "createdAt": "2025-11-03T10:53:36.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00grjr04e2joiakz",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985288752554705253",
+        "content": "RT @MarioNawfal: 🇺🇸🇪🇺 REPORT: FIVE EUROPEAN CHARITIES FUNNELED $2 BILLION INTO AMERICAN LEFT-WING GROUPS\n\nA new Americans for Public Trust…",
+        "createdAt": "2025-11-03T10:11:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gsjr04agvm4g28",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985286573697687966",
+        "content": "Legacy media is a propaganda arm of the far left https://t.co/YglgztcveQ",
+        "createdAt": "2025-11-03T10:02:58.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gtjr0483f0jvgd",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985286164715360604",
+        "content": "RT @Grummz: I told you, not too long ago, that nobody will remember how tainted games were with woke bs, and how every gamer was forced to…",
+        "createdAt": "2025-11-03T10:01:21.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gujr04vt6lcns1",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985286083052257786",
+        "content": "RT @MarioNawfal: 🇺🇸 MORGAN STANLEY WARNS TESLA STOCK NEEDS ELON'S PAY PLAN\n\nTesla shareholders are about to vote on a massive new compensat…",
+        "createdAt": "2025-11-03T10:01:01.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gvjr04bgyvrqkl",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985283882095456616",
+        "content": "https://t.co/2Q6szEE8QQ",
+        "createdAt": "2025-11-03T09:52:16.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gwjr048pqjjc61",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985282254617412086",
+        "content": "RT @Scobleizer: Grok learned EVERYTHING about this farmers market in a single video. Read what it learned. It is stunning: https://t.co/CBu…",
+        "createdAt": "2025-11-03T09:45:48.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gxjr0437mskm21",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985282146928574766",
+        "content": "RT @thatsKAIZEN: California’s congressional districts are already 83% Democratic.\n\nNow Gavin Newsom wants to spend $282M to gerrymander eve…",
+        "createdAt": "2025-11-03T09:45:23.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gyjr047vopyjoa",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985281498959008139",
+        "content": "Yes https://t.co/iQ7iI90xQ7",
+        "createdAt": "2025-11-03T09:42:48.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00gzjr04z0pvh94o",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985279182004420929",
+        "content": "A large solar-powered AI satellite constellation would be able to prevent global warming by making tiny adjustments in how much solar energy reached Earth",
+        "createdAt": "2025-11-03T09:33:36.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h0jr0436jqi3lr",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985276785316245619",
+        "content": "RT @Real_RobN: 🚨🚨 THIS WILL BLOW YOU AWAY.\n\nThe Democrats have filed a lawsuit against the USDA for trying to find out how many illegal ali…",
+        "createdAt": "2025-11-03T09:24:04.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h1jr04q6yi0ylu",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985276111241269303",
+        "content": "RT @tetsuoai: Try this Grok Imagine prompt. 💫\n\n&gt;&gt;&gt; prompt\n\nSubject: colossal biomechanical oni-dragon looming over defiant silver-haired gi…",
+        "createdAt": "2025-11-03T09:21:24.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h2jr04su6ijy6g",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985213865119162628",
+        "content": "https://t.co/qcsoJr9xyr",
+        "createdAt": "2025-11-03T05:14:03.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h3jr04nm1f85lh",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985213254776557848",
+        "content": "RT @XFreeze: Add Grok app to your home screen, to access it instantly whenever you need quick answers... https://t.co/eg972VfbmP",
+        "createdAt": "2025-11-03T05:11:38.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h4jr045xow88iv",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985212171182313494",
+        "content": "RT @XFreeze: You can enter Private Chat mode with Grok\n\nYour chat history won't be saved, it’s Fully Erased as soon as you exit private cha…",
+        "createdAt": "2025-11-03T05:07:19.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h5jr045diqvtbj",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985212042643669159",
+        "content": "Grok at #1 https://t.co/plqkMoCOHt",
+        "createdAt": "2025-11-03T05:06:49.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h6jr04w9fud9ej",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985209684870189255",
+        "content": "RT @dvorahfr: I just spent several hours testing as many prompts as possible on @grok Imagine, to the point where I reached the limit. The…",
+        "createdAt": "2025-11-03T04:57:26.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h7jr048y4g9ly7",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985208045287379260",
+        "content": "RT @SpaceX: Deployment of all payloads confirmed https://t.co/bfcRyexYHu",
+        "createdAt": "2025-11-03T04:50:56.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h8jr04zpcp24mo",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985207085521674601",
+        "content": "Your 𝕏 feed should start to get really awesome sometime this month https://t.co/3YlC76jC0u",
+        "createdAt": "2025-11-03T04:47:07.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00h9jr04uknur7u9",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985206519018013020",
+        "content": "RT @nvidia: From the transistor to the internet, every leap forward has shaped America’s destiny.\n\nNow, a new industrial revolution begins…",
+        "createdAt": "2025-11-03T04:44:52.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hajr04z17np24j",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985204669094969399",
+        "content": "Banger https://t.co/pIYarXN8hK",
+        "createdAt": "2025-11-03T04:37:31.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hbjr045ps6yvwk",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985204548936556868",
+        "content": "This is an accurate picture of orbital rocket launches so far this year. \n\n90% Falcon with the massive @SpaceX Starship standing out very clearly. https://t.co/3UrABHjGdx",
+        "createdAt": "2025-11-03T04:37:02.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hcjr04zam0sy9s",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985203704707027179",
+        "content": "RT @vitrupo: Elon Musk says he's now racing to build the thing he once feared.\n\nHe tried to slow AI down, then realized there were only two…",
+        "createdAt": "2025-11-03T04:33:41.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hdjr04afodosj0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985202572932821246",
+        "content": "RT @theallinpod: Elon Musk: Bill Gates is “not strong in the sciences.”\n\n“I just wanna say, Billy G is not my lover.”\n\n“You'd think that so…",
+        "createdAt": "2025-11-03T04:29:11.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hejr040g4hlwca",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985163404949213277",
+        "content": "My pool parties per year number is ~0.3, which is probably too low",
+        "createdAt": "2025-11-03T01:53:32.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hfjr04g5olc1l2",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985118256525681144",
+        "content": "RT @XFreeze: Grok 4 Fast still ranks #1 on LMArena's search leaderboard https://t.co/E7XscF5EGq",
+        "createdAt": "2025-11-02T22:54:08.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hgjr04z148fwpx",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985104111499657502",
+        "content": "Maybe have more pool parties 😂 https://t.co/XVI40gpCm5",
+        "createdAt": "2025-11-02T21:57:56.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hhjr042has4zjf",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985079964988047789",
+        "content": "The level of fraud is staggering https://t.co/14Gy4QOYti",
+        "createdAt": "2025-11-02T20:21:59.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hijr043ce8auhj",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985066899798122613",
+        "content": "52 pages is a lot https://t.co/zlcJM6XtAU",
+        "createdAt": "2025-11-02T19:30:04.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hjjr04ahg4zth0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985060186017710181",
+        "content": "RT @tylervstorm: Grok predicted the future 🔮 https://t.co/UyYxrLLLIA",
+        "createdAt": "2025-11-02T19:03:23.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hkjr04hc6f1ga6",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985048995006423322",
+        "content": "RT @AutismCapital: This can only happen on X 👏🏼 https://t.co/WgvzDaOBcV",
+        "createdAt": "2025-11-02T18:18:55.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hljr04r7gk4n22",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985048731818094950",
+        "content": "Perhaps our purpose is to make the mind of a sentient sun",
+        "createdAt": "2025-11-02T18:17:52.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hmjr040yliphed",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985031929557868928",
+        "content": "RT @XFreeze: Quantum computers work best in extremely cold and stable environments\n\nMoon’s permanently shadowed craters have:\n- Temperature…",
+        "createdAt": "2025-11-02T17:11:06.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hnjr04jlfooro0",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985013163650428951",
+        "content": "RT @YunTaTsai1: It is often overlooked that there is a 1.4T AI company with positive net income, operating multiple giga 🏭 in 🇺🇸, in-house…",
+        "createdAt": "2025-11-02T15:56:32.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hojr04jf7mc0pc",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1985013074382991407",
+        "content": "Quantum computing is best done in the permanently shadowed craters on the Moon",
+        "createdAt": "2025-11-02T15:56:11.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hpjr04wrw5d9hm",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984980390445248611",
+        "content": "RT @SpaceX: While our Transporter rideshare missions launch to a sun synchronous orbit, Bandwagon missions launch to a mid-inclination orbi…",
+        "createdAt": "2025-11-02T13:46:18.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hqjr04zvwewa5s",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984888153183043918",
+        "content": "Chip design review continues tomorrow, followed by Optimus demo review",
+        "createdAt": "2025-11-02T07:39:47.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hrjr04g6zljqbn",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984870339785212018",
+        "content": "RT @FutureJurvetson: When SpaceX builds 𝕄𝕠𝕠𝕟 𝔹𝕒𝕤𝕖 𝔸𝕝𝕡𝕙𝕒, a permanent human settlement, we will finally have a generation who believes in th…",
+        "createdAt": "2025-11-02T06:29:00.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hsjr041y6cep4d",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984863390263869532",
+        "content": "RT @SawyerMerritt: It’s ultimately up to local European governments to decide when to allow Tesla to begin FSD (Supervised) testing and use…",
+        "createdAt": "2025-11-02T06:01:23.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00htjr04a81rzu2j",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984851012788896171",
+        "content": "RT @SpaceX: Watch Falcon 9 launch the Bandwagon-4 mission to orbit  https://t.co/yqReYHJ5p3",
+        "createdAt": "2025-11-02T05:12:12.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hujr04lirl8bob",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984850960376791378",
+        "content": "Just finished a long AI5 design review with the Tesla California and Texas chip engineers. It’s going to be great.\n\nAnd AI6 and AI7 will follow in fast succession. \n\nAI8 will be out of this world.",
+        "createdAt": "2025-11-02T05:12:00.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hvjr0485cebkoa",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984717060325458148",
+        "content": "RT @SawyerMerritt: NEWS: SpaceX has successfully launched its 100th Starlink mission of 2025.\n\nOver 2,550 Starlink satellites have been lau…",
+        "createdAt": "2025-11-01T20:19:56.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hwjr04tbk5mrkq",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984717014620078498",
+        "content": "Try tapping the Grok logo on the upper right of any post for instant analysis https://t.co/K4rlcEQxui",
+        "createdAt": "2025-11-01T20:19:45.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hxjr0477ahn4f4",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984716634788090007",
+        "content": "RT @omead: Please vote YES to increase shareholder value.\n\nThere is no better leader than @elonmusk to make @Tesla’s ambitious goals a real…",
+        "createdAt": "2025-11-01T20:18:14.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hyjr045y77w90j",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984648803874717729",
+        "content": "Test drive a Cybertruck\n\nIt will blow your mind https://t.co/FembwPFnoh",
+        "createdAt": "2025-11-01T15:48:42.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmicri0uc00hzjr049hmpwy4s",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984633298568819169",
+        "content": "RT @MarioNawfal: 🇺🇸 ELON TO JOE ROGAN: “THE LEFT CAN’T EVEN SEE THE CENTER WITH A TELESCOPE\"\n\n\"I think I’m a centrist.  But from the perspe…",
+        "createdAt": "2025-11-01T14:47:05.000Z",
+        "importedAt": "2025-11-24T06:24:36.796Z",
+        "metrics": null
+      },
+      {
+        "id": "cmi4t026v00r7le04eha2fk69",
+        "userId": "c4e2a911-36ec-4453-8a39-1edb5e6b2969",
+        "platformId": "1984418795688247596",
+        "content": "Thanks Michael ❤️ https://t.co/QBewPSLV4j",
+        "createdAt": "2025-11-01T00:34:44.000Z",
+        "importedAt": "2025-11-18T16:44:28.552Z",
+        "metrics": null
+      }
+    ]
+  }
+}
