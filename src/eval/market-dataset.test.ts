@@ -21,15 +21,19 @@ process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
 const {
   CHECKPOINTS,
+  FAVORITE,
   PRICE,
   TOLERANCE_SECONDS,
   distinctMatches,
+  favoritePrice,
+  oneRowPerMatch,
   pickNearest,
   spreadOf,
   splitByMatchTime,
+  toFavoriteSample,
 } = await import('./market-dataset.js');
 
-const { reliabilityBuckets, typicalSpread, executionBar, bucketVerdict, bucketGap } =
+const { FAVORITE_GRID, reliabilityBuckets, typicalSpread, executionBar, bucketVerdict, bucketGap } =
   await import('./metrics.js');
 
 type MarketPoint = import('./market-dataset.js').MarketPoint;
@@ -227,4 +231,101 @@ test('sem spread em nenhuma linha não existe barra, e nenhum balde é candidato
   assert.equal(bucket.distinctMatches, 25);
   assert.equal(typicalSpread(points), null);
   assert.equal(bucketVerdict(bucket, executionBar(null)), 'sem_spread');
+});
+
+// ---------------------------------------------------------------------------
+// O corte pelo preço do favorito
+// ---------------------------------------------------------------------------
+
+test('o favorito é o lado caro, e o desfecho vira junto', () => {
+  // Time A a 0,30 e perdeu: o favorito é o adversário, a 0,70, e ele VENCEU.
+  const azarao = favoritePrice(point({ price: 0.3, outcome: 0 }));
+  assert.equal(azarao?.price.toFixed(4), '0.7000');
+  assert.equal(azarao?.outcome, 1);
+  assert.equal(azarao?.favoriteIsTeamA, false);
+
+  // Time A a 0,70 e perdeu: o favorito é ele, e ele perdeu.
+  const favorito = favoritePrice(point({ price: 0.7, outcome: 0 }));
+  assert.equal(favorito?.price.toFixed(4), '0.7000');
+  assert.equal(favorito?.outcome, 0);
+  assert.equal(favorito?.favoriteIsTeamA, true);
+});
+
+test('preço exatamente 0,50 não tem favorito, e vira descarte contado', () => {
+  // Escolher um lado no empate criaria uma observação cujo desfecho é moeda.
+  assert.equal(favoritePrice(point({ price: 0.5 })), null);
+
+  const { points, empates } = toFavoriteSample([point({ price: 0.5 }), point({ price: 0.8 })]);
+  assert.equal(empates, 1);
+  assert.equal(points.length, 1);
+});
+
+test('o rótulo do time A não muda nada no corte por favorito', () => {
+  // A MESMA partida, com a convenção invertida: preço e desfecho espelhados. Se o
+  // rótulo influenciasse a medida, estas duas linhas cairiam em baldes ou lados
+  // diferentes — e é exatamente isso que este corte existe para impossibilitar.
+  const comoA = favoritePrice(point({ price: 0.85, outcome: 1 }));
+  const comoB = favoritePrice(point({ price: 0.15, outcome: 0 }));
+
+  assert.equal(comoA?.price.toFixed(4), comoB?.price.toFixed(4));
+  assert.equal(comoA?.outcome, comoB?.outcome);
+});
+
+test('oneRowPerMatch fica com o checkpoint mais próximo do jogo', () => {
+  const rows = toFavoriteSample([
+    point({ matchId: 'm1', checkpointMinutes: 360, price: 0.7 }),
+    point({ matchId: 'm1', checkpointMinutes: 60, price: 0.8 }),
+    point({ matchId: 'm2', checkpointMinutes: 360, price: 0.9 }),
+  ]).points;
+
+  const perMatch = oneRowPerMatch(rows);
+  assert.equal(perMatch.length, 2);
+  assert.equal(perMatch.find((p) => p.matchId === 'm1')?.checkpointMinutes, 60);
+  assert.equal(perMatch.find((p) => p.matchId === 'm2')?.checkpointMinutes, 360);
+});
+
+test('sem oneRowPerMatch a mesma partida entraria duas vezes com um desfecho só', () => {
+  const rows = toFavoriteSample([
+    point({ matchId: 'm1', checkpointMinutes: 360, price: 0.72, outcome: 1 }),
+    point({ matchId: 'm1', checkpointMinutes: 60, price: 0.78, outcome: 1 }),
+  ]).points;
+
+  const inflado = reliabilityBuckets(rows, FAVORITE, FAVORITE_GRID);
+  assert.equal(
+    inflado.reduce((sum, b) => sum + b.n, 0),
+    2,
+  );
+
+  const honesto = reliabilityBuckets(oneRowPerMatch(rows), FAVORITE, FAVORITE_GRID);
+  assert.equal(
+    honesto.reduce((sum, b) => sum + b.n, 0),
+    1,
+  );
+});
+
+test('a grade do favorito é de 5pp e começa em 0,50', () => {
+  const rows = toFavoriteSample([
+    point({ matchId: 'a', price: 0.92 }),
+    point({ matchId: 'b', price: 0.97 }),
+  ]).points;
+
+  const buckets = reliabilityBuckets(rows, FAVORITE, FAVORITE_GRID);
+  assert.equal(buckets.length, 2);
+  assert.equal(buckets[0]?.from.toFixed(2), '0.90');
+  assert.equal(buckets[0]?.to.toFixed(2), '0.95');
+  assert.equal(buckets[1]?.from.toFixed(2), '0.95');
+});
+
+test('a grade decimal e a do favorito separam o que a outra junta', () => {
+  // Duas partidas que o corte por time A põe no mesmo balde de 10pp e o corte por
+  // favorito separa em dois de 5pp. É a resolução que o eixo pela metade compra.
+  const rows = toFavoriteSample([
+    point({ matchId: 'a', price: 0.91 }),
+    point({ matchId: 'b', price: 0.98 }),
+  ]).points;
+
+  // Mesmos pontos, duas grades: a decimal junta 0,91 e 0,98 no balde 0,9–1,0; a
+  // do favorito os separa em 0,90–0,95 e 0,95–1,00.
+  assert.equal(reliabilityBuckets(rows, FAVORITE).length, 1);
+  assert.equal(reliabilityBuckets(rows, FAVORITE, FAVORITE_GRID).length, 2);
 });

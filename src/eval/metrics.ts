@@ -219,25 +219,49 @@ export interface ReliabilityBucket {
   observedRate: number;
 }
 
-const BUCKET_WIDTH = 0.1;
-const BUCKET_COUNT = 10;
+/**
+ * A grade de baldes: piso, largura e quantidade.
+ *
+ * Existe porque duas perguntas diferentes precisam de eixos diferentes. A escala
+ * de uma previsão sobre um lado convencionado vai de 0 a 1 e pede 10pp. A escala
+ * do preço do FAVORITO vive inteira em [0,5; 1,0] — metade do eixo, e com 10pp
+ * ela caberia em cinco baldes, jogando fora justamente a resolução da ponta onde
+ * o achado mora.
+ *
+ * A grade é declarada e fixa, nunca por quantil: "quando o mercado pediu 0,90" é
+ * um intervalo de probabilidade, não um decil da amostra. Baldes por quantil
+ * mudariam de significado a cada rodada do eval.
+ */
+export interface BucketGrid {
+  /** Piso do primeiro balde, inclusivo. */
+  from: number;
+  width: number;
+  count: number;
+}
+
+/** O eixo inteiro em 10pp. É a grade de toda previsão orientada a um lado fixo. */
+export const DECILE_GRID: BucketGrid = { from: 0, width: 0.1, count: 10 };
+
+/** O eixo do favorito: [0,5; 1,0] em 5pp. Ver `favoritePrice`. */
+export const FAVORITE_GRID: BucketGrid = { from: 0.5, width: 0.05, count: 10 };
 
 /**
  * O reliability diagram em forma de tabela.
  *
- * Baldes de 10pp, fixos. Fixos e não por quantil porque a pergunta é sobre a
- * escala declarada — "quando ele diz 70%" é um intervalo de probabilidade, não
- * um decil da amostra. Baldes por quantil responderiam outra coisa e mudariam de
- * significado a cada rodada do eval.
- *
  * Baldes vazios saem da lista: imprimir dez linhas das quais sete dizem `n=0`
  * dá aparência de cobertura que a amostra não tem.
+ *
+ * Previsão ABAIXO do piso da grade não é empurrada para o primeiro balde — ela
+ * fica de fora, e quem chama tem que garantir que isso não aconteça. Grudar um
+ * 0,30 no balde 0,50–0,55 do eixo do favorito produziria uma média prevista
+ * mentirosa em silêncio, que é o modo de falha que esta tabela menos perdoa.
  */
 export function reliabilityBuckets<T extends CalibratablePoint>(
   points: readonly T[],
   forecast: (point: T) => number | null,
+  grid: BucketGrid = DECILE_GRID,
 ): ReliabilityBucket[] {
-  const sums = Array.from({ length: BUCKET_COUNT }, () => ({
+  const sums = Array.from({ length: grid.count }, () => ({
     n: 0,
     predicted: 0,
     observed: 0,
@@ -246,11 +270,12 @@ export function reliabilityBuckets<T extends CalibratablePoint>(
 
   for (const point of points) {
     const p = forecast(point);
-    if (p === null) continue;
+    if (p === null || p < grid.from) continue;
 
-    // `min` prende p = 1,0 no último balde. Sem isso ele cairia no índice 10,
-    // que não existe, e o ponto sumiria da calibração sem erro nenhum.
-    const index = Math.min(Math.floor(p / BUCKET_WIDTH), BUCKET_COUNT - 1);
+    // `min` prende o teto (p = 1,0 na grade decimal) no último balde. Sem isso
+    // ele cairia num índice que não existe e o ponto sumiria da calibração sem
+    // erro nenhum.
+    const index = Math.min(Math.floor((p - grid.from) / grid.width), grid.count - 1);
     const bucket = sums[index];
     if (bucket === undefined) continue;
 
@@ -264,8 +289,8 @@ export function reliabilityBuckets<T extends CalibratablePoint>(
   for (const [index, bucket] of sums.entries()) {
     if (bucket.n === 0) continue;
     buckets.push({
-      from: index * BUCKET_WIDTH,
-      to: (index + 1) * BUCKET_WIDTH,
+      from: grid.from + index * grid.width,
+      to: grid.from + (index + 1) * grid.width,
       n: bucket.n,
       distinctMatches: bucket.matches.size,
       meanPredicted: bucket.predicted / bucket.n,
@@ -507,25 +532,49 @@ export const MIN_MATCHES_FOR_BUCKET = 20;
 // ---------------------------------------------------------------------------
 
 /**
- * Corte da amostra pela metade no tempo.
+ * Corte da amostra pela metade no tempo, com a PARTIDA como unidade.
  *
  * Ordenado por `as_of` — o instante da análise, não o da partida — porque a
  * pergunta é se um viés medido no passado ainda vale no futuro, e é `as_of` que
- * define o que era passado no momento de estimar.
+ * define o que era passado no momento de estimar. Cada partida entra na ordem
+ * pelo seu `as_of` MAIS ANTIGO: é quando ela apareceu pela primeira vez.
  *
- * O corte é por CONTAGEM (metade dos pontos), não por data no meio do intervalo:
- * a taxa de análises por dia varia muito com o calendário de partidas, e um
- * corte no meio do calendário deixaria as duas metades com tamanhos muito
- * diferentes. Empate exato de `as_of` na fronteira cai para o teste; é no máximo
- * um ponto e não muda estimativa nenhuma.
+ * O corte divide a lista de PARTIDAS e leva todas as análises de cada uma junto.
+ * Cortar a lista de análises era o defeito anterior, e ele não era teórico: os
+ * checkpoints T-360 e T-60 da mesma partida têm `as_of` diferentes e caíam em
+ * lados opostos do corte. Como os dois compartilham o MESMO desfecho, o resultado
+ * que a segunda metade não deveria conhecer já tinha ajudado a estimar o
+ * deslocamento — fora-da-amostra com vazamento é dentro-da-amostra com outro
+ * nome. Com o corte por partida a interseção é vazia por construção, e
+ * `DebiasEvaluation.straddlingMatches` passa a ser a CONFIRMAÇÃO disso.
+ *
+ * O corte é por CONTAGEM (metade das partidas), não por data no meio do
+ * intervalo: a taxa de partidas por dia varia muito com o calendário, e um corte
+ * no meio dele deixaria as metades com tamanhos muito diferentes.
  */
 export function splitByDate(points: readonly EvalPoint[]): {
   train: EvalPoint[];
   test: EvalPoint[];
 } {
-  const sorted = [...points].sort((a, b) => (a.asOf < b.asOf ? -1 : a.asOf > b.asOf ? 1 : 0));
-  const half = Math.floor(sorted.length / 2);
-  return { train: sorted.slice(0, half), test: sorted.slice(half) };
+  const firstSeen = new Map<string, string>();
+  for (const point of points) {
+    const current = firstSeen.get(point.matchSlug);
+    if (current === undefined || point.asOf < current) firstSeen.set(point.matchSlug, point.asOf);
+  }
+
+  // Desempate pelo slug: duas partidas com o mesmo `as_of` não podem trocar de
+  // metade entre duas rodadas do eval sobre a mesma amostra.
+  const ordered = [...firstSeen.entries()].sort(([slugA, a], [slugB, b]) =>
+    a < b ? -1 : a > b ? 1 : slugA < slugB ? -1 : 1,
+  );
+
+  const half = Math.floor(ordered.length / 2);
+  const trainMatches = new Set(ordered.slice(0, half).map(([slug]) => slug));
+
+  return {
+    train: points.filter((point) => trainMatches.has(point.matchSlug)),
+    test: points.filter((point) => !trainMatches.has(point.matchSlug)),
+  };
 }
 
 export interface DebiasArm {
@@ -562,13 +611,15 @@ export interface DebiasEvaluation {
    */
   inSample: DebiasArm;
   /**
-   * Partidas que aparecem nas DUAS metades.
+   * Partidas que aparecem nas DUAS metades. Tem que ser ZERO.
    *
-   * Vazamento residual do corte por data: dois checkpoints da mesma partida têm
-   * `as_of` diferentes e podem cair em lados opostos, e aí o desfecho que o teste
-   * deveria não conhecer já ajudou a estimar o deslocamento. Não invalida a
-   * medição enquanto for pequeno, mas tem que ser IMPRESSO — fora-da-amostra com
-   * vazamento não contado é dentro-da-amostra com outro nome.
+   * Era o vazamento do corte por análise — dois checkpoints da mesma partida com
+   * `as_of` diferentes caindo em lados opostos, e o desfecho que o teste não
+   * deveria conhecer ajudando a estimar o deslocamento. `splitByDate` corta por
+   * partida desde então, e este contador deixou de ser um aviso para virar a
+   * CONFIRMAÇÃO de que a interseção é vazia. Continua calculado e impresso, e
+   * não substituído por um comentário dizendo que não pode acontecer: vazamento
+   * que não é medido volta.
    */
   straddlingMatches: number;
   /**
@@ -591,7 +642,8 @@ export interface DebiasEvaluation {
 
 function byVersion(points: readonly EvalPoint[]): Array<{ key: string; n: number }> {
   const counts = new Map<string, number>();
-  for (const point of points) counts.set(point.promptVersion, (counts.get(point.promptVersion) ?? 0) + 1);
+  for (const point of points)
+    counts.set(point.promptVersion, (counts.get(point.promptVersion) ?? 0) + 1);
   return [...counts].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n);
 }
 
@@ -624,7 +676,9 @@ export function debiasEvaluation(points: readonly EvalPoint[]): DebiasEvaluation
 
   const trainVersions = new Set(train.map((p) => p.promptVersion));
   const trainMatches = new Set(train.map((p) => p.matchSlug));
-  const straddling = new Set(test.filter((p) => trainMatches.has(p.matchSlug)).map((p) => p.matchSlug));
+  const straddling = new Set(
+    test.filter((p) => trainMatches.has(p.matchSlug)).map((p) => p.matchSlug),
+  );
 
   return {
     offset,

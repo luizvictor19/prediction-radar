@@ -372,7 +372,10 @@ test('o spread típico é a MEDIANA, para um book esquecido não definir a barra
 });
 
 test('spread típico com número ímpar de pontos, e ausência total vira null', () => {
-  assert.equal(typicalSpread([point({ spread: 0.02 }), point({ spread: 0.1 }), point({ spread: 0.04 })]), 0.04);
+  assert.equal(
+    typicalSpread([point({ spread: 0.02 }), point({ spread: 0.1 }), point({ spread: 0.04 })]),
+    0.04,
+  );
   // Sem os dois lados do book não há barra — e o relatório tem que dizer isso em
   // vez de assumir um spread plausível.
   assert.equal(typicalSpread([point({ spread: null })]), null);
@@ -408,25 +411,101 @@ test('o travamento é contado, porque é o sintoma de o transformador estar erra
   assert.equal(countClamped(points, 0.0), 0);
 });
 
-test('o corte é por as_of e por contagem, com a fronteira caindo no teste', () => {
+test('o corte é por as_of e por contagem de PARTIDAS, com a fronteira caindo no teste', () => {
   const points = [
-    point({ asOf: '2026-08-03T00:00:00.000Z', analysisId: 'c' }),
-    point({ asOf: '2026-08-01T00:00:00.000Z', analysisId: 'a' }),
-    point({ asOf: '2026-08-02T00:00:00.000Z', analysisId: 'b' }),
+    point({ asOf: '2026-08-03T00:00:00.000Z', analysisId: 'c', matchSlug: 'm3' }),
+    point({ asOf: '2026-08-01T00:00:00.000Z', analysisId: 'a', matchSlug: 'm1' }),
+    point({ asOf: '2026-08-02T00:00:00.000Z', analysisId: 'b', matchSlug: 'm2' }),
   ];
 
   const { train, test: held } = splitByDate(points);
-  assert.deepEqual(train.map((p) => p.analysisId), ['a']);
-  assert.deepEqual(held.map((p) => p.analysisId), ['b', 'c']);
+  assert.deepEqual(
+    train.map((p) => p.analysisId),
+    ['a'],
+  );
+  assert.deepEqual(held.map((p) => p.analysisId).sort(), ['b', 'c']);
+});
+
+test('os dois checkpoints da mesma partida ficam do MESMO lado do corte', () => {
+  // O vazamento que este corte existe para impedir: T-360 e T-60 têm `as_of`
+  // diferentes e, num corte por análise, caíam em metades opostas — o desfecho
+  // que a 2ª metade não deveria conhecer já tinha ajudado a estimar o
+  // deslocamento. A partida é a unidade, não a análise.
+  const points = [
+    point({
+      analysisId: 'a1',
+      matchSlug: 'm1',
+      asOf: '2026-08-01T06:00:00.000Z',
+      checkpointMinutes: 360,
+    }),
+    point({
+      analysisId: 'a2',
+      matchSlug: 'm1',
+      asOf: '2026-08-01T11:00:00.000Z',
+      checkpointMinutes: 60,
+    }),
+    point({
+      analysisId: 'b1',
+      matchSlug: 'm2',
+      asOf: '2026-08-02T06:00:00.000Z',
+      checkpointMinutes: 360,
+    }),
+    point({
+      analysisId: 'b2',
+      matchSlug: 'm2',
+      asOf: '2026-08-02T11:00:00.000Z',
+      checkpointMinutes: 60,
+    }),
+  ];
+
+  const { train, test: held } = splitByDate(points);
+  assert.deepEqual(
+    train.map((p) => p.analysisId),
+    ['a1', 'a2'],
+  );
+  assert.deepEqual(
+    held.map((p) => p.analysisId),
+    ['b1', 'b2'],
+  );
+
+  const trainMatches = new Set(train.map((p) => p.matchSlug));
+  assert.equal(
+    held.some((p) => trainMatches.has(p.matchSlug)),
+    false,
+  );
 });
 
 /** Quatro pontos em ordem de `as_of`, com números que fecham à mão. */
 function debiasSample(): ReturnType<typeof point>[] {
   return [
-    point({ asOf: '2026-08-01T00:00:00Z', matchSlug: 'm1', probability: 0.8, marketMid: 0.7, outcome: 1 }),
-    point({ asOf: '2026-08-02T00:00:00Z', matchSlug: 'm2', probability: 0.6, marketMid: 0.5, outcome: 0 }),
-    point({ asOf: '2026-08-03T00:00:00Z', matchSlug: 'm3', probability: 0.9, marketMid: 0.8, outcome: 1 }),
-    point({ asOf: '2026-08-04T00:00:00Z', matchSlug: 'm4', probability: 0.7, marketMid: 0.6, outcome: 0 }),
+    point({
+      asOf: '2026-08-01T00:00:00Z',
+      matchSlug: 'm1',
+      probability: 0.8,
+      marketMid: 0.7,
+      outcome: 1,
+    }),
+    point({
+      asOf: '2026-08-02T00:00:00Z',
+      matchSlug: 'm2',
+      probability: 0.6,
+      marketMid: 0.5,
+      outcome: 0,
+    }),
+    point({
+      asOf: '2026-08-03T00:00:00Z',
+      matchSlug: 'm3',
+      probability: 0.9,
+      marketMid: 0.8,
+      outcome: 1,
+    }),
+    point({
+      asOf: '2026-08-04T00:00:00Z',
+      matchSlug: 'm4',
+      probability: 0.7,
+      marketMid: 0.6,
+      outcome: 0,
+    }),
   ];
 }
 
@@ -468,7 +547,12 @@ test('subtrair a média da própria amostra NUNCA piora o Brier — por isso nã
   for (const seed of [0.13, 0.37, 0.61, 0.88]) {
     const points = Array.from({ length: 12 }, (_, i) => {
       const p = ((i * seed) % 1) * 0.98 + 0.01;
-      return point({ probability: p, marketMid: 0.5, outcome: i % 3 === 0 ? 1 : 0, matchSlug: `m${i}` });
+      return point({
+        probability: p,
+        marketMid: 0.5,
+        outcome: i % 3 === 0 ? 1 : 0,
+        matchSlug: `m${i}`,
+      });
     });
 
     const ev = debiasEvaluation(points);
@@ -483,13 +567,25 @@ test('subtrair a média da própria amostra NUNCA piora o Brier — por isso nã
   }
 });
 
-test('partida nas duas metades é contada como vazamento, não escondida', () => {
+test('a mesma partida em dois checkpoints não vaza entre as metades', () => {
   const points = debiasSample();
-  // m1 está na 1ª metade; o terceiro ponto (2ª metade) passa a ser a mesma
-  // partida em outro checkpoint — o desfecho vaza para a estimativa.
+  // O caso que antes produzia vazamento: o terceiro ponto (que caía na 2ª
+  // metade) passa a ser a mesma partida do primeiro, em outro checkpoint. Com o
+  // corte por partida, os dois vão juntos e a interseção continua vazia.
   points[2] = point({ ...points[2]!, matchSlug: 'm1' });
 
-  assert.equal(debiasEvaluation(points).straddlingMatches, 1);
+  const ev = debiasEvaluation(points);
+  assert.equal(ev.straddlingMatches, 0);
+
+  const { train, test: held } = splitByDate(points);
+  const trainMatches = new Set(train.map((p) => p.matchSlug));
+  assert.equal(
+    held.some((p) => trainMatches.has(p.matchSlug)),
+    false,
+  );
+
+  // E o contador continua sendo calculado de verdade — não foi trocado por uma
+  // constante zero. Vazamento que não é medido volta.
   assert.equal(debiasEvaluation(debiasSample()).straddlingMatches, 0);
 });
 

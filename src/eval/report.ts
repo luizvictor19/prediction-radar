@@ -285,10 +285,28 @@ function marketCalibration(points: readonly EvalPoint[]): string {
   };
 
   const lines = [
-    section('4. Calibração do MERCADO — o preço erra em alguma faixa?'),
-    'Os mesmos baldes de 10pp, agora sobre o preço do mercado. A pergunta não é',
-    'sobre o agente: é se o próprio preço erra sistematicamente em alguma faixa.',
-    'Se errar, o edge é mecânico — declarável antes do desfecho e sem modelo nenhum.',
+    section('4. Calibração do MERCADO — no recorte que o agente vê'),
+    'ATENÇÃO AO DENOMINADOR, ANTES DA TABELA:',
+    '',
+    '  Esta amostra é FILTRADA PELO PORTÃO. Só existe análise onde o portão deixou',
+    '  passar — liquidez acima do piso, mercado dentro dos critérios —, então esta',
+    '  tabela NÃO representa o mercado de CS2. Ela representa a fatia dele que o',
+    '  agente de fato vê. Foi exatamente essa filtragem que produziu aqui gaps de até',
+    '  0,169 que NÃO se reproduzem quando a mesma conta roda sobre todas as partidas.',
+    '',
+    '  A medida que vale para "o mercado erra em alguma faixa?" é outra:',
+    '',
+    '      npm run eval:market',
+    '',
+    '  Ela monta um dataset market-cêntrico — uma linha por (partida, checkpoint),',
+    '  sem agente nenhum, sem portão — e cresce no ritmo do calendário e não no do',
+    '  analista. Qualquer conclusão sobre o MERCADO sai de lá, não daqui.',
+    '',
+    '  O que esta seção mede é uma pergunta legítima e diferente: dentro do recorte',
+    '  que o portão entrega ao agente, o preço está calibrado? É a pergunta certa',
+    '  para decidir se o agente tem contra o que competir onde ele opera.',
+    '',
+    'Os mesmos baldes de 10pp, agora sobre o preço do mercado.',
     '',
     table(
       ['balde', 'n', 'partidas', 'previsto', 'observado', 'gap', ''],
@@ -418,9 +436,9 @@ function debias(points: readonly EvalPoint[]): string {
       '',
       sameDirection && ratio >= 0.5
         ? '  VEREDITO: o mercado tem viés parecido, mesma direção e mesma ordem de\n' +
-          '  grandeza. A leitura que se sustenta é COMPOSIÇÃO DA AMOSTRA, não otimismo do\n' +
-          '  agente — e esta seção inteira vira ruído sintonizado. Ver o número abaixo\n' +
-          '  como confirmação disso, não como correção que valha aplicar.'
+            '  grandeza. A leitura que se sustenta é COMPOSIÇÃO DA AMOSTRA, não otimismo do\n' +
+            '  agente — e esta seção inteira vira ruído sintonizado. Ver o número abaixo\n' +
+            '  como confirmação disso, não como correção que valha aplicar.'
         : sameDirection
           ? '  VEREDITO: mesma direção, mas o viés do mercado é bem menor. Parte do viés do\n' +
             '  agente é composição da amostra; o excedente sobre o do mercado é o que pode\n' +
@@ -534,15 +552,17 @@ function debias(points: readonly EvalPoint[]): string {
     );
   }
 
-  if (ev.straddlingMatches > 0) {
-    lines.push(
-      '',
-      `  VAZAMENTO: ${ev.straddlingMatches} partida(s) aparecem nas DUAS metades — checkpoints da mesma`,
-      '  partida com as_of diferentes caíram em lados opostos do corte. O desfecho que a',
-      '  2ª metade não deveria conhecer já ajudou a estimar o deslocamento, então o',
-      '  "fora da amostra" acima é otimista nessa proporção.',
-    );
-  }
+  lines.push(
+    '',
+    ev.straddlingMatches === 0
+      ? '  SEM VAZAMENTO: 0 partida(s) nas duas metades. O corte é da lista de PARTIDAS\n' +
+          '  ordenadas por as_of, com todas as análises de cada uma indo junto — os dois\n' +
+          '  checkpoints compartilham o mesmo desfecho e não podem ficar em lados opostos.\n' +
+          '  A confirmação é impressa toda rodada porque vazamento que não é medido volta.'
+      : `  VAZAMENTO: ${ev.straddlingMatches} partida(s) aparecem nas DUAS metades. Não deveria ser possível\n` +
+          '  com o corte por partida — se este número for diferente de zero, o defeito é no\n' +
+          '  corte e o "fora da amostra" acima não é fora da amostra.',
+  );
 
   const clampedPct = oos.n === 0 ? 0 : oos.clamped / oos.n;
   lines.push(
@@ -558,16 +578,16 @@ function debias(points: readonly EvalPoint[]): string {
     '',
     clampedPct > CLAMP_WARN_FRACTION
       ? '  TRAVAMENTO ALTO. A subtração é o transformador ERRADO para esta amostra: em\n' +
-        '  mais de um décimo dos pontos o deslocamento foi aplicado pela metade ou nem\n' +
-        '  isso, então o previsor acima não é o que a fórmula diz que é. O certo é\n' +
-        '  deslocar em espaço LOGIT — logit(p) − k —, onde as bordas são inalcançáveis\n' +
-        '  por construção, nada precisa ser travado, e o deslocamento vale igual no meio\n' +
-        '  e nas pontas. Registrado aqui em vez de escondido porque o travamento é\n' +
-        '  exatamente o sintoma que denuncia isso, e ele some da vista se só o Brier for\n' +
-        '  impresso.'
+          '  mais de um décimo dos pontos o deslocamento foi aplicado pela metade ou nem\n' +
+          '  isso, então o previsor acima não é o que a fórmula diz que é. O certo é\n' +
+          '  deslocar em espaço LOGIT — logit(p) − k —, onde as bordas são inalcançáveis\n' +
+          '  por construção, nada precisa ser travado, e o deslocamento vale igual no meio\n' +
+          '  e nas pontas. Registrado aqui em vez de escondido porque o travamento é\n' +
+          '  exatamente o sintoma que denuncia isso, e ele some da vista se só o Brier for\n' +
+          '  impresso.'
       : '  Travamento baixo. A subtração se comporta como a fórmula diz nesta amostra —\n' +
-        '  a correção é o que está escrito nela. Se o travamento subir em amostras\n' +
-        '  futuras, a correção certa passa a ser deslocamento em espaço logit.',
+          '  a correção é o que está escrito nela. Se o travamento subir em amostras\n' +
+          '  futuras, a correção certa passa a ser deslocamento em espaço logit.',
   );
 
   lines.push(

@@ -125,3 +125,28 @@ test('série sem âncora não é contada como preço recuperável', () => {
   assert.match(text, /25 partida\(s\) ainda têm alguma/);
   assert.doesNotMatch(text, /Há série recuperável/);
 });
+
+test('o corte por favorito aparece com eixo em 5pp e sem depender do rótulo', () => {
+  // Dez partidas com o time A azarão a 0,20 (favorito a 0,80) e dez com o time A
+  // favorito a 0,80. As vinte têm que cair no MESMO balde do favorito — é a
+  // propriedade que este corte existe para ter.
+  const points = [
+    ...Array.from({ length: 10 }, (_, i) => point(i, { price: 0.2, outcome: 0 })),
+    ...Array.from({ length: 10 }, (_, i) => point(i + 10, { price: 0.8, outcome: 1 })),
+  ];
+
+  const text = renderMarketReport(dataset(points), null, null);
+
+  assert.match(text, /3\. CALIBRAÇÃO PELO PREÇO DO FAVORITO/);
+  // Um balde só, com as 20 partidas: 0,80–0,85, previsto 0,800, observado 1,000.
+  assert.match(text, /0\.80–0\.85\s+20\s+20\s+0\.800\s+1\.000/);
+  // E a barra da ponta cara é impressa ao lado da global.
+  assert.match(text, /A BARRA NÃO É A MESMA EM TODO O EIXO/);
+});
+
+test('a divisão temporal imprime a interseção vazia, e não só a presença de vazamento', () => {
+  const points = Array.from({ length: 6 }, (_, i) => point(i));
+  const text = renderMarketReport(dataset(points), null, null);
+
+  assert.match(text, /partidas nas DUAS metades: 0 \(interseção vazia/);
+});

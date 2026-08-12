@@ -1,4 +1,5 @@
 import {
+  FAVORITE_GRID,
   MIN_MATCHES_FOR_BUCKET,
   bucketGap,
   bucketVerdict,
@@ -10,11 +11,14 @@ import {
 } from './metrics.js';
 import {
   CHECKPOINTS,
+  FAVORITE,
   PRICE,
   SERIES_START,
   TOLERANCE_SECONDS,
   distinctMatches,
+  oneRowPerMatch,
   splitByMatchTime,
+  toFavoriteSample,
   type AnchorlessCoverage,
   type LegacyCoverage,
   type MarketDataset,
@@ -49,6 +53,10 @@ function num(value: number | null, digits = 4): string {
 function signed(value: number | null, digits = 3): string {
   if (value === null) return '—';
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
+
+function pct(value: number | null, digits = 1): string {
+  return value === null ? '—' : `${(value * 100).toFixed(digits)}%`;
 }
 
 function table(
@@ -225,9 +233,14 @@ function calibrationSection(
   const clearing = conclusive.filter((b) => bucketVerdict(b, bar) === 'acima_da_barra');
 
   const lines = [
-    section('2. CALIBRAÇÃO DO MERCADO — o preço erra em alguma faixa?'),
-    'Baldes de 10pp sobre o preço, os dois checkpoints juntos. "Das vezes que o',
-    'mercado pediu 0,70, quantas o time A venceu."',
+    section('2. CALIBRAÇÃO PELO PREÇO DO TIME A — a orientação dos nossos dados'),
+    'Baldes de 10pp sobre o preço do time A, os dois checkpoints juntos. "Das vezes',
+    'que o mercado pediu 0,70 no time A, quantas o time A venceu."',
+    '',
+    'Este corte carrega uma convenção NOSSA para dentro da medida: "time A" é o lado',
+    'que o resolver casou com outcome_a_index, não "o favorito". Serve para checar a',
+    'orientação dos dados; a pergunta sobre o MERCADO está na seção 3, onde o eixo é',
+    'definido pelo próprio preço e nenhum rótulo participa.',
     '',
     bucketTable(data.points, bar),
     '',
@@ -278,9 +291,119 @@ function calibrationSection(
   return lines.join('\n');
 }
 
+/**
+ * A calibração com o eixo definido pelo PREÇO, não pelo rótulo.
+ *
+ * Duas diferenças em relação à seção 2, e as duas são melhora e não variação:
+ *
+ *   - nenhuma convenção nossa entra na conta. Com o eixo em `max(p, 1−p)`, uma
+ *     assimetria na forma como escolhemos o "time A" não tem por onde virar gap;
+ *   - a ponta cara deixa de ser sorteada. No corte por time A, o balde 0,9–1,0 só
+ *     recebe as partidas em que o favorito calhou de ser o time A; aqui recebe
+ *     todas as que têm favorito claro.
+ *
+ * Baldes de 5pp porque o eixo é metade: [0,5; 1,0]. E uma observação por partida,
+ * porque a mesma partida em dois checkpoints é um desfecho só.
+ */
+function favoriteSection(data: MarketDataset, bar: number | null): string {
+  const { points: favorites, empates } = toFavoriteSample(data.points);
+  const perMatch = oneRowPerMatch(favorites);
+
+  const buckets = reliabilityBuckets(perMatch, FAVORITE, FAVORITE_GRID);
+  const conclusive = buckets.filter((b) => b.distinctMatches >= MIN_MATCHES_FOR_BUCKET);
+  const clearing = conclusive.filter((b) => bucketVerdict(b, bar) === 'acima_da_barra');
+
+  const favoriteTable = (rows: readonly (typeof perMatch)[number][]): string => {
+    const table_ = reliabilityBuckets(rows, FAVORITE, FAVORITE_GRID);
+    return table(
+      ['balde do favorito', 'n', 'partidas', 'previsto', 'observado', 'gap', ''],
+      table_.map((b) => [
+        `${b.from.toFixed(2)}–${b.to.toFixed(2)}`,
+        String(b.n),
+        String(b.distinctMatches),
+        num(b.meanPredicted, 3),
+        num(b.observedRate, 3),
+        signed(bucketGap(b)),
+        verdictLabel(b, bar),
+      ]),
+      [6],
+    );
+  };
+
+  const teamAShare =
+    perMatch.length === 0
+      ? null
+      : perMatch.filter((p) => p.favoriteIsTeamA).length / perMatch.length;
+
+  const globalSpread = typicalSpread(perMatch);
+  const topSpread = typicalSpread(perMatch.filter((p) => p.price >= 0.9));
+
+  const lines = [
+    section('3. CALIBRAÇÃO PELO PREÇO DO FAVORITO — o corte que não depende de rótulo'),
+    'Eixo = max(p, 1−p), desfecho = o daquele lado. Uma observação por PARTIDA, do',
+    'checkpoint mais próximo do jogo. Baldes de 5pp, porque a faixa é metade.',
+    '',
+    `  partidas na amostra: ${perMatch.length}` +
+      (empates > 0 ? `  (${empates} linha(s) descartada(s) por preço exatamente 0,50)` : ''),
+    `  favorito = time A em ${pct(teamAShare)} das partidas — se estivesse longe de 50%, a`,
+    '  convenção de rotulagem estaria correlacionada com o preço, e a seção 2 mediria',
+    '  as duas coisas juntas.',
+    '',
+    favoriteTable(perMatch),
+    '',
+    '  gap positivo  = o favorito estava CARO demais (pedia mais do que aconteceu)',
+    '  gap negativo  = o favorito estava BARATO demais',
+    `  ECE do favorito: ${num(calibrationError(buckets), 4)}`,
+    '',
+    `  Baldes conclusivos (≥ ${MIN_MATCHES_FOR_BUCKET} partidas distintas): ${conclusive.length} de ${buckets.length}.`,
+    `  Desses, acima da barra${bar === null ? '' : ` de ${num(bar, 4)}`}: ${clearing.length}.`,
+    '',
+    'A BARRA NÃO É A MESMA EM TODO O EIXO',
+    '------------------------------------',
+    `  spread típico da amostra inteira:     ${num(globalSpread, 4)}  → barra ${num(bar, 4)}`,
+    `  spread típico com favorito >= 0,90:   ${num(topSpread, 4)}  → barra ${num(executionBar(topSpread), 4)}`,
+    '',
+    '  A barra global é uma mediana sobre todo o eixo, e a ponta cara não negocia com',
+    '  o spread do meio. Um gap que passa a barra global e não passa a barra da',
+    '  própria faixa não é edge — é um número comparado com o custo do mercado errado.',
+  ];
+
+  if (conclusive.length === 0) {
+    lines.push(
+      '',
+      '  NENHUM balde é conclusivo. Baldes de 5pp custam resolução em amostra: o mesmo',
+      '  número de partidas espalhado em dez faixas mais estreitas conclui menos, não',
+      '  mais. A tabela é mais honesta que a da seção 2 e ainda não responde nada.',
+    );
+  } else {
+    const direction = conclusive.map((b) => bucketGap(b));
+    const allSameSign =
+      direction.length > 1 && direction.every((g) => Math.sign(g) === Math.sign(direction[0] ?? 0));
+    lines.push(
+      '',
+      allSameSign
+        ? '  Os baldes conclusivos apontam todos na MESMA direção — é a forma que um viés\n' +
+            '  favorito-azarão real teria. Ainda assim é preço no mid: a seção 6 e o\n' +
+            '  backtest com ask é que dizem se sobra dinheiro.'
+        : '  Os baldes conclusivos NÃO apontam na mesma direção. Um viés de precificação\n' +
+            '  real não muda de sinal entre faixas vizinhas; alternância é a assinatura de\n' +
+            '  ruído, não de mercado torto.',
+    );
+  }
+
+  lines.push('', 'Por checkpoint (cada tabela já é uma observação por partida):');
+
+  for (const checkpoint of [...CHECKPOINTS].sort((a, b) => b - a)) {
+    const rows = favorites.filter((p) => p.checkpointMinutes === checkpoint);
+    lines.push('', `T-${checkpoint}min — ${rows.length} partida(s)`, favoriteTable(rows));
+  }
+
+  return lines.join('\n');
+}
+
 function checkpointSection(data: MarketDataset, bar: number | null): string {
   const lines = [
-    section('3. POR CHECKPOINT — o mercado erra QUANDO?'),
+    section('4. POR CHECKPOINT, PELO PREÇO DO TIME A — o mercado erra QUANDO?'),
     'T-360 e T-60 separados. Se o viés existe num e não no outro, isso é informação',
     'sobre quando o preço erra — e o balde que junta os dois esconde exatamente essa',
     'informação, porque o mesmo desfecho entra duas vezes com preços diferentes.',
@@ -353,14 +476,22 @@ function temporalSection(data: MarketDataset, bar: number | null): string {
   const olderSpan = span(older);
   const newerSpan = span(newer);
 
+  const olderIds = new Set(older.map((p) => p.matchId));
+  const straddling = new Set(newer.filter((p) => olderIds.has(p.matchId)).map((p) => p.matchId))
+    .size;
+
   const lines = [
-    section('4. DIVISÃO TEMPORAL — o viés sobrevive fora do pedaço em que foi visto?'),
+    section('5. DIVISÃO TEMPORAL — o viés sobrevive fora do pedaço em que foi visto?'),
     'Metade mais antiga contra metade mais recente, mesmos baldes. O corte é por',
     'PARTIDA (não por linha): nenhuma partida aparece nas duas metades, então os dois',
     'lados da comparação são de fato independentes.',
     '',
     `  metade antiga:  ${distinctMatches(older)} partida(s), ${older.length} linha(s)  ${olderSpan}`,
     `  metade recente: ${distinctMatches(newer)} partida(s), ${newer.length} linha(s)  ${newerSpan}`,
+    // Medida, não afirmada. O corte por partida torna o vazamento impossível por
+    // construção — e é exatamente por isso que ele é impresso: uma garantia que
+    // ninguém confere é uma garantia que volta a falhar na próxima refatoração.
+    `  partidas nas DUAS metades: ${straddling}${straddling === 0 ? ' (interseção vazia, como tem que ser)' : ' — DEFEITO no corte'}`,
     '',
     table(
       [
@@ -545,6 +676,26 @@ function legacySection(
   return lines.join('\n');
 }
 
+/** Os baldes conclusivos do corte por favorito, com o gap de cada um. */
+function favoriteVerdictLine(data: MarketDataset, bar: number | null): string {
+  const { points } = toFavoriteSample(data.points);
+  const buckets = reliabilityBuckets(oneRowPerMatch(points), FAVORITE, FAVORITE_GRID);
+  const conclusive = buckets.filter((b) => b.distinctMatches >= MIN_MATCHES_FOR_BUCKET);
+
+  if (conclusive.length === 0) return `0 de ${buckets.length} baldes conclusivos.`;
+
+  return (
+    `${conclusive.length} de ${buckets.length} conclusivos — ` +
+    conclusive
+      .map(
+        (b) =>
+          `${b.from.toFixed(2)}–${b.to.toFixed(2)}: gap ${signed(bucketGap(b))} ` +
+          `(${b.distinctMatches} partidas, ${bucketVerdict(b, bar) === 'acima_da_barra' ? 'acima' : 'abaixo'} da barra)`,
+      )
+      .join('; ')
+  );
+}
+
 /** As quatro linhas. É o que sobra quando o relatório inteiro é resumido. */
 function verdictSection(
   data: MarketDataset,
@@ -599,7 +750,8 @@ function verdictSection(
     section('RESPOSTA EM QUATRO LINHAS'),
     `  1. universo: ${data.universe.matches.length} partida(s), ${data.points.length} linha(s); ` +
       `${totalDiscarded} descartada(s) por falta de snapshot na tolerância.`,
-    `  2. baldes com ≥ ${MIN_MATCHES_FOR_BUCKET} partidas distintas, por checkpoint: ${perCheckpoint}.`,
+    `  2. baldes com ≥ ${MIN_MATCHES_FOR_BUCKET} partidas distintas, por checkpoint (preço do time A): ${perCheckpoint}.`,
+    `  2b. corte pelo preço do FAVORITO (5pp, uma obs/partida): ${favoriteVerdictLine(data, bar)}`,
     `  3. divisão temporal: ${
       testable.length === 0
         ? 'NÃO SEI — nenhum balde tem ≥ ' +
@@ -633,6 +785,7 @@ export function renderMarketReport(
     'participa desta amostra — o que está sendo pontuado é o PREÇO contra o desfecho.',
     universeSection(data),
     calibrationSection(data, bar, spread),
+    favoriteSection(data, bar),
     checkpointSection(data, bar),
     temporalSection(data, bar),
     legacySection(legacy, anchorless),

@@ -610,6 +610,53 @@ async function loadWindow(
   return { rows: parseSnapshots(rows), truncated: rows.length >= WINDOW_ROW_LIMIT };
 }
 
+/**
+ * A mesma janela, mas com OS DOIS lados do book — uma consulta, sem filtro de
+ * `outcome`.
+ *
+ * Existe para a simulação de execução. O dataset de calibração só precisa do
+ * lado do time A; quem compra o favorito precisa do `best_ask` DELE, e quando o
+ * favorito é o outro lado esse número está numa linha que o filtro por rótulo
+ * jogaria fora. Derivar `ask_B = 1 − bid_A` seria estimar preço de execução, que
+ * é exatamente o que esta simulação não pode fazer.
+ *
+ * Custo idêntico: mesmo índice, mesma faixa, mesma partição — o dobro de linhas
+ * numa janela que já era de dez minutos.
+ */
+async function loadWindowBothSides(
+  eventId: string,
+  targetMs: number,
+  toleranceMs: number,
+): Promise<{ byLabel: Map<string, SnapshotRow[]>; rows: number; truncated: boolean }> {
+  const { data, error } = await supabase
+    .from('esports_snapshots')
+    .select('captured_at, outcome, mid_price, best_bid, best_ask')
+    .eq('event_id', eventId)
+    .gte('captured_at', new Date(targetMs - toleranceMs).toISOString())
+    .lte('captured_at', new Date(targetMs + toleranceMs).toISOString())
+    .order('captured_at', { ascending: true })
+    .limit(WINDOW_ROW_LIMIT * 2);
+
+  if (error) throw new Error(`leitura de esports_snapshots falhou: ${error.message}`);
+
+  const rows = (data ?? []) as Row[];
+  const byLabel = new Map<string, SnapshotRow[]>();
+
+  for (const row of rows) {
+    const label = asString(row['outcome']);
+    if (label === null) continue;
+
+    const parsed = parseSnapshots([row])[0];
+    if (parsed === undefined) continue;
+
+    const bucket = byLabel.get(label);
+    if (bucket === undefined) byLabel.set(label, [parsed]);
+    else bucket.push(parsed);
+  }
+
+  return { byLabel, rows: rows.length, truncated: rows.length >= WINDOW_ROW_LIMIT * 2 };
+}
+
 function emptyCoverage(): CoverageCounts {
   return { semSnapshotNaTolerancia: 0, semMid: 0, janelasTruncadas: 0 };
 }
@@ -683,6 +730,172 @@ export async function loadMarketDataset(
   }
 
   return { points, universe, coverage, snapshotsRead, queries };
+}
+
+// ---------------------------------------------------------------------------
+// O dataset de EXECUÇÃO: o que dá para comprar, e por quanto
+// ---------------------------------------------------------------------------
+
+/**
+ * Uma oportunidade de compra do lado favorito, com o preço que se paga.
+ *
+ * A diferença entre este tipo e `MarketPoint` é a diferença entre medir e
+ * operar: lá o preço é o `mid`, que é a melhor estimativa do valor; aqui é o
+ * `best_ask`, que é o número que sai da conta bancária. Um gap medido no mid que
+ * não sobrevive ao ask não é um edge pequeno, é um prejuízo.
+ */
+export interface ExecutionPoint {
+  matchId: string;
+  matchSlug: string;
+  eventId: string;
+  checkpointMinutes: number;
+  scheduledAt: string;
+  capturedAt: string;
+  /** O rótulo do lado favorito, como aparece em `esports_snapshots.outcome`. */
+  favoriteLabel: string;
+  favoriteIsTeamA: boolean;
+  /** `mid` do favorito. É o GATILHO: a regra dispara sobre o preço de mercado. */
+  mid: number;
+  /** `best_ask` do favorito. É a EXECUÇÃO: nunca se compra pelo mid. */
+  ask: number;
+  bid: number | null;
+  /** `ask − bid` do lado favorito, medido e não herdado. */
+  spread: number | null;
+  /** 1 = o favorito venceu. */
+  outcome: 0 | 1;
+}
+
+export type ExecutionDiscardReason =
+  | 'sem_snapshot_na_tolerancia'
+  | 'sem_mid'
+  /** Preço exatamente 0,50: não há favorito a comprar. */
+  | 'empate_5050'
+  /** O lado favorito é o oposto e a série dele não tem linha nesta janela. */
+  | 'sem_lado_favorito'
+  /**
+   * O favorito tem linha, mas sem `best_ask`.
+   *
+   * É o descarte que define a honestidade desta simulação: sem o ask não há
+   * preço de execução, e estimar um seria inventar o resultado que se quer medir.
+   */
+  | 'sem_ask';
+
+export type ExecutionDiscardCounts = Record<ExecutionDiscardReason, number>;
+
+export interface ExecutionDataset {
+  points: ExecutionPoint[];
+  discards: ExecutionDiscardCounts;
+  universe: MarketUniverse;
+  snapshotsRead: number;
+  queries: number;
+}
+
+function emptyExecutionDiscards(): ExecutionDiscardCounts {
+  return {
+    sem_snapshot_na_tolerancia: 0,
+    sem_mid: 0,
+    empate_5050: 0,
+    sem_lado_favorito: 0,
+    sem_ask: 0,
+  };
+}
+
+/**
+ * O dataset de execução: uma linha por (partida, checkpoint) comprável.
+ *
+ * Quem é o favorito sai do `mid` do time A — acima de 0,50 o favorito é ele,
+ * abaixo é o outro lado —, e o preço de execução sai da linha DAQUELE lado. A
+ * mesma disciplina de `event_id` + os dois lados de `captured_at`; a única
+ * diferença é a ausência do filtro por rótulo, que é o que traz o book do
+ * adversário na mesma consulta.
+ */
+export async function loadExecutionDataset(
+  universe: MarketUniverse,
+  checkpoints: readonly number[] = CHECKPOINTS,
+): Promise<ExecutionDataset> {
+  const points: ExecutionPoint[] = [];
+  const discards = emptyExecutionDiscards();
+
+  const toleranceMs = TOLERANCE_SECONDS * 1000;
+  let snapshotsRead = 0;
+  let queries = 0;
+  let done = 0;
+
+  for (const match of universe.matches) {
+    done += 1;
+    if (done % 25 === 0 || done === universe.matches.length) {
+      console.error(`[${LABEL}] execução ${done}/${universe.matches.length}…`);
+    }
+
+    for (const checkpoint of checkpoints) {
+      const targetMs = match.scheduledAt.getTime() - checkpoint * 60_000;
+      const { byLabel, rows } = await loadWindowBothSides(match.eventId, targetMs, toleranceMs);
+
+      queries += 1;
+      snapshotsRead += rows;
+
+      const teamARow = pickNearest(byLabel.get(match.teamLabel) ?? [], targetMs, toleranceMs);
+      if (teamARow === null) {
+        discards.sem_snapshot_na_tolerancia += 1;
+        continue;
+      }
+      if (teamARow.mid === null) {
+        discards.sem_mid += 1;
+        continue;
+      }
+      if (teamARow.mid === 0.5) {
+        discards.empate_5050 += 1;
+        continue;
+      }
+
+      const favoriteIsTeamA = teamARow.mid > 0.5;
+      let favoriteLabel = match.teamLabel;
+      let favoriteRow = teamARow;
+
+      if (!favoriteIsTeamA) {
+        // O lado oposto é o que sobra: um moneyline tem dois outcomes. Se houver
+        // mais de um "outro", nenhum é escolhido — adivinhar aqui compraria o
+        // lado errado com número certo.
+        const others = [...byLabel.keys()].filter((label) => label !== match.teamLabel);
+        const other = others.length === 1 ? others[0] : undefined;
+        const row =
+          other === undefined ? null : pickNearest(byLabel.get(other) ?? [], targetMs, toleranceMs);
+
+        if (other === undefined || row === null) {
+          discards.sem_lado_favorito += 1;
+          continue;
+        }
+
+        favoriteLabel = other;
+        favoriteRow = row;
+      }
+
+      if (favoriteRow.ask === null) {
+        discards.sem_ask += 1;
+        continue;
+      }
+
+      const mid = favoriteIsTeamA ? teamARow.mid : (favoriteRow.mid ?? 1 - teamARow.mid);
+
+      points.push({
+        matchId: match.matchId,
+        matchSlug: match.matchSlug,
+        eventId: match.eventId,
+        checkpointMinutes: checkpoint,
+        scheduledAt: match.scheduledAt.toISOString(),
+        capturedAt: new Date(favoriteRow.capturedAtMs).toISOString(),
+        favoriteLabel,
+        favoriteIsTeamA,
+        mid,
+        ask: favoriteRow.ask,
+        bid: favoriteRow.bid,
+        spread: spreadOf(favoriteRow),
+        outcome: favoriteIsTeamA ? match.outcome : ((1 - match.outcome) as 0 | 1),
+      });
+    }
+  }
+
+  return { points, discards, universe, snapshotsRead, queries };
 }
 
 // ---------------------------------------------------------------------------
@@ -921,6 +1134,122 @@ export function splitByMatchTime(points: readonly MarketPoint[]): {
 }
 
 /** Partidas distintas por trás de uma lista de linhas. A unidade que conta. */
-export function distinctMatches(points: readonly MarketPoint[]): number {
+export function distinctMatches(points: readonly { matchId: string }[]): number {
   return new Set(points.map((point) => point.matchId)).size;
+}
+
+// ---------------------------------------------------------------------------
+// O corte pelo preço do FAVORITO
+// ---------------------------------------------------------------------------
+
+/**
+ * A mesma linha, reorientada para o lado FAVORITO do mercado.
+ *
+ * Duas coisas mudam, e as duas melhoram a medida:
+ *
+ * 1. O rótulo "time A" sai inteiramente da conta. `outcome_a_index` é uma
+ *    convenção nossa sobre qual lado do market chamamos de A; enquanto ela estiver
+ *    dentro do eixo, qualquer assimetria de rotulagem pode aparecer como gap e
+ *    ser lida como erro do mercado. Aqui o eixo é definido pelo próprio preço.
+ *
+ * 2. A ponta cara para de ser sorteada. No corte por time A, o balde 0,9–1,0 só
+ *    recebe as partidas em que o favorito CALHOU de ser o time A — metade delas,
+ *    em média. Aqui toda partida com favorito claro entra, o que dobra a amostra
+ *    exatamente onde o único candidato sobrevivente mora.
+ *
+ * `null` no empate exato (preço 0,50): não há favorito, e escolher um lado por
+ * desempate arbitrário criaria uma observação cujo desfecho é moeda. É descarte,
+ * e o relatório conta.
+ */
+export interface FavoritePoint {
+  matchId: string;
+  matchSlug: string;
+  checkpointMinutes: number;
+  scheduledAt: string;
+  /** `max(p, 1 − p)`. Vive em [0,5; 1,0] por construção. */
+  price: number;
+  /** 1 = o FAVORITO venceu. */
+  outcome: 0 | 1;
+  /**
+   * O spread do book do time A, herdado.
+   *
+   * Num market binário os dois lados se espelham (o ask de um é 1 menos o bid do
+   * outro), então o spread do lado favorito é o mesmo número. Herdar é exato o
+   * bastante para a barra; quem quiser o ask do favorito de verdade tem
+   * `loadExecutionDataset`, que lê os dois lados do book.
+   */
+  spread: number | null;
+  /** `true` quando o favorito é o time A. Só diagnóstico — não entra em conta. */
+  favoriteIsTeamA: boolean;
+}
+
+export function favoritePrice(point: MarketPoint): FavoritePoint | null {
+  if (point.price === 0.5) return null;
+
+  const favoriteIsTeamA = point.price > 0.5;
+
+  return {
+    matchId: point.matchId,
+    matchSlug: point.matchSlug,
+    checkpointMinutes: point.checkpointMinutes,
+    scheduledAt: point.scheduledAt,
+    price: favoriteIsTeamA ? point.price : 1 - point.price,
+    outcome: favoriteIsTeamA ? point.outcome : ((1 - point.outcome) as 0 | 1),
+    spread: point.spread,
+    favoriteIsTeamA,
+  };
+}
+
+/** O previsor do corte por favorito: o preço do lado favorito. */
+export const FAVORITE = (point: FavoritePoint): number | null => point.price;
+
+/**
+ * Uma observação por PARTIDA, do checkpoint mais próximo do início do jogo.
+ *
+ * Sem isto, uma partida com os dois checkpoints entraria duas vezes — em baldes
+ * possivelmente diferentes, com o mesmo desfecho contado duas vezes. O `n` da
+ * tabela inflaria sem que a evidência crescesse, e `distinctMatches` (que é o que
+ * decide se um balde conclui) marcaria a discrepância sem impedi-la.
+ *
+ * O checkpoint escolhido é o de MENOR distância do jogo, porque é o preço mais
+ * informado que existe antes da bola rolar; a versão por checkpoint continua
+ * sendo impressa ao lado, e é lá que se vê se o erro depende do relógio.
+ */
+export function oneRowPerMatch(points: readonly FavoritePoint[]): FavoritePoint[] {
+  const best = new Map<string, FavoritePoint>();
+
+  for (const point of points) {
+    const current = best.get(point.matchId);
+    if (current === undefined || point.checkpointMinutes < current.checkpointMinutes) {
+      best.set(point.matchId, point);
+    }
+  }
+
+  // Ordem estável para o relatório não mudar entre rodadas sobre a mesma amostra.
+  return [...best.values()].sort((a, b) =>
+    a.scheduledAt < b.scheduledAt
+      ? -1
+      : a.scheduledAt > b.scheduledAt
+        ? 1
+        : a.matchId < b.matchId
+          ? -1
+          : 1,
+  );
+}
+
+/** As linhas reorientadas, e quantas o empate exato descartou. */
+export function toFavoriteSample(points: readonly MarketPoint[]): {
+  points: FavoritePoint[];
+  empates: number;
+} {
+  const out: FavoritePoint[] = [];
+  let empates = 0;
+
+  for (const point of points) {
+    const favorite = favoritePrice(point);
+    if (favorite === null) empates += 1;
+    else out.push(favorite);
+  }
+
+  return { points: out, empates };
 }

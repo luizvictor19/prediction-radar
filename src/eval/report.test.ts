@@ -75,7 +75,12 @@ function dataset(points: readonly EvalPoint[]): EvalDataset {
  * o corte por data da seção 5 mediria essa construção do fixture em vez do que o
  * teste quer medir.
  */
-function matches(n: number, mid: number, wins: number, extra: Partial<EvalPoint> = {}): EvalPoint[] {
+function matches(
+  n: number,
+  mid: number,
+  wins: number,
+  extra: Partial<EvalPoint> = {},
+): EvalPoint[] {
   return Array.from({ length: n }, (_, i) =>
     point({
       analysisId: `a${i}`,
@@ -242,21 +247,43 @@ test('travamento alto denuncia o transformador errado e nomeia o certo', () => {
   assert.ok(text.includes('espaço LOGIT'));
 });
 
-test('partida nas duas metades aparece como vazamento no relatório', () => {
-  // Todos os pontos da mesma partida, em datas diferentes: o corte por data
-  // separa checkpoints que dividem o mesmo desfecho.
-  const points = Array.from({ length: 8 }, (_, i) =>
+test('o relatório imprime a AUSÊNCIA de vazamento, e não só a presença', () => {
+  // Quatro partidas, cada uma com os dois checkpoints em `as_of` diferentes — o
+  // caso que antes dividia checkpoints do mesmo desfecho entre as metades. Com o
+  // corte por partida a interseção é vazia, e a confirmação vai impressa:
+  // garantia que ninguém confere é garantia que volta a falhar.
+  const points = [1, 2, 3, 4].flatMap((n) => [
     point({
-      analysisId: `a${i}`,
-      matchSlug: 'cs2-navi-faze',
-      asOf: `2026-08-0${i + 1}T12:00:00.000Z`,
+      analysisId: `a${n}-360`,
+      matchSlug: `cs2-partida-${n}`,
+      asOf: `2026-08-0${n}T06:00:00.000Z`,
+      checkpointMinutes: 360,
       outcome: 1,
     }),
-  );
+    point({
+      analysisId: `a${n}-60`,
+      matchSlug: `cs2-partida-${n}`,
+      asOf: `2026-08-0${n}T11:00:00.000Z`,
+      checkpointMinutes: 60,
+      outcome: 1,
+    }),
+  ]);
 
   const text = renderReport(dataset(points));
-  assert.ok(text.includes('VAZAMENTO'));
-  assert.ok(text.includes('aparecem nas DUAS metades'));
+  assert.ok(text.includes('SEM VAZAMENTO: 0 partida(s) nas duas metades'));
+  assert.ok(!text.includes('VAZAMENTO: 1 partida'));
+});
+
+test('a seção 4 avisa que a amostra é filtrada pelo portão e aponta para o eval:market', () => {
+  // O "não conclusivo" da tabela salva quem lê o rodapé. Esta seção mede a
+  // calibração do mercado DEPOIS do portão de liquidez, e quem bate o olho na
+  // tabela precisa ver o denominador antes dos números — foi essa filtragem que
+  // produziu gaps que não se reproduzem no dataset market-cêntrico.
+  const text = renderReport(dataset([point()]));
+
+  assert.ok(text.includes('FILTRADA PELO PORTÃO'));
+  assert.ok(text.includes('npm run eval:market'));
+  assert.ok(text.includes('no recorte que o agente vê'));
 });
 
 test('amostra indivisível não finge ter fora-da-amostra', () => {
