@@ -92,8 +92,12 @@ olhei" — e a distinção tem que estar no prompt.
 
 ## Parte C — O problema quadrático, e ele decide o custo
 
-Com 2.000 mercados abertos, os pares são **2 milhões**. Não existe orçamento que
-mande isso para um modelo.
+> **Reescrita em 12/08/2026, depois da fase 1.** A versão original supunha 2.000
+> mercados abertos. O número medido é **133.543** — 67× a suposição. Os parágrafos
+> abaixo são os medidos, não os estimados.
+
+Com 133.543 mercados abertos, os pares são **8,9 bilhões**. Não existe orçamento
+que mande isso para um modelo, e não existe gerador que corte isso sozinho.
 
 Então há um **gerador de candidatos** antes do agente, e ele é a peça que decide
 se a spec é viável. Mesma função do portão do analista: recusar antes de gastar.
@@ -101,7 +105,9 @@ se a spec é viável. Mesma função do portão do analista: recusar antes de ga
 Camadas, da mais barata para a mais cara:
 
 1. **Mesmo evento / mesma série** — `neg_risk_market_id`, `series_id`. Relação
-   quase garantida, custo zero. É de onde vem a `particiona`.
+   quase garantida, custo zero. É de onde vem a `particiona`. Medido: **829 dos
+   3.551 grupos vêm prontos**, porque `negRisk: true` no evento é a própria API
+   declarando a partição.
 2. **Entidades compartilhadas** — extrair nomes próprios, tickers e datas do
    texto da pergunta e agrupar por interseção. Ainda sem LLM.
 3. **Proximidade textual** — sobreposição de tokens ou embedding. Barato, e é o
@@ -114,6 +120,62 @@ pedir **todas as relações entre elas** custa uma chamada, não 45.
 **Critério de aceitação do gerador:** reduzir o universo de pares para uma ordem
 que caiba no teto diário de gasto, e reportar quantos pares foram descartados em
 cada camada. Descarte silencioso aqui é cobertura perdida sem ninguém saber.
+
+### O que a fase 1 mediu
+
+Amostra estratificada de 17.811 mercados — 10,7% do universo.
+
+| medida | valor |
+| --- | --- |
+| mercados abertos | ≥ 133.543 |
+| grupos gerados na amostra | 3.551 |
+| tamanho do grupo | mediana 7, p75 12, p95 33, máx 128 |
+| grupos que precisam do modelo | 2.722 |
+| grupos de graça (`negRisk`) | 829 |
+| `description` preenchida | 100,0% dos 17.811, mediana 1.262 caracteres |
+| `resolutionSource` preenchida | 62% |
+
+A `description` vir cheia em 100% dos mercados é o que **salva a
+`ressalvaDeResolucao`** da Parte B. O texto das regras está no payload; o agente
+tem o que ler. O `resolutionSource` vazio em 38% não derruba o campo, mas é
+motivo de o agente declarar ressalva em vez de `null` quando a fonte não aparece
+em uma das pontas.
+
+### A aritmética que reprova a cobertura total
+
+| cenário | chamadas | custo |
+| --- | --- | --- |
+| extrapolação da amostra | ~25.400 | **~US$ 733** |
+| teto pessimista | — | US$ 2.746 |
+| teto independente de amostra | — | US$ 1.502 |
+| só a camada 1 (89% dos pares) | — | US$ 458 |
+
+**Não passa no portão de "umas poucas centenas de dólares".** Pela regra que a
+própria spec escreveu, a fase 2 não começa cobrindo o universo aberto.
+
+Duas correções ao modelo de custo, e as duas empurram para baixo:
+
+- **Relação lógica não tem data** (Parte F). Os US$ 733 são **carga inicial de
+  uma vez**, não gasto por varredura. Depois disso só entra mercado novo. Isso
+  muda a natureza do número, não o fato de ele reprovar hoje.
+- **A cobertura total nunca foi o objetivo.** A Parte E manda otimizar precisão e
+  aceitar cobertura baixa. Varrer 133 mil mercados sem saber se o extrator acerta
+  é gastar na ordem errada.
+
+### Portanto, a fase 2 começa pelo subconjunto resolvido
+
+**762 dos 3.551 grupos (21,5%) são inteiramente de mercados já resolvidos**, 754
+precisam do modelo, e rodá-los custa **US$ 15,26**. É onde a precisão se mede —
+ver a Parte E. O filtro econômico do universo aberto (liquidez, prazo, ter irmão
+lógico) só é decidido **depois** que a precisão existir, e é decisão humana (H6).
+
+### Uma dívida do gerador, antes da fase 2
+
+A camada 3 descartou 156 milhões de pares nunca pontuados e perdeu mais 35,6
+milhões no teto de tamanho de grupo. Vazamento medido: **11 de 3.000 descartes
+amostrados (0,4%) passariam do limiar**. É baixo, mas o teto
+`invertedIndexDfCeiling` está frouxo e deve ser baixado antes de a camada 3
+valer como cobertura.
 
 ---
 
@@ -164,11 +226,56 @@ Esta é a diferença que faz a spec 003 andar rápido. O analista precisava espe
 a partida acabar. Aqui, um humano lê duas perguntas e responde em segundos se a
 relação existe.
 
+### Melhor ainda: em mercado resolvido, a conferência é automática
+
+Relação lógica pode ser verificada **contra o desfecho**. Se `A implica B`, então
+em toda resolução onde A deu SIM, B tem que ter dado SIM. Uma violação **refuta a
+relação objetivamente**, sem opinião de ninguém.
+
+| tipo | o que o desfecho tem que respeitar |
+| --- | --- |
+| `implica` | A=SIM ⇒ B=SIM |
+| `exclui` | não pode A=SIM e B=SIM |
+| `particiona` | exatamente um do conjunto deu SIM |
+| `equivale` | A e B deram o mesmo |
+| `conjuncao` | C=SIM ⇔ A=SIM e B=SIM |
+
+Não vale quando **o antecedente nunca disparou** — se A deu NÃO, `A implica B`
+não é testável por aquele desfecho, e a relação segue precisando de humano.
+Reportar essa taxa junto com a precisão: é quanto do gabarito ficou em branco.
+
+**A fase 2 roda primeiro aqui**, nos 762 grupos inteiramente resolvidos (754
+precisam do modelo, US$ 15,26). 96,7% dos mercados resolvidos trazem desfecho
+legível em `outcomePrices`.
+
+**O viés dessa amostra, declarado antes do resultado:** mercado resolvido é mais
+antigo e de tema já encerrado. Pode ser mais fácil de ler que o aberto. A
+precisão que sair dali é **teto otimista**, não garantia — e o critério de morte
+se aplica mesmo assim: se nem no gabarito passa de 90%, no aberto não passa.
+
+### A fatia tem que ser retomável, e isso não é conveniência
+
+Rodar 100 grupos hoje e mais 300 semana que vem só é honesto se a segunda rodada
+não repetir nem re-sortear. Três exigências:
+
+1. **Fila embaralhada com semente fixa.** Os grupos entram numa ordem sorteada
+   uma vez, reprodutível. "Rodar 100" significa **os 100 primeiros da fila**, não
+   100 sorteados na hora.
+2. **Resultado gravado com o id do grupo.** Existe registro de quem já foi.
+3. **Retomada:** a rodada seguinte tira da fila quem já tem resultado e continua.
+   Queda no meio não perde nem duplica.
+
+A semente fixa não é detalhe de engenharia — é o que faz a fatia ser **amostra
+aleatória** e não "os grupos que calharam de vir primeiro". Ordenar por tamanho,
+por data ou por confiança quebra a medição do mesmo jeito que medir só as
+relações mais confiantes quebra (ver Parte H).
+
 **A medição é:**
 
 1. amostra aleatória de N relações propostas (não as mais confiantes — isso
    mediria o topo, não a ferramenta);
-2. rotulagem humana: certa, errada, ou ambígua;
+2. rótulo: **automático pelo desfecho** onde o grupo já resolveu e o antecedente
+   disparou; **humano** — certa, errada ou ambígua — no resto;
 3. **precisão** = certas ÷ (certas + erradas), com intervalo de confiança;
 4. precisão **por tipo de relação** — errar `implica` e errar `conjuncao` são
    defeitos diferentes;
@@ -230,6 +337,7 @@ produziu o quê.
 | H3 | Decidir o teto de gasto do extrator | antes de ligar |
 | H4 | Aplicar migrations | quando surgirem |
 | H5 | Julgar o critério de morte — o agente reporta, não decide | ao fim da medição |
+| H6 | Decidir o filtro do universo aberto (liquidez, prazo, ter irmão lógico) | **só depois** de a precisão existir |
 
 ### Escopo do agente
 
@@ -263,9 +371,21 @@ já existe achou 5 a 8 em três meses. Esperar volume alto é esperar errado.
 taxa de ambíguos é um número a reportar — se for alta, a taxonomia está mal
 desenhada, não o agente.
 
+**O gabarito grátis é uma amostra enviesada.** Mercado resolvido é mais velho e
+de tema encerrado. A precisão medida ali é teto, não expectativa — e reportá-la
+como se fosse a precisão do universo aberto seria o mesmo erro de extrapolar de
+uma sonda para a produção, que já aconteceu três vezes neste projeto.
+
+**Fatia sem semente fixa não é amostra aleatória.** Rodar "os primeiros 100" de
+uma lista ordenada por qualquer coisa mede aquele pedaço, não a ferramenta.
+
 ---
 
 ## Parte I — Critério de pronto
+
+A ordem é: **precisão primeiro, cobertura depois.** A fase 2 gasta US$ 15,26 no
+gabarito resolvido antes de qualquer discussão sobre varrer o universo aberto. O
+número de US$ 733 da Parte C só volta a ser pauta se a precisão passar.
 
 A spec termina quando:
 
