@@ -41,6 +41,7 @@
     "radar:lista": "tsx scripts/montar-lista-radar.ts",
     "radar:coletor": "tsx scripts/radar-coletor.ts",
     "radar:categorias": "tsx scripts/radar-categorias.ts",
+    "radar:conferir": "tsx scripts/conferir-views.ts",
     "leadlag:spread": "tsx scripts/probe-lead-lag-spread.ts",
     "compostos": "tsx scripts/probe-mercados-compostos.ts",
     "xtracker:probe": "tsx scripts/probe-xtracker.ts",
