@@ -6,6 +6,7 @@ import { logEvent } from '../../lib/logger.js';
 import { calcStake, getStakeCap } from '../format.js';
 import { calcCalendarDrivenStake } from '../../lib/format-helpers.js';
 import { adjustCash, getBankrollState } from '../../lib/bankroll.js';
+import { explicarSemMarcacao } from '../../lib/format-helpers.js';
 import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../../types/index.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
@@ -42,7 +43,9 @@ async function singleLegTrack(
   const stakeCap = getStakeCap(config, signal['signal_type'] as string);
   const bankrollState = await getBankrollState();
 
-  let suggestedStake: number;
+  // `null` quando a carteira não está marcada — a recusa vem de `calcStake` /
+  // `calcCalendarDrivenStake`, e chega aqui inteira.
+  let suggestedStake: number | null;
   if (signal['signal_type'] === 'calendar_driven') {
     const confidence = (signal['confidence_score'] as number) ?? 0.5;
     suggestedStake = calcCalendarDrivenStake(bankrollState.bankroll, stakeCap, confidence);
@@ -58,16 +61,27 @@ async function singleLegTrack(
     suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
   }
 
-  const stakeLabel =
-    suggestedStake < 1.0
-      ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
-      : `$${suggestedStake.toFixed(2)}`;
+  // Sem sugestão, o fluxo continua — mas exigindo um valor digitado. O dono
+  // sabe quanto tem; o programa é que não sabe, e não pode fingir que sabe.
+  // "ok" some do texto justamente para não haver um sugerido a aceitar.
+  const pedidoDeStake =
+    suggestedStake === null
+      ? `${explicarSemMarcacao(bankrollState)}\n\nStake em USD? (sem sugestão)\nDigite um valor.`
+      : `Stake em USD? (sugerido: ${
+          suggestedStake < 1.0
+            ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
+            : `$${suggestedStake.toFixed(2)}`
+        })\nDigite um valor ou "ok" para usar o sugerido.`;
 
   // Step 1: stake
-  await ctx.reply(`Stake em USD? (sugerido: ${stakeLabel})\nDigite um valor ou "ok" para usar o sugerido.`);
+  await ctx.reply(pedidoDeStake);
   const stakeCtx = await conversation.waitFor('message:text');
   const stakeRaw = stakeCtx.message.text.trim().toLowerCase();
-  const stakeUsd = stakeRaw === 'ok' ? suggestedStake : parseFloat(stakeRaw);
+  if (stakeRaw === 'ok' && suggestedStake === null) {
+    await ctx.reply('Não há stake sugerido: a carteira não está marcada. Digite um valor.');
+    return;
+  }
+  const stakeUsd = stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
   if (isNaN(stakeUsd) || stakeUsd <= 0) {
     await ctx.reply('Valor inválido. Operação cancelada.');
     return;
@@ -190,16 +204,24 @@ async function basketTrack(
   const bankrollState = await getBankrollState();
   const edgePct = meta.expected_edge_pct ?? 0;
   const suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
-  const stakeLabel =
-    suggestedStake < 1.0
-      ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
-      : `$${suggestedStake.toFixed(2)}`;
+  const pedidoDeStake =
+    suggestedStake === null
+      ? `${explicarSemMarcacao(bankrollState)}\n\nStake total da basket em USD? (sem sugestão)\nDigite um valor.`
+      : `Stake total da basket em USD? (sugerido: ${
+          suggestedStake < 1.0
+            ? `$${suggestedStake.toFixed(2)} (abaixo do mín. Polymarket $1)`
+            : `$${suggestedStake.toFixed(2)}`
+        })\nDigite um valor ou "ok" para usar o sugerido.`;
 
   // Step 1: stake total
-  await ctx.reply(`Stake total da basket em USD? (sugerido: ${stakeLabel})\nDigite um valor ou "ok" para usar o sugerido.`);
+  await ctx.reply(pedidoDeStake);
   const stakeCtx = await conversation.waitFor('message:text');
   const stakeRaw = stakeCtx.message.text.trim().toLowerCase();
-  const stakeTotal = stakeRaw === 'ok' ? suggestedStake : parseFloat(stakeRaw);
+  if (stakeRaw === 'ok' && suggestedStake === null) {
+    await ctx.reply('Não há stake sugerido: a carteira não está marcada. Digite um valor.');
+    return;
+  }
+  const stakeTotal = stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
   if (isNaN(stakeTotal) || stakeTotal <= 0) {
     await ctx.reply('Valor inválido. Operação cancelada.');
     return;

@@ -1,3 +1,37 @@
+import type { BankrollState } from './bankroll.js';
+
+/**
+ * A frase que explica a recusa, montada a partir do estado.
+ *
+ * Existe uma vez só, e não em cada tela, para que a explicação não divirja
+ * entre o `/status`, o `/signals` e o `/track` — e para que acrescentar um
+ * motivo novo na view apareça em todos de uma vez.
+ *
+ * Mora neste arquivo, e não em `bankroll.ts`, porque `bankroll.ts` importa o
+ * cliente do Supabase no topo e explodiria num teste sem `.env`. O tipo vem de
+ * lá por `import type`, que o compilador apaga.
+ */
+export function explicarSemMarcacao(state: BankrollState): string {
+  if (state.bankroll !== null) return '';
+
+  const motivos = Object.entries(state.motivos_sem_marcacao)
+    .sort((a, b) => b[1] - a[1])
+    .map(([motivo, n]) => `${n}× ${motivo}`)
+    .join(' · ');
+
+  const quantas =
+    state.legs_sem_marcacao === 1
+      ? '1 leg aberta sem preço de mercado'
+      : `${state.legs_sem_marcacao} legs abertas sem preço de mercado`;
+
+  return (
+    `⚠️ Carteira não marcada: ${quantas}.\n` +
+    `   ${motivos}\n` +
+    `   Marcado até aqui: $${state.portfolio_value_parcial.toFixed(2)} ` +
+    `(parcial, não é o total) · Cash: $${state.cash.toFixed(2)}`
+  );
+}
+
 export function truncate(s: string, max = 12): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + '…';
@@ -14,11 +48,23 @@ export function describeVolatility(vol: number): string {
   return 'movendo lentamente';
 }
 
+/**
+ * Devolve `null` quando a carteira não está marcada — a RECUSA.
+ *
+ * Tratar `null` como `0` aqui daria `Math.round(0) = 0`, e o caminho do
+ * `calcStake` daria `Math.max(0.5, 0) = 0.50`: o bot sugeriria uma aposta de
+ * cinquenta centavos como se tivesse dimensionado alguma coisa. Sugestão feita
+ * a partir de carteira desconhecida é pior que nenhuma sugestão, porque tem
+ * cara de conta.
+ *
+ * Ver `getBankrollState` em `src/lib/bankroll.ts` para de onde vem o nulo.
+ */
 export function calcCalendarDrivenStake(
-  bankroll: number,
+  bankroll: number | null,
   cap: number,
   confidence: number,
-): number {
+): number | null {
+  if (bankroll === null) return null;
   const raw = bankroll * cap * confidence;
   return Math.round(raw * 100) / 100;
 }

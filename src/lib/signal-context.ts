@@ -7,7 +7,11 @@ export interface SignalContext {
   recent_snapshots_24h: unknown[];
   recent_snapshots_7d_aggregated: unknown[];
   prior_signals_same_event: unknown[];
-  current_bankroll: { cash: number; portfolio: number; total: number };
+  /**
+   * `portfolio` e `total` são nulos quando alguma leg aberta ficou sem
+   * marcação — ver `getBankrollState`. Nulo é "desconhecido", nunca zero.
+   */
+  current_bankroll: { cash: number; portfolio: number | null; total: number | null };
   open_positions_in_category: unknown[];
 }
 

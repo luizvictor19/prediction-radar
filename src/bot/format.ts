@@ -33,7 +33,20 @@ export function getStakeCap(
   return config.max_stake_pct;
 }
 
-export function calcStake(bankroll: number, maxStakePct: number, edgePct: number): number {
+/**
+ * Devolve `null` quando a carteira não está marcada — a RECUSA.
+ *
+ * O piso de `Math.max(0.5, ...)` é justamente o que torna o nulo perigoso aqui:
+ * com `bankroll = 0` esta função devolveria `0.50`, um número plausível, e o
+ * bot sugeriria uma aposta como se tivesse dimensionado. O nulo sai antes do
+ * piso, de propósito.
+ */
+export function calcStake(
+  bankroll: number | null,
+  maxStakePct: number,
+  edgePct: number,
+): number | null {
+  if (bankroll === null) return null;
   const raw = bankroll * Math.min(maxStakePct, edgePct / 200);
   const rounded = Math.round(raw * 100) / 100;
   return Math.max(0.5, rounded);
@@ -41,6 +54,30 @@ export function calcStake(bankroll: number, maxStakePct: number, edgePct: number
 
 export function stakeLabel(stake: number, isMinimum: boolean): string {
   return isMinimum ? `$0.50 (mínimo)` : `$${stake.toFixed(2)}`;
+}
+
+/**
+ * O aviso que substitui todo número de dimensionamento quando a carteira não
+ * está marcada. Uma frase só, em todas as telas, para não haver versão suave
+ * dela em algum canto.
+ */
+export const SEM_DIMENSIONAMENTO =
+  '⚠️ Sem dimensionamento: há leg aberta sem preço de mercado, então o valor da ' +
+  'carteira é desconhecido. Os campos de stake saem como "—" de propósito.';
+
+/** `$12.34`, ou `—` quando o valor depende de uma carteira desconhecida. */
+export function usd(v: number | null): string {
+  return v === null ? '—' : `$${v.toFixed(2)}`;
+}
+
+/** `12.3`, ou `—`. Para shares e outras quantidades derivadas do stake. */
+export function qtd(v: number | null, casas = 1): string {
+  return v === null ? '—' : v.toFixed(casas);
+}
+
+/** `a * b` propagando o desconhecido em vez de virar zero. */
+function talvez(v: number | null, f: (n: number) => number): number | null {
+  return v === null ? null : f(v);
 }
 
 export function formatPricePct(price: number): string {
@@ -182,7 +219,7 @@ function buildMemberLabels(members: CrossMarketInterMember[]): Map<string, strin
 
 export function formatCalendarDrivenSignal(
   signal: SignalRow,
-  bankroll: number,
+  bankroll: number | null,
   stakeCap: number,
 ): string {
   const meta = (signal.metadata ?? {}) as Partial<CalendarDrivenSignalMetadata>;
@@ -227,13 +264,15 @@ export function formatCalendarDrivenSignal(
   const isLiteralYesNo = label0 === 'Yes' && label1 === 'No';
 
   const cap = stakeCap;
+  // `stake` é `number | null`: nulo quando a carteira não está marcada. Tudo
+  // que deriva dele propaga o nulo em vez de virar zero, e sai como "—".
   const stake = calcCalendarDrivenStake(bankroll, cap, confidence);
-  const shares0 = price0 > 0 ? stake / price0 : 0;
-  const shares1 = price1 > 0 ? stake / price1 : 0;
+  const shares0 = talvez(stake, s => (price0 > 0 ? s / price0 : 0));
+  const shares1 = talvez(stake, s => (price1 > 0 ? s / price1 : 0));
   const payoff0 = shares0;
   const payoff1 = shares1;
-  const profit0 = payoff0 - stake;
-  const profit1 = payoff1 - stake;
+  const profit0 = stake === null || payoff0 === null ? null : payoff0 - stake;
+  const profit1 = stake === null || payoff1 === null ? null : payoff1 - stake;
 
   const isEvenMatch = Math.abs(price0 - 0.5) < 0.01;
   let prefixSide0 = '';
@@ -274,7 +313,9 @@ export function formatCalendarDrivenSignal(
   }
 
   let viabilityLine: string;
-  if (stake < 1.0) {
+  if (stake === null) {
+    viabilityLine = SEM_DIMENSIONAMENTO;
+  } else if (stake < 1.0) {
     const minBankroll = calcMinBankroll(1, cap, confidence);
     viabilityLine =
       `❌ Inviável: pra operar precisa de bankroll de ~$${minBankroll} ` +
@@ -311,28 +352,28 @@ export function formatCalendarDrivenSignal(
     `   Operar só faz sentido se você acredita que probabilidade\n` +
     `   real diverge dos ${p0}% / ${p1}% precificados.\n` +
     `\n` +
-    `🎲 Trade-off completo (com stake $${stake.toFixed(2)})\n` +
+    `🎲 Trade-off completo (com stake ${usd(stake)})\n` +
     `   \n` +
     `   ${pfx0}Lado ${label0} ${sideRepr0}\n` +
-    `   • ${scenario0Win} → recebe $${payoff0.toFixed(2)} (lucro $${profit0.toFixed(2)})\n` +
-    `   • ${scenario0Lose} → recebe $0 (prejuízo $${stake.toFixed(2)})\n` +
+    `   • ${scenario0Win} → recebe ${usd(payoff0)} (lucro ${usd(profit0)})\n` +
+    `   • ${scenario0Lose} → recebe $0 (prejuízo ${usd(stake)})\n` +
     `   Mercado precifica ${p0}%. Operar só se você acha que > ${p0}%.\n` +
     `   \n` +
     `   ${pfx1}Lado ${label1} ${sideRepr1}\n` +
-    `   • ${scenario1Win} → recebe $${payoff1.toFixed(2)} (lucro $${profit1.toFixed(2)})\n` +
-    `   • ${scenario1Lose} → recebe $0 (prejuízo $${stake.toFixed(2)})\n` +
+    `   • ${scenario1Win} → recebe ${usd(payoff1)} (lucro ${usd(profit1)})\n` +
+    `   • ${scenario1Lose} → recebe $0 (prejuízo ${usd(stake)})\n` +
     `   Mercado precifica ${p1}%. Operar só se você acha que > ${p1}%.\n` +
     `\n` +
     `⚙️ Como operar\n` +
-    `   Stake sugerido: $${stake.toFixed(2)} (${(cap * 100).toFixed(0)}% × confiança ${confidence.toFixed(2)} × bankroll $${bankroll})\n` +
-    `      → ${label0} @ ${price0.toFixed(3)} = ${shares0.toFixed(1)} shares\n` +
-    `      → ${label1} @ ${price1.toFixed(3)} = ${shares1.toFixed(1)} shares\n` +
+    `   Stake sugerido: ${usd(stake)} (${(cap * 100).toFixed(0)}% × confiança ${confidence.toFixed(2)} × bankroll ${usd(bankroll)})\n` +
+    `      → ${label0} @ ${price0.toFixed(3)} = ${qtd(shares0)} shares\n` +
+    `      → ${label1} @ ${price1.toFixed(3)} = ${qtd(shares1)} shares\n` +
     `   ${viabilityLine}` +
     ageLine
   );
 }
 
-function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePct: number): string {
+function formatEarlyMarketSignal(signal: SignalRow, bankroll: number | null, maxStakePct: number): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const startDate = meta['start_date'] as string;
   const hoursSinceOpen = meta['hours_since_open'] as number;
@@ -380,17 +421,17 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number, maxStakePc
   text += `2. Reação exagerada → vai voltar pro patamar inicial\n`;
   text += `3. Mercado estabilizando → consenso emergente\n\n`;
 
-  const sharesPrimary = currentPrice > 0 ? stake / currentPrice : 0;
-  const sharesSecondary = (1 - currentPrice) > 0 ? stake / (1 - currentPrice) : 0;
+  const sharesPrimary = talvez(stake, v => (currentPrice > 0 ? v / currentPrice : 0));
+  const sharesSecondary = talvez(stake, v => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
 
-  text += `Stake sugerido: $${stake.toFixed(2)}\n`;
-  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${sharesPrimary.toFixed(1)} shares\n`;
-  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${sharesSecondary.toFixed(1)} shares`;
+  text += stake === null ? `${SEM_DIMENSIONAMENTO}\n` : `Stake sugerido: ${usd(stake)}\n`;
+  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${qtd(sharesPrimary)} shares\n`;
+  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${qtd(sharesSecondary)} shares`;
 
   return text + ageLine;
 }
 
-function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStakePct: number): string {
+function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number | null, maxStakePct: number): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const triggers = (meta['trigger_types'] ?? []) as string[];
   const momentum = meta['momentum'] as { triggered: boolean; price_change_pct: number; from: number; to: number } | undefined;
@@ -425,19 +466,19 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number, maxStak
   text += `1. Notícia real legítima → preço novo é correto\n`;
   text += `2. Hype puro → vai voltar pro patamar anterior\n`;
   text += `3. Manipulação coordenada → vai voltar mais devagar\n\n`;
-  const sharesPrimary = currentPrice > 0 ? stake / currentPrice : 0;
-  const sharesSecondary = (1 - currentPrice) > 0 ? stake / (1 - currentPrice) : 0;
+  const sharesPrimary = talvez(stake, v => (currentPrice > 0 ? v / currentPrice : 0));
+  const sharesSecondary = talvez(stake, v => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
 
-  text += `Stake sugerido: $${stake.toFixed(2)}\n`;
-  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${sharesPrimary.toFixed(1)} shares\n`;
-  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${sharesSecondary.toFixed(1)} shares`;
+  text += stake === null ? `${SEM_DIMENSIONAMENTO}\n` : `Stake sugerido: ${usd(stake)}\n`;
+  text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${qtd(sharesPrimary)} shares\n`;
+  text += `   → ${secondaryOutcome} @ ${(1 - currentPrice).toFixed(3)} = ${qtd(sharesSecondary)} shares`;
 
   return text + ageLine;
 }
 
 export function formatSignal(
   signal: SignalRow,
-  bankroll: number,
+  bankroll: number | null,
   maxStakePct: number,
   earliestEnd?: string | null,
 ): string {
@@ -472,12 +513,18 @@ export function formatSignal(
   const side = direction === 'over' ? 'No' : 'Yes';
 
   const stakeTotal = calcStake(bankroll, maxStakePct, edgePct);
-  const stakePerLeg = groupSize > 0 ? stakeTotal / groupSize : 0;
+  const stakePerLeg = talvez(stakeTotal, v => (groupSize > 0 ? v / groupSize : 0));
 
   // Viability cases A / B / C
   let viabilityLine: string;
   let viable: 'A' | 'B' | 'C';
-  if (groupSize === 0 || stakePerLeg < 1.0) {
+  // Sem carteira marcada não há caso de viabilidade: viabilidade É uma conta
+  // sobre o stake. Cai em 'A' (composição de referência) porque é o único modo
+  // que não promete execução.
+  if (stakePerLeg === null) {
+    viable = 'A';
+    viabilityLine = SEM_DIMENSIONAMENTO;
+  } else if (groupSize === 0 || stakePerLeg < 1.0) {
     viable = 'A';
     const fracaoEfetiva = Math.min(maxStakePct, edgePct / 200);
     const bankrollMin = fracaoEfetiva > 0 ? Math.ceil(groupSize / fracaoEfetiva) : 999999;
@@ -493,8 +540,10 @@ export function formatSignal(
     viabilityLine = `✅ Operacional. Edge líquido esperado: ${edgePct.toFixed(2)}%.`;
   }
 
-  // Scenarios
-  const scenarios = computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
+  // Scenarios. Cada payoff é `stake / preço`: sem stake não há cenário, e
+  // inventar um com stake zero devolveria uma tabela de lucros zerados.
+  const scenarios =
+    stakePerLeg === null ? [] : computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
   const probLucroTotal = scenarios.reduce((acc, s) => acc + (s.profit > 0 ? s.probability : 0), 0);
   const scenariosSorted = [...scenarios].sort((a, b) => b.probability - a.probability);
 
@@ -503,7 +552,9 @@ export function formatSignal(
     `🎲 Natureza da bet\n` +
     `   Bet com EV positivo, não arbitragem garantida.\n` +
     `   \n` +
-    `   Cenários (com stake $${stakePerLeg.toFixed(2)}/leg, total $${stakeTotal.toFixed(2)}):\n`;
+    (stakePerLeg === null
+      ? `   Cenários: ${SEM_DIMENSIONAMENTO}\n`
+      : `   Cenários (com stake ${usd(stakePerLeg)}/leg, total ${usd(stakeTotal)}):\n`);
   for (const s of scenariosSorted) {
     const profitEmoji = s.profit > 0 ? '✅' : '❌';
     const profitLabel = s.profit > 0 ? 'lucro' : 'prejuízo';
@@ -513,13 +564,15 @@ export function formatSignal(
   }
   natureSec +=
     `   \n` +
-    `   Probabilidade de lucro nesta operação: ${(probLucroTotal * 100).toFixed(1)}%\n` +
+    (scenarios.length === 0
+      ? `   Probabilidade de lucro nesta operação: —\n`
+      : `   Probabilidade de lucro nesta operação: ${(probLucroTotal * 100).toFixed(1)}%\n`) +
     `   Edge se materializa em ~50+ trades similares.`;
 
   // How to operate section
   const howToSec =
     `⚙️ Como operar\n` +
-    `   Stake total $${stakeTotal.toFixed(2)} ÷ ${groupSize} legs = $${stakePerLeg.toFixed(2)}/leg\n` +
+    `   Stake total ${usd(stakeTotal)} ÷ ${groupSize} legs = ${usd(stakePerLeg)}/leg\n` +
     `   ${viabilityLine}`;
 
   // Execution / Composition section
@@ -528,8 +581,8 @@ export function formatSignal(
   for (const m of members) {
     const name = memberDisplayTitle(m.title);
     const priceForBuy = direction === 'over' ? 1 - m.yes_price : m.yes_price;
-    const shares = stakePerLeg > 0 && priceForBuy > 0 ? stakePerLeg / priceForBuy : 0;
-    execSec += `   • ${name} → ${side} → $${stakePerLeg.toFixed(2)} a ${priceForBuy.toFixed(3)} (${shares.toFixed(1)} shares)\n`;
+    const shares = talvez(stakePerLeg, v => (v > 0 && priceForBuy > 0 ? v / priceForBuy : 0));
+    execSec += `   • ${name} → ${side} → ${usd(stakePerLeg)} a ${priceForBuy.toFixed(3)} (${qtd(shares)} shares)\n`;
   }
 
   return (

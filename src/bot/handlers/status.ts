@@ -2,6 +2,8 @@ import type { BotContext } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { getSystemConfig } from '../../lib/config.js';
 import { getBankrollState } from '../../lib/bankroll.js';
+import { explicarSemMarcacao } from '../../lib/format-helpers.js';
+import { usd } from '../format.js';
 import { logEvent } from '../../lib/logger.js';
 
 export async function statusHandler(ctx: BotContext): Promise<void> {
@@ -122,8 +124,16 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       return n >= 0 ? '+' : '';
     }
 
-    const naoRealizado = state.portfolio_value - state.stake_committed;
-    const totalCombinado = mAll.pnl + naoRealizado;
+    /** `+$12.34`, ou `—` quando o valor depende de posição não marcada. */
+    function assinado(n: number | null): string {
+      return n === null ? '—' : `${sign(n)}$${n.toFixed(2)}`;
+    }
+
+    // Nulo quando alguma leg aberta não foi marcada: P&L não realizado de uma
+    // posição sem preço é desconhecido, e não zero.
+    const naoRealizado =
+      state.portfolio_value === null ? null : state.portfolio_value - state.stake_committed;
+    const totalCombinado = naoRealizado === null ? null : mAll.pnl + naoRealizado;
 
     const lastRun = (() => {
       if (!lastDetector.data?.created_at) return 'nunca';
@@ -138,9 +148,10 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     const text =
       `*Status*\n` +
-      `Bankroll: \`$${state.bankroll.toFixed(2)}\`\n` +
+      `Bankroll: \`${usd(state.bankroll)}\`\n` +
       `  Cash: \`$${state.cash.toFixed(2)}\`\n` +
-      `  Posições abertas: \`$${state.portfolio_value.toFixed(2)}\` (stake \`$${state.stake_committed.toFixed(2)}\`)\n` +
+      `  Posições abertas: \`${usd(state.portfolio_value)}\` (stake \`$${state.stake_committed.toFixed(2)}\`)\n` +
+      (state.bankroll === null ? `${explicarSemMarcacao(state)}\n` : '') +
       `\n` +
       `*Performance realizada*\n` +
       `  24h:      \`${sign(m24h.pnl)}$${m24h.pnl.toFixed(2)}\` | \`${closedBets24h}\` fechadas | \`${m24h.winRate}%\` wr\n` +
@@ -148,8 +159,8 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       `  30 dias:  \`${sign(m30d.pnl)}$${m30d.pnl.toFixed(2)}\` | \`${closedBets30d}\` fechadas | \`${m30d.winRate}%\` wr\n` +
       `  All-time: \`${sign(mAll.pnl)}$${mAll.pnl.toFixed(2)}\` | \`${closedBetsAll}\` fechadas | \`${mAll.winRate}%\` wr\n` +
       `\n` +
-      `Não-realizado atual: \`${sign(naoRealizado)}$${naoRealizado.toFixed(2)}\`\n` +
-      `*Total (realizado + não-realizado): ${sign(totalCombinado)}$${totalCombinado.toFixed(2)}*\n` +
+      `Não-realizado atual: \`${assinado(naoRealizado)}\`\n` +
+      `*Total (realizado + não-realizado): ${assinado(totalCombinado)}*\n` +
       `\n` +
       `Bets abertas: \`${state.legs_count}\` | Bets fechadas: \`${closedBetsAll}\`\n` +
       `Último detector: \`${lastRun}\`\n` +

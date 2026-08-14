@@ -43,8 +43,11 @@ interface LinhaRadar {
   mid_price: number | null;
   preco_em: string | null;
   var_1h: number | null;
+  var_1h_base: string | null;
   var_24h: number | null;
+  var_24h_base: string | null;
   var_7d: number | null;
+  var_7d_base: string | null;
 }
 
 /** Tolerância de comparação: `numeric(5,4)` no banco, float em JS. */
@@ -84,7 +87,7 @@ async function lerSerie(
     for (;;) {
       const { data, error } = await supabase
         .from('polymarket_snapshots')
-        .select('event_id, outcome, mid_price, captured_at')
+        .select('event_id, outcome, mid_price, best_bid, best_ask, captured_at')
         .in('event_id', lote)
         .gte('captured_at', desde)
         .order('captured_at', { ascending: false })
@@ -103,6 +106,8 @@ async function lerSerie(
         lista.push({
           capturedAt: Date.parse(linha.captured_at as string),
           mid: num(linha.mid_price),
+          bid: num(linha.best_bid),
+          ask: num(linha.best_ask),
         });
         porMercado.set(id, lista);
       }
@@ -128,12 +133,13 @@ async function main(): Promise<void> {
 
   const { data: radar, error } = await supabase
     .from('v_radar')
-    .select('id, pergunta, outcome, mid_price, preco_em, var_1h, var_24h, var_7d')
+    .select('id, pergunta, outcome, mid_price, preco_em, var_1h, var_1h_base, var_24h, var_24h_base, var_7d, var_7d_base')
     .order('id');
 
   if (error) {
     console.error(`Não consegui ler v_radar: ${error.message}`);
-    console.error('A migration 20260814142958_views_do_radar.sql já foi aplicada?');
+    console.error('As migrations 20260814142958_views_do_radar.sql e');
+    console.error('20260814151752_variacao_sem_mid_e_lado_oposto.sql já foram aplicadas?');
     process.exitCode = 1;
     return;
   }
@@ -155,6 +161,9 @@ async function main(): Promise<void> {
           ['sem foto nenhuma', (l: LinhaRadar) => l.preco_em === null],
           ['sem mid agora (livro de um lado)', (l: LinhaRadar) => num(l.mid_price) === null],
           ['com variação 1h', (l: LinhaRadar) => num(l.var_1h) !== null],
+          ['  ...base mid', (l: LinhaRadar) => l.var_1h_base === 'mid'],
+          ['  ...base ask', (l: LinhaRadar) => l.var_1h_base === 'ask'],
+          ['  ...base bid', (l: LinhaRadar) => l.var_1h_base === 'bid'],
           ['com variação 24h', (l: LinhaRadar) => num(l.var_24h) !== null],
           ['com variação 7d', (l: LinhaRadar) => num(l.var_7d) !== null],
         ] as const
@@ -197,10 +206,10 @@ async function main(): Promise<void> {
     const recalc = lerJanelas(fotos);
     conferidos += 1;
 
-    const paresJanela: Array<[Janela, number | null]> = [
-      ['h1', num(l.var_1h)],
-      ['h24', num(l.var_24h)],
-      ['d7', num(l.var_7d)],
+    const paresJanela: Array<[Janela, number | null, string | null]> = [
+      ['h1', num(l.var_1h), l.var_1h_base],
+      ['h24', num(l.var_24h), l.var_24h_base],
+      ['d7', num(l.var_7d), l.var_7d_base],
     ];
 
     if (!iguais(num(l.mid_price), recalc.agora?.mid ?? null)) {
@@ -212,14 +221,28 @@ async function main(): Promise<void> {
       ]);
     }
 
-    for (const [janela, daView] of paresJanela) {
+    for (const [janela, daView, baseDaView] of paresJanela) {
       const meu = recalc.variacoes[janela];
-      if (!iguais(daView, meu === null ? null : Math.round(meu * 1e4) / 1e4)) {
+
+      // A base primeiro: uma variação certa calculada sobre a base errada é o
+      // caso que este script existe para pegar.
+      if (baseDaView !== (meu.base ?? null)) {
+        divergencias.push([
+          l.pergunta.slice(0, 40),
+          `base ${janela}`,
+          String(baseDaView),
+          String(meu.base),
+        ]);
+        continue;
+      }
+
+      const valor = meu.variacao === null ? null : Math.round(meu.variacao * 1e4) / 1e4;
+      if (!iguais(daView, valor)) {
         divergencias.push([
           l.pergunta.slice(0, 40),
           `var ${janela}`,
           String(daView),
-          String(meu),
+          String(valor),
         ]);
       }
     }
@@ -241,7 +264,7 @@ async function main(): Promise<void> {
 
   const { data: pos, error: posErr } = await supabase
     .from('v_minhas_posicoes')
-    .select('pergunta, outcome, stake_usd, preco_agora, pnl_nao_realizado, motivo_sem_preco');
+    .select('pergunta, outcome, stake_usd, preco_agora, pnl_nao_realizado, preco_origem, bid_depth, motivo_sem_preco');
 
   if (posErr) {
     console.error(`Não consegui ler v_minhas_posicoes: ${posErr.message}`);
@@ -257,6 +280,20 @@ async function main(): Promise<void> {
 
   const semPreco = legs.filter(l => num(l.preco_agora) === null);
   console.log(`${legs.length} legs abertas, ${semPreco.length} sem preço de mercado.`);
+
+  const derivadas = legs.filter(l => String(l.preco_origem ?? '').startsWith('derivado'));
+  if (derivadas.length > 0) {
+    // Profundidade em linha derivada seria número inventado: o livro do outro
+    // token é outro livro. Se aparecer, é defeito da view.
+    const comProfundidade = derivadas.filter(l => num(l.bid_depth) !== null).length;
+    console.log(
+      `${derivadas.length} legs com preço DERIVADO do lado oposto` +
+        (comProfundidade > 0
+          ? ` — ❌ ${comProfundidade} delas vieram com profundidade, que não é derivável`
+          : ' — profundidade nula em todas, como esperado'),
+    );
+    if (comProfundidade > 0) process.exitCode = 1;
+  }
 
   if (semPreco.length > 0) {
     // O ponto do `motivo_sem_preco`: "sem preço" sem motivo é só silêncio.

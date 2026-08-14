@@ -5,6 +5,7 @@ import { logEvent } from '../../lib/logger.js';
 import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
 import { adjustCash } from '../../lib/bankroll.js';
 import { formatarProb, lerProbabilidade } from '../../lib/prob-self.js';
+import { ladoDaLeg, type Origem } from '../../lib/lado-oposto.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
 
@@ -161,38 +162,67 @@ async function perguntarProbabilidade(
  * O mid do livro no instante do registro — a linha de base contra a qual
  * `prob_self` vai ser medida.
  *
- * A janela de 24h não é enfeite: sem ela, uma perna cujo rótulo o radar não
- * coleta (ele grava só `'Yes'`) faria o Postgres varrer a série inteira do
- * mercado para não achar nada. Com ela, o custo é limitado e o significado fica
- * explícito — preço de mais de um dia atrás não é linha de base de nada.
+ * A janela de 24h não é enfeite: sem ela o Postgres varreria a série inteira do
+ * mercado quando não houvesse foto recente. Com ela, o custo é limitado e o
+ * significado fica explícito — preço de mais de um dia atrás não é linha de
+ * base de nada.
  *
- * Devolve `null` quando não há foto, quando o rótulo não bate, ou quando o
- * livro tinha um lado só (`mid_price` nulo). Nunca devolve o preço executado no
- * lugar: isso faria "sem base" virar "edge zero" em silêncio.
+ * ## Por que não filtra por rótulo na query
+ *
+ * O radar grava só o rótulo do outcome 0 (medido: 27.204 linhas em 24h, um
+ * rótulo só). Filtrar por `outcome = l.outcome` faria toda leg do outro lado
+ * voltar vazia — e `preco_mercado` é gravado UMA vez, no instante do registro:
+ * o que não for gravado agora não é recuperável depois. Então a foto vem seja
+ * qual for o rótulo, e `ladoDaLeg` traduz.
+ *
+ * Devolve `null` quando não há foto, quando o rótulo da leg não está entre os
+ * resultados do mercado, ou quando o lado pedido não tem meio. Nunca devolve o
+ * preço executado no lugar: isso faria "sem base" virar "edge zero" em
+ * silêncio.
  */
 async function precoDeMercado(
   eventId: string | null,
   outcome: string,
-): Promise<{ mid: number; capturedAt: string } | null> {
+): Promise<{ mid: number; capturedAt: string; origem: Origem } | null> {
   if (!eventId) return null;
 
   const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data } = await supabase
-    .from('polymarket_snapshots')
-    .select('mid_price, captured_at')
-    .eq('event_id', eventId)
-    .eq('outcome', outcome)
-    .gte('captured_at', desde)
-    .order('captured_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [{ data: snap }, { data: evento }] = await Promise.all([
+    supabase
+      .from('polymarket_snapshots')
+      .select('outcome, mid_price, best_bid, best_ask, bid_depth, ask_depth, captured_at')
+      .eq('event_id', eventId)
+      .gte('captured_at', desde)
+      .order('captured_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from('events').select('outcomes').eq('id', eventId).single(),
+  ]);
 
-  if (!data || data.mid_price === null || data.mid_price === undefined) return null;
+  if (!snap) return null;
 
-  const mid = Number(data.mid_price);
-  if (!Number.isFinite(mid)) return null;
+  const n = (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
 
-  return { mid, capturedAt: data.captured_at as string };
+  const lado = ladoDaLeg(
+    {
+      mid: n(snap.mid_price),
+      bid: n(snap.best_bid),
+      ask: n(snap.best_ask),
+      bidDepth: n(snap.bid_depth),
+      askDepth: n(snap.ask_depth),
+    },
+    snap.outcome as string,
+    outcome,
+    evento?.outcomes ?? null,
+  );
+
+  if (lado.mid === null || lado.origem === null) return null;
+
+  return { mid: lado.mid, capturedAt: snap.captured_at as string, origem: lado.origem };
 }
 
 async function registerSingleLeg(conversation: BotConversation, ctx: BotContext): Promise<void> {
@@ -329,7 +359,8 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     mercado === null
       ? 'Mercado agora: `sem foto` _(sem linha de base)_\n'
       : `Mercado agora: \`${mercado.mid.toFixed(4)}\` ` +
-        `_(${Math.round((Date.now() - Date.parse(mercado.capturedAt)) / 60000)} min atrás)_\n`;
+        `_(${Math.round((Date.now() - Date.parse(mercado.capturedAt)) / 60000)} min atrás` +
+        `${mercado.origem === 'derivado' ? ', derivado do lado oposto' : ''})_\n`;
   const summary =
     `*Confirmar?*\n` +
     `📋 ${titleDisplay}\n` +
