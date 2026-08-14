@@ -70,6 +70,12 @@ export const MONITORED_COMPONENTS = [
   { component: 'watchlist_collector', label: 'Watchlist',     thresholdKey: 'health_stale_watchlist_minutes' },
   { component: 'resolved_detector',   label: 'Auto-resolver', thresholdKey: 'health_stale_resolved_detector_minutes' },
   { component: 'open_legs_collector', label: 'Open legs',     thresholdKey: 'health_stale_open_legs_minutes' },
+  // O radar entra vigiado mesmo nascendo desligado, e não é contradição: o
+  // caminho do desligamento BATE (`beat(..., 'desligado por config')`), então
+  // componente parado por config tem batimento fresco e não alerta. O que o
+  // limiar pega é o ciclo que morreu — que é o mesmo risco de sempre, e maior
+  // aqui porque a foto de 15 min pode faltar por horas sem ninguém notar.
+  { component: 'radar_collector',     label: 'Radar',         thresholdKey: 'health_stale_radar_minutes' },
 ] as const satisfies ReadonlyArray<{
   component: string;
   label: string;

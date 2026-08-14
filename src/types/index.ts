@@ -169,6 +169,7 @@ export interface SystemConfig {
   health_stale_watchlist_minutes: number;
   health_stale_resolved_detector_minutes: number;
   health_stale_open_legs_minutes: number;
+  health_stale_radar_minutes: number;
   /** Intervalo mínimo entre dois avisos do MESMO componente ainda parado. */
   health_alert_cooldown_minutes: number;
   /**
@@ -239,6 +240,36 @@ export interface SystemConfig {
   analyst_min_fragments: number;
   /** Prazo de UMA chamada, via AbortSignal. O cliente roda sem retry. */
   analyst_timeout_ms: number;
+  /**
+   * O coletor do radar (`src/collectors/radar-collector.ts`). Nasce DESLIGADO:
+   * a série dele é protegida da retenção para sempre, então ligar é assumir
+   * armazenamento permanente — decisão do dono, não consequência de apply.
+   */
+  radar_collector_enabled: boolean;
+  /**
+   * As categorias que o radar coleta: nome da categoria → tags da Gamma.
+   *
+   * Categoria é propriedade ESTÁVEL, e é por isso que ela pode ser critério de
+   * coleta sem violar o princípio. Config e não constante porque a lista é do
+   * dono e muda sem deploy. Categoria sem tag válida é ignorada com aviso.
+   */
+  radar_temas: Record<string, string[]>;
+  /**
+   * Os critérios de COLETA. São só estes três porque o resto virou `where` na
+   * view: preço, volume, tamanho de descrição e assunto mudam com o tempo, e
+   * filtrar por eles faz o mercado sair do roster justamente quando se move.
+   */
+  radar_horizon_max_days: number;
+  /** Piso de liquidez do DOWNLOAD, não critério. Ver `RadarRules`. */
+  radar_min_liquidity: number;
+  /** Teto por categoria, cortando os menores em liquidez dentro dela. */
+  radar_max_por_categoria: number;
+  /** Backstop global do roster. Não morde com a config de hoje. */
+  radar_roster_max: number;
+  /** Intervalo entre fotos de preço. Ver a justificativa no coletor. */
+  radar_snapshot_interval_minutes: number;
+  /** Intervalo entre recálculos do roster. */
+  radar_roster_interval_minutes: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;
@@ -373,6 +404,15 @@ export interface GammaMarket {
   bestAsk: number;
   spread: number;
   lastTradePrice: number;
+  /** Aceita ordem agora. Ausente em resposta antiga; `false` é mercado parado. */
+  acceptingOrders?: boolean;
+  /** Tem livro. Mercado sem livro não tem preço para vigiar. */
+  enableOrderBook?: boolean;
+  /**
+   * Os dois tokens do CLOB, como STRING de JSON — `'["1234...","5678..."]'`.
+   * Índice 0 é o outcome 0 (`Yes` no binário). É a chave do `POST /books`.
+   */
+  clobTokenIds?: string;
   negRisk?: boolean;
   negRiskMarketID?: string | null;
   feeType?: string | null;

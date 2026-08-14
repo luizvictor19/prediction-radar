@@ -1,11 +1,12 @@
 # Panorama dos processos automáticos — Prediction Radar
 
-> Estado de **agosto/2026**, depois da Spec 000 (contenção). O que mudou desde a
-> versão anterior deste arquivo: a varredura por volume e o early-markets foram
-> desligados por flag, os 5 detectores genéricos também, entraram descoberta +
-> watchlist de esports, o auto-resolver virou componente com cron próprio e a
-> retenção passou a ter dois caminhos (DELETE para o legado, DROP PARTITION para
-> esports).
+> Estado de **agosto/2026**. O que mudou desde a versão anterior deste arquivo:
+> **esports saiu da coleta** (CS2, LoL e Dota — descoberta, watchlist, resolver,
+> propagação de desfecho e enricher desligados por config, sem apagar dado), e
+> entrou o **coletor do radar**, que nasce desligado. Antes disso: a varredura
+> por volume, o early-markets e os 5 detectores genéricos já estavam desligados,
+> o auto-resolver virou componente com cron próprio e a retenção ganhou dois
+> caminhos (DELETE para o legado, DROP PARTITION para esports).
 >
 > Fonte de verdade sobre o que fazer adiante: `specs/`. Este arquivo descreve o
 > que roda hoje, não a direção.
@@ -15,8 +16,13 @@
 ## Conceitos rápidos
 
 **Snapshot** — foto do preço de um mercado num instante (bid, ask, mid, volume,
-liquidez). Hoje vão para duas tabelas diferentes: esports em `esports_snapshots`
-(particionada por dia), o resto em `polymarket_snapshots`.
+liquidez). Vão para duas tabelas: esports em `esports_snapshots` (particionada
+por **dia**, porque a poda é DROP PARTITION diário) e o resto em
+`polymarket_snapshots` (particionada por **mês** a partir da migration
+`20260814014541`, porque ali nada é dropado — a série do radar é isenta da
+retenção). A partição de mês não transforma a retenção em DROP: linha protegida
+e linha descartável convivem no mesmo mês. O que ela faz é confinar o bloat de
+índice ao mês corrente.
 
 **Signal (sinal)** — quando um detector encontra oportunidade, cria um signal. É
 a notificação que aparece no Telegram.
@@ -54,12 +60,16 @@ registra que está desligado.
 | Componente | Cron | Estado | Flag |
 |---|---|---|---|
 | `open_legs_collector` | `*/10 * * * * *` (10s) | **ligado** | — |
-| `watchlist_collector` | `*/5 * * * * *` (5s) + start | **ligado** | `discovery_slug_prefixes` vazio desliga |
-| `discovery_collector` | `*/3 * * * *` + start | **ligado** | `discovery_slug_prefixes` vazio desliga |
 | `resolved_detector` | `*/5 * * * *` + start | **ligado** | — |
+| `watchlist_collector` | `*/5 * * * * *` (5s) + start | **DESLIGADO** | `discovery_slug_prefixes` vazio |
+| `discovery_collector` | `*/3 * * * *` + start | **DESLIGADO** | `discovery_slug_prefixes` vazio |
+| `esports_resolver` (+ recompute + match_outcome) | `*/10 * * * *`, `0 4 * * 0`, `5-59/10 * * * *` | **DESLIGADO** | `esports_resolver_enabled = false` |
+| `esports_enricher` | `*/5 * * * *` | **DESLIGADO** | `esports_enricher_enabled = false` |
+| `esports_analyst` | `*/5 * * * *` | **DESLIGADO** | `esports_analyst_enabled = false` |
 | `detector_runner` | `*/15 * * * *` | **ligado** (só manutenção) | `generic_detectors_enabled` |
-| `esports_partitions` | `30 2 * * *` + start | **ligado** | — |
 | `retention_job` | `0 3 * * *` + start | **ligado** | — |
+| `radar_collector` | `*/5 * * * *` | **DESLIGADO** | `radar_collector_enabled = false` |
+| `esports_partitions` | `30 2 * * *` + start | **ligado** (poda a série antiga) | — |
 | `collector` (varredura por volume) | `*/3 * * * *` + start | **DESLIGADO** | `volume_scan_enabled = false` |
 | `early_markets_collector` | `*/10 * * * *` + start | **DESLIGADO** | `early_markets_enabled = false` |
 | 5 detectores genéricos | dentro do runner, 15min | **DESLIGADOS** | `generic_detectors_enabled = false` |
@@ -76,7 +86,9 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 
 ## Os que estão ligados
 
-### Watchlist collector — tick de 5s, cadência por faixa
+### Watchlist collector — tick de 5s, cadência por faixa  *(DESLIGADO em ago/2026)*
+> Desligado com a saída de esports (`discovery_slug_prefixes` vazio). A descrição
+> abaixo é do comportamento quando ligado — o código continua no deploy.
 - Refresca por `id=` em lote os mercados de esports ativos (até 1000, ordenados
   pelo horário da partida). Sem paginação, sem teto de offset.
 - **O tick de 5s não é a cadência de coleta.** Quem decide o que é refrescado é a
@@ -99,7 +111,8 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
   `occupancy_by_bucket` (quantos mercados em cada faixa agora),
   `null_game_start_time` (sem âncora = presos na faixa lenta), `anchor_column`.
 
-### Discovery collector — a cada 3min
+### Discovery collector — a cada 3min  *(DESLIGADO em ago/2026)*
+> Desligado com a saída de esports (`discovery_slug_prefixes` vazio).
 - Pagina `order=startDate` desc e persiste o que bate os prefixos de slug.
   Encontra o mercado de esports no minuto em que ele abre, com volume 0 e
   liquidez ~US$ 17 — que é exatamente o que a varredura por volume nunca via.
@@ -135,8 +148,14 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 - Código: `src/detectors/runner.ts` — Logs: `detector_runner`
 
 ### Esports partitions — 1x/dia às 02:30 UTC + no start
-- Cria a partição de `esports_snapshots` dos próximos dias e dropa as vencidas.
-  Limpeza por DROP TABLE: o índice vai junto, instantâneo e sem bloat.
+- **Cuida das DUAS tabelas particionadas**, apesar do nome: cria a partição de
+  `esports_snapshots` dos próximos dias (e dropa as vencidas) e as de MÊS de
+  `polymarket_snapshots` (e nunca dropa — lá a série do radar é isenta da
+  retenção, e um drop levaria linha protegida junto). O nome do componente fica
+  como está de propósito: renomear quebraria o histórico de `system_logs` e o
+  alerta de saúde.
+- Limpeza por DROP TABLE, do lado de esports: o índice vai junto, instantâneo e
+  sem bloat.
 - Retenção lida de `esports_snapshot_retention_days`, com piso de 30 dias
   embutido na função e teto de 16 drops por execução.
 - Roda ANTES da retenção às 03:00 porque são coisas opostas: aqui DROP PARTITION,
@@ -169,6 +188,54 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 ... desligado` no console a cada tick e grava UMA linha em `system_logs` a cada
 6h — sem isso seriam milhares de linhas/dia dizendo a mesma coisa.
+
+### `radar_collector_enabled = false` — coletor do radar
+- Coleta BURRA: série de preço de tudo que é viável e estável, sem opinião
+  dentro do coletor. O princípio é `filtra na coleta o que NÃO muda, filtra na
+  view o que muda` — preço, volume e assunto são COLUNAS, não portas. O contexto
+  é o pipeline de esports: construído em cima de uma tese, a tese morreu, e nada
+  daquilo serviu para outra coisa.
+- Critérios de coleta, e são só seis: aberto e ativo; livro dos dois lados;
+  categoria na lista; resolve em até 180 dias (sem prazo mínimo); **não é mercado
+  de partida** (`sportsMarketType` — jogo único resolve em 3h e não reage a
+  manchete; `gameStartTime` NÃO serve, aparece em 104 mercados fora de esporte,
+  entre eles o WTI Crude); teto por categoria cortando os menores em LIQUIDEZ
+  (não volume — o mercado quieto de hoje é o que explode amanhã). O teto é 50
+  hoje e vira 100 quando a partição for aplicada (migration `20260814021300`).
+- Categorias: IA/tecnologia, Brasil, macro e mercados, geopolítica, eleições e
+  política em geral, esporte de temporada. Mais largo que a tese de hoje de
+  propósito: histórico não se recupera. O mapeamento tag→categoria é auditado por
+  `npm run radar:categorias`, que escreve `probes/radar/categorias.md` — inclusive
+  o que ficou FORA de todas as categorias, que é o erro caro.
+- Dois passos: renova o roster a cada 6h (~40 chamadas à Gamma, com paginação
+  ordenada por liquidez que se corrige sozinha) e fotografa a cada 15 min (3
+  chamadas à Gamma + 2 à CLOB para 300 mercados). O tick de 5 min não é cadência.
+- Escreve em `events` (`radar_tracked`, `radar_tema`, `radar_subject`) e em
+  `polymarket_snapshots` — inclusive `bid_depth`/`ask_depth`, que nenhum outro
+  coletor preenche. Uma linha por mercado, não duas: a do NO é `1 − YES`.
+- **A série do radar nunca é apagada pela retenção** (migration 20260813210119),
+  e por isso o coletor NUNCA desmarca `radar_tracked`: desmarcar quem resolveu
+  devolveria a série ao ramo `finalized`, que apaga tudo sem olhar idade.
+- Nasce desligado porque ligar é assumir armazenamento permanente: ~28,8k
+  linhas/dia, ~10,5M/ano, numa tabela que **não é particionada**.
+- Religar: `update system_config set radar_collector_enabled = true where id = 1;`
+- Antes de religar: `npm run radar:coletor -- --dry-run --lista` mostra o roster
+  e o custo de um ciclo sem gravar nada.
+- Código: `src/collectors/radar-collector.ts` (regra em `radar-selection.ts`) —
+  Logs: `radar_collector`
+
+### `discovery_slug_prefixes = {}` — descoberta e watchlist de esports
+- CS2, LoL e Dota saíram da coleta por decisão (migration `20260814000233`). Os
+  dois componentes leem a mesma lista e saem na primeira linha quando ela está
+  vazia; o resolver, a propagação de desfecho e o enricher saíram junto por
+  `esports_resolver_enabled` e `esports_enricher_enabled`.
+- **Nenhum dado foi apagado.** `esports_snapshots` continua com os 14,1M de
+  linhas, e `esports_partitions` continua rodando para podar por idade.
+- A proteção da série antiga NÃO caiu junto: `esports_slug_patterns()` devolve o
+  fallback `{cs2-%,lol-%,dota2-%}` quando a config está vazia — foi escrito
+  assim porque lista vazia autorizaria a retenção a apagar tudo.
+- Religar: `update system_config set discovery_slug_prefixes = '{cs2-,lol-}',
+  esports_resolver_enabled = true, esports_enricher_enabled = true where id = 1;`
 
 ### `volume_scan_enabled = false` — varredura por volume (`collector`)
 - Era `GET /markets?order=volume24hr` paginado até o teto de offset 2000.

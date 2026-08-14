@@ -69,6 +69,9 @@ const DEFAULTS: SystemConfig = {
   health_stale_watchlist_minutes: 10,
   health_stale_resolved_detector_minutes: 20,
   health_stale_open_legs_minutes: 10,
+  // 20 min contra uma foto de 15: uma falta é atraso, duas são incidente. Vale
+  // com o coletor desligado também — o caminho do desligamento bate.
+  health_stale_radar_minutes: 20,
   health_alert_cooldown_minutes: 60,
   // Espelham os defaults da migration do resolver. O fallback LIGA — ao
   // contrário das flags de coletor, e pelo mesmo motivo do health_alerts: o
@@ -123,6 +126,34 @@ const DEFAULTS: SystemConfig = {
   analyst_max_spread: 0.15,
   analyst_min_fragments: 3,
   analyst_timeout_ms: 90_000,
+  // Espelham os defaults da migration do coletor do radar. O fallback DESLIGA,
+  // como o do analista e pelo mesmo tipo de razão: aqui o custo do engano não é
+  // CPU. A série do radar é isenta dos dois ramos da retenção (migration
+  // 20260813210119) — cada mercado marcado vira armazenamento permanente, e um
+  // componente que se liga sozinho porque a coluna ainda não existe começaria a
+  // acumular linha que ninguém mais apaga.
+  radar_collector_enabled: false,
+  // O recorte de CATEGORIA — propriedade estável, e por isso é dos poucos
+  // filtros que sobraram na coleta. Nomes de categoria em português porque é
+  // como o relatório os imprime e como a coluna `radar_tema` os grava; as tags
+  // são o vocabulário da Gamma, e é ele que a API entende.
+  radar_temas: {
+    'ia-e-tecnologia': ['ai', 'tech'],
+    'brasil': ['brazil'],
+    'macro-e-mercados': ['economy', 'finance', 'business', 'crypto'],
+    'geopolitica-e-conflitos': ['geopolitics', 'world'],
+    // As duas que entraram na revisão. `elections`+`politics` porque eleição que
+    // o dono não acompanha ainda é série que não se recupera depois; `sports`
+    // pelo esporte de TEMPORADA (título, artilheiro, rebaixamento).
+    'eleicoes-e-politica': ['elections', 'politics'],
+    'esporte-de-temporada': ['sports'],
+  },
+  radar_horizon_max_days: 180,
+  radar_min_liquidity: 500,
+  radar_max_por_categoria: 100,
+  radar_roster_max: 800,
+  radar_snapshot_interval_minutes: 15,
+  radar_roster_interval_minutes: 360,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,
