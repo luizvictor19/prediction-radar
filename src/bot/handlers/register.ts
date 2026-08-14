@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
 import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
 import { adjustCash } from '../../lib/bankroll.js';
+import { formatarProb, lerProbabilidade } from '../../lib/prob-self.js';
 
 const SIM_NAO_KBD = new InlineKeyboard().text('Sim', 'sim').text('Não', 'nao');
 
@@ -111,6 +112,89 @@ function catLabel(category: string | null): string {
   return CATEGORY_LABEL[category] ?? category;
 }
 
+/**
+ * A estratégia que este fluxo grava.
+ *
+ * As apostas anteriores a 20260814 ficam em `'legado'` pelo default da coluna —
+ * elas são a única evidência sobre se os acertos lembrados são representativos
+ * ou viés de sobrevivência, e misturar as duas coortes num número só apagaria
+ * essa resposta. Ver a migration `20260814142957_registro_prob_self.sql`.
+ */
+const ESTRATEGIA = 'saliencia';
+
+/**
+ * Pergunta a probabilidade. Devolve `null` quando o registro deve ser
+ * cancelado.
+ *
+ * Não tem `skip`, ao contrário da confiança e da tese, e a diferença é de
+ * propósito: sem `prob_self` não há Brier, e a aposta entra na série como uma
+ * linha que não mede nada. As outras duas são decoração; esta é o motivo de o
+ * registro existir na fase atual.
+ *
+ * Uma segunda chance antes de cancelar porque a entrada é texto livre e o erro
+ * mais provável é de digitação, não de intenção — e cancelar obriga a refazer
+ * o formulário inteiro, o que ensina a pular o registro.
+ */
+async function perguntarProbabilidade(
+  conversation: BotConversation,
+  ctx: BotContext,
+): Promise<number | null> {
+  await ctx.reply('Sua probabilidade de isso acontecer, em %? (ex: 72)');
+
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    const probCtx = await conversation.waitFor('message:text');
+    const lida = lerProbabilidade(probCtx.message.text);
+    if (lida.ok) return lida.prob;
+
+    if (tentativa === 0) {
+      await ctx.reply(
+        `Não entendi (${lida.motivo}). Um número de 0 a 100, em %. Ex: 72`,
+      );
+    }
+  }
+
+  await ctx.reply('Probabilidade inválida. Operação cancelada.');
+  return null;
+}
+
+/**
+ * O mid do livro no instante do registro — a linha de base contra a qual
+ * `prob_self` vai ser medida.
+ *
+ * A janela de 24h não é enfeite: sem ela, uma perna cujo rótulo o radar não
+ * coleta (ele grava só `'Yes'`) faria o Postgres varrer a série inteira do
+ * mercado para não achar nada. Com ela, o custo é limitado e o significado fica
+ * explícito — preço de mais de um dia atrás não é linha de base de nada.
+ *
+ * Devolve `null` quando não há foto, quando o rótulo não bate, ou quando o
+ * livro tinha um lado só (`mid_price` nulo). Nunca devolve o preço executado no
+ * lugar: isso faria "sem base" virar "edge zero" em silêncio.
+ */
+async function precoDeMercado(
+  eventId: string | null,
+  outcome: string,
+): Promise<{ mid: number; capturedAt: string } | null> {
+  if (!eventId) return null;
+
+  const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('polymarket_snapshots')
+    .select('mid_price, captured_at')
+    .eq('event_id', eventId)
+    .eq('outcome', outcome)
+    .gte('captured_at', desde)
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data || data.mid_price === null || data.mid_price === undefined) return null;
+
+  const mid = Number(data.mid_price);
+  if (!Number.isFinite(mid)) return null;
+
+  return { mid, capturedAt: data.captured_at as string };
+}
+
 async function registerSingleLeg(conversation: BotConversation, ctx: BotContext): Promise<void> {
   // a. Título
   await ctx.reply('Título do evento (ex: "Chelsea vs Forest O/U 2.5"):');
@@ -213,7 +297,16 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     return;
   }
 
-  // f. Confiança
+  // f. Probabilidade — o campo que destrava a medição
+  const probSelf = await perguntarProbabilidade(conversation, ctx);
+  if (probSelf === null) return;
+
+  // f.1. O preço de mercado do instante, lido ANTES da confirmação para poder
+  // aparecer no resumo: ver o mercado a 0,58 ao lado do próprio 0,72 é a única
+  // chance de perceber um erro de escala antes de gravar.
+  const mercado = await precoDeMercado(eventIdMatch, outcome);
+
+  // g. Confiança
   await ctx.reply('Confiança 1-10 (ou skip):');
   const confCtx = await conversation.waitFor('message:text');
   const confRaw = confCtx.message.text.trim();
@@ -223,15 +316,20 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
   }
 
-  // g. Tese
+  // h. Tese
   await ctx.reply('Tese curta (ou skip):');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
   const thesis = thesisRaw === 'skip' ? eventTitle : thesisRaw;
 
-  // h. Resumo + confirmação
+  // i. Resumo + confirmação
   const shares = toWin;
   const titleDisplay = matchedTitle ? `${matchedTitle} _(vinculado)_` : eventTitle;
+  const mercadoLinha =
+    mercado === null
+      ? 'Mercado agora: `sem foto` _(sem linha de base)_\n'
+      : `Mercado agora: \`${mercado.mid.toFixed(4)}\` ` +
+        `_(${Math.round((Date.now() - Date.parse(mercado.capturedAt)) / 60000)} min atrás)_\n`;
   const summary =
     `*Confirmar?*\n` +
     `📋 ${titleDisplay}\n` +
@@ -240,6 +338,8 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     `To win: \`$${toWin.toFixed(2)}\`\n` +
     `Shares: \`${shares.toFixed(1)}\`\n` +
     `Preço entrada (calc): \`${entryPrice.toFixed(4)}\`\n` +
+    `Minha probabilidade: \`${formatarProb(probSelf)}\`\n` +
+    mercadoLinha +
     `Categoria: \`${catLabel(category)}\`\n` +
     (confidenceSelf !== null ? `Confiança: \`${confidenceSelf}/10\`\n` : '') +
     (thesisRaw !== 'skip' ? `Tese: ${thesis}\n` : '');
@@ -250,7 +350,7 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     return;
   }
 
-  // i. Inserir
+  // j. Inserir
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
@@ -258,7 +358,9 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
       event_id: eventIdMatch,
       thesis,
       thesis_type: 'manual',
+      prob_self: probSelf,
       confidence_self: confidenceSelf,
+      estrategia: ESTRATEGIA,
       domain_confidence: null,
       polymarket_category: category,
       notes: null,
@@ -280,6 +382,8 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     entry_price: entryPrice,
     stake_usd: stakeUsd,
     shares,
+    preco_mercado: mercado?.mid ?? null,
+    preco_mercado_em: mercado?.capturedAt ?? null,
   });
 
   if (legErr) {
@@ -304,10 +408,10 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     });
   }
 
-  // j. Decrementar cash
+  // k. Decrementar cash
   await adjustCash(-stakeUsd);
 
-  // k. Resposta
+  // l. Resposta
   const cashLine = `\nCash decrementado: -$${stakeUsd.toFixed(2)}`;
   if (signalIdMatch) {
     await ctx.reply(`✅ Bet registrada e vinculada ao sinal.${cashLine}`);
@@ -364,7 +468,20 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     legInputs.push({ outcome, stake_usd: stakeUsd, entry_price: entryPrice, shares: stakeUsd / entryPrice });
   }
 
-  // e. Confiança (na tese da basket como um todo)
+  // e. Probabilidade (na tese da basket como um todo)
+  //
+  // Uma probabilidade para a basket inteira, e não uma por leg, porque
+  // `prob_self` mora em `my_bets` — que é a tese — e não em `my_bet_legs`.
+  // Uma basket é uma aposta com várias execuções, e a afirmação sobre o mundo
+  // é uma só.
+  //
+  // As legs de basket entram com `event_id` nulo (o fluxo não faz match de
+  // mercado), então `preco_mercado` fica nulo nelas: não há mercado para ler.
+  // Isso é limite conhecido do fluxo de basket, não do desenho da coluna.
+  const probSelf = await perguntarProbabilidade(conversation, ctx);
+  if (probSelf === null) return;
+
+  // f. Confiança (na tese da basket como um todo)
   await ctx.reply('Confiança na tese da basket 1-10 (ou skip):');
   const confCtx = await conversation.waitFor('message:text');
   const confRaw = confCtx.message.text.trim();
@@ -374,13 +491,13 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) confidenceSelf = parsed;
   }
 
-  // f. Tese
+  // g. Tese
   await ctx.reply('Tese curta (ou skip):');
   const thesisCtx = await conversation.waitFor('message:text');
   const thesisRaw = thesisCtx.message.text.trim();
   const thesis = thesisRaw === 'skip' ? basketTitle : thesisRaw;
 
-  // g. Resumo + confirmação
+  // h. Resumo + confirmação
   const totalStake = legInputs.reduce((s, l) => s + l.stake_usd, 0);
   let summary = `*Confirmar basket (${n} legs)?*\n${basketTitle}\n`;
   for (let i = 0; i < legInputs.length; i++) {
@@ -388,6 +505,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     summary += `  • Leg ${i + 1}: \`${l.outcome}\` — \`$${l.stake_usd.toFixed(2)}\` @ \`${l.entry_price}\` (${l.shares.toFixed(4)} shares)\n`;
   }
   summary += `Stake total: \`$${totalStake.toFixed(2)}\`\n`;
+  summary += `Minha probabilidade: \`${formatarProb(probSelf)}\`\n`;
   summary += `Categoria: \`${catLabel(category)}\`\n`;
   if (confidenceSelf !== null) summary += `Confiança: \`${confidenceSelf}/10\`\n`;
   if (thesisRaw !== 'skip') summary += `Tese: ${thesis}\n`;
@@ -398,7 +516,7 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     return;
   }
 
-  // h. Inserir
+  // i. Inserir
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
@@ -406,7 +524,9 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
       event_id: null,
       thesis,
       thesis_type: 'manual',
+      prob_self: probSelf,
       confidence_self: confidenceSelf,
+      estrategia: ESTRATEGIA,
       domain_confidence: null,
       polymarket_category: category,
       notes: null,
@@ -440,10 +560,10 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     return;
   }
 
-  // i. Decrementar cash pelo total da basket
+  // j. Decrementar cash pelo total da basket
   await adjustCash(-totalStake);
 
-  // j. Resposta
+  // k. Resposta
   await ctx.reply(`✅ Basket registrada com ${n} legs.\nCash decrementado: -$${totalStake.toFixed(2)}`);
 }
 
