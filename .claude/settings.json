@@ -1,28 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run test *)",
-      "Bash(npm run lint *)",
-      "Bash(npm run build *)",
-      "Bash(npx tsc *)",
-      "Bash(git status)",
-      "Bash(git diff *)",
-      "Bash(git log *)",
-      "Bash(git add *)",
-      "Bash(supabase migration new *)",
-      "Bash(npm run oddspapi:probe *)",
+      "Bash(*)",
       "Edit(src/**)",
       "Write(src/**)",
-      "Write(supabase/migrations/**)",
+      "Edit(scripts/**)",
+      "Write(scripts/**)",
+      "Write(probes/**)",
       "Edit(specs/**)",
-      "Write(specs/**)"
+      "Write(specs/**)",
+      "Write(supabase/migrations/**)",
+      "Edit(*.md)",
+      "Write(*.md)"
     ],
     "deny": [
-      "Bash(supabase db push *)",
-      "Bash(supabase db reset *)",
-      "Bash(supabase db pull *)",
-      "Bash(psql *)",
-      "Bash(git push *)",
+      "Bash(supabase db push*)",
+      "Bash(supabase db reset*)",
+      "Bash(supabase db pull*)",
+      "Bash(supabase migration up*)",
+      "Bash(psql*)",
+      "Bash(git push*)",
+      "Bash(npm run oddspapi:probe*)",
       "Read(./.env)",
       "Read(./.env.*)"
     ],
