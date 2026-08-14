@@ -4,9 +4,21 @@ import { logEvent } from '../lib/logger.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 
 /**
- * Manutenção das partições de `esports_snapshots` (spec 000, item 3).
+ * Manutenção das partições — de `esports_snapshots` e de `polymarket_snapshots`.
  *
- * Duas obrigações, uma por dia:
+ * As duas tabelas são particionadas por `captured_at` e as duas precisam da
+ * partição do período seguinte criada antes de a escrita chegar nele. O que elas
+ * NÃO compartilham é a poda: em esports a partição é dropada por idade (é a razão
+ * de ela ser de dia); em `polymarket_snapshots` nada é dropado, porque a série do
+ * radar é isenta da retenção — lá a partição é de MÊS e a função de manutenção só
+ * cria (ver a migration 20260814014541).
+ *
+ * Um job só para as duas, e não dois jobs, porque a obrigação é a mesma e o
+ * horário também. O nome do componente fica `esports_partitions` de propósito:
+ * renomear quebraria o histórico de `system_logs` e o alerta de saúde, e o que
+ * se ganharia era um nome mais bonito.
+ *
+ * As obrigações do lado de esports, uma vez por dia:
  *
  * 1. Criar a partição do dia seguinte. Sem ela o insert cai na partição default,
  *    que nada esvazia — a rede de segurança existe para não perder linha, não
@@ -129,6 +141,12 @@ async function _run(): Promise<void> {
   }
 
   const report = data as PartitionReport;
+
+  // As partições de mês de `polymarket_snapshots`. Falha aqui NÃO derruba o
+  // relatório de esports: são duas tabelas independentes, e o que se perde ao
+  // voltar cedo é a única linha que diz o que aconteceu com a outra.
+  const snapshots = await manterParticoesDeSnapshots();
+
   const durationMs = Date.now() - startedAt;
 
   // Cada um destes é um problema diferente, e nenhum é fatal no momento em que
@@ -140,7 +158,8 @@ async function _run(): Promise<void> {
     report.errors.length > 0 ||
     report.default_rows_at_least > 0 ||
     report.retention_clamped ||
-    report.drop_eligible > report.dropped.length
+    report.drop_eligible > report.dropped.length ||
+    snapshots.problema
       ? 'partial'
       : 'success';
 
@@ -168,12 +187,58 @@ async function _run(): Promise<void> {
       // ou o job ficou parado dias, ou chegou `captured_at` com data absurda.
       default_rows_at_least: report.default_rows_at_least,
       partition_errors: report.errors.length > 0 ? report.errors : null,
+      // A outra tabela. `null` em `snapshot_partitions` = migration 20260814014541
+      // ainda não aplicada, e aí `polymarket_snapshots` segue tabela comum.
+      snapshot_partitions: snapshots.report,
+      snapshot_partitions_error: snapshots.erro,
       duration_ms: durationMs,
     },
   });
 
   console.log(
-    `[esports_partitions] +${report.created.length} / -${report.dropped.length} ` +
-      `(retenção ${report.retention_days}d, ${durationMs}ms)`,
+    `[esports_partitions] esports +${report.created.length} / -${report.dropped.length} ` +
+      `(retenção ${report.retention_days}d) | snapshots +${snapshots.report?.created.length ?? 0} ` +
+      `(${durationMs}ms)`,
   );
+}
+
+/** O que `manage_polymarket_snapshot_partitions` devolve. */
+interface SnapshotPartitionReport {
+  month_utc: string;
+  created: string[];
+  default_rows_at_least: number;
+  errors: string[];
+}
+
+/**
+ * Cria as partições de mês de `polymarket_snapshots`.
+ *
+ * Dois meses de folga: a partição do mês que vem existe desde o dia 1 do mês
+ * atual, então nem um job parado por semanas põe linha na partição default.
+ *
+ * Enquanto a migration não for aplicada a função não existe, e isso não é falha
+ * — é o intervalo normal entre o deploy do código e o apply à mão. Nesse estado
+ * `polymarket_snapshots` continua sendo tabela comum e não há partição a manter.
+ */
+async function manterParticoesDeSnapshots(): Promise<{
+  report: SnapshotPartitionReport | null;
+  erro: string | null;
+  problema: boolean;
+}> {
+  const { data, error } = await supabase.rpc('manage_polymarket_snapshot_partitions', {
+    lookahead_months: 2,
+  });
+
+  if (error) {
+    const naoAplicada =
+      error.code === 'PGRST202' || /manage_polymarket_snapshot_partitions/.test(error.message);
+    return { report: null, erro: naoAplicada ? null : error.message, problema: !naoAplicada };
+  }
+
+  const report = data as SnapshotPartitionReport;
+  return {
+    report,
+    erro: null,
+    problema: report.errors.length > 0 || report.default_rows_at_least > 0,
+  };
 }
