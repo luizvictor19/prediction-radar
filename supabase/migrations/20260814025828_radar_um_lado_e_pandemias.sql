@@ -1,0 +1,191 @@
+-- Duas correções no recorte do radar: um lado de livro basta, e pandemias entram.
+--
+-- A primeira é de CÓDIGO (`src/collectors/radar-selection.ts`) e está aqui só
+-- como registro do que mudou e do que custava. A segunda é de config, e é o
+-- único statement deste arquivo.
+--
+-- ===========================================================================
+-- 1. UM lado de livro basta — o critério dos dois lados descartava 274 mercados
+-- ===========================================================================
+--
+-- A regra anterior exigia bid E ask. Medido em 2026-08-14 sobre o universo do
+-- dia (2.489 markets únicos), ela era o MAIOR motivo de descarte da triagem:
+--
+--   livro de um lado só (ou invertido)   274
+--   mercado de partida (jogo único)      132
+--   esports (coleta desligada)            36
+--
+-- E não descartava a cauda: descartava o topo. Os mais líquidos que caíam por
+-- ela, por categoria:
+--
+--   brasil       Eduardo Leite 1,8M | Aldo Rebelo 1,6M | Massa Jr. 1,6M
+--                (eleição presidencial de 2026 — os azarões)
+--   esporte      os 20 pilotos da F1, de 880k a 923k
+--   eleições     a lista inteira do governo da Califórnia, ~350k cada
+--   macro        Bitcoin acima de X em 14/08, 99k–171k
+--   IA           "melhor modelo de IA em agosto", 55k–60k
+--
+-- Todos o mesmo formato: AZARÃO. Alguém vendendo, ninguém comprando. Um lado só.
+--
+-- ---------------------------------------------------------------------------
+-- O que voltou, medido com a regra nova no mesmo dia
+-- ---------------------------------------------------------------------------
+--
+--   candidatos com UM lado que a regra antiga descartava   205
+--   destes, no roster final (teto de 100/categoria)        113
+--   descartados por terem os DOIS lados vazios               0
+--
+-- Zero, e não é sorte: o piso de download (`liquidity_num_min` = 500) já não
+-- deixa passar mercado sem livro nenhum. Ou seja, o critério dos dois lados
+-- nunca protegeu de livro vazio — o piso é que protegia. Ele só cortava azarão.
+--
+-- A distribuição de liquidez dos 205 diz o resto:
+--
+--   >= 1M         3        50k-100k     38
+--   500k-1M      33        < 50k        86
+--   250k-500k    24
+--   100k-250k    21
+--
+-- Mediana dos que entraram no roster: 292 mil. Não era cauda, era topo.
+--
+-- ---------------------------------------------------------------------------
+-- Por que o critério existia, e por que ele estava no lugar errado
+-- ---------------------------------------------------------------------------
+--
+-- O medo era livro VAZIO, e ele é legítimo: livro vazio dá mid 0,50 por
+-- ARITMÉTICA — média de dois nulos tratados como zero — e esse número já
+-- fabricou edge falso neste projeto (a frente do XTracker). Um preço de meio
+-- dólar que ninguém negociou parece consenso e é ausência de dado.
+--
+-- Só que azarão com um lado só NÃO é livro vazio. Ele tem preço real, formado,
+-- negociável — e é exatamente o mercado onde uma notícia move mais forte, porque
+-- é onde a probabilidade é pequena e a reassimilação é violenta. É a tese desta
+-- frente em estado puro, e o critério a estava jogando fora inteira.
+--
+-- O conserto certo não é na porta, é na CONTA:
+--
+--   * a coleta exige PELO MENOS UM lado (bid ou ask);
+--   * descarta só quando os DOIS estão ausentes — aí não há preço;
+--   * `best_bid` e `best_ask` são gravados como vierem (as colunas aceitam nulo);
+--   * **`mid_price` fica NULO quando falta um lado.** Nunca 0,50, nunca o lado
+--     único repetido, nunca um chute. `spread` segue a mesma regra.
+--
+-- Meio-preço passa a ser conta da VIEW, onde nulo é resposta legítima. Existe um
+-- teste (`mid_price NUNCA é preenchido com um lado ausente`) que varre os dois
+-- lados ausentes em cinco níveis de preço e falha se algum mid sair não-nulo —
+-- inclusive o 0,50, que é o valor que passaria despercebido.
+--
+-- Saiu junto o descarte por livro INVERTIDO (`ask <= bid`), pelo mesmo princípio
+-- que tirou a faixa de preço da porta: cruzar é propriedade que MUDA, dura
+-- segundos, e barrar por ela tirava o mercado do roster por 6h (a renovação) por
+-- causa de um instante. Fica gravado como está; spread negativo é observação.
+--
+-- Nada disto muda o SCHEMA: `best_bid`, `best_ask`, `mid_price` e `spread` já
+-- são nullable desde a 001. O que muda é quantas linhas chegam com nulo, e a
+-- resposta é: mais, de propósito.
+--
+-- ===========================================================================
+-- 2. `pandemics` — a tag que faltava, e vira CATEGORIA própria
+-- ===========================================================================
+--
+-- O relatório de categorias (`probes/radar/categorias.md`, 2026-08-14) lista 18
+-- mercados líquidos que nenhuma tag do recorte alcançava. Dois deles são
+-- pandemia — Hantavírus (365k) e Ebola (106k) — e os dois carregam a tag
+-- `pandemics`, que não estava em lugar nenhum.
+--
+-- Mercado de pandemia é a tese em estado puro pelos dois lados dela: movido por
+-- NOTÍCIA (surto, caso confirmado, viagem restringida) e resolvido por REGRA
+-- cheia de condição ("a OMS declarar...", "casos confirmados em N países"). É
+-- justamente onde a manchete e a regra discordam, que é onde se opera.
+--
+-- ---------------------------------------------------------------------------
+-- Categoria própria, e não dentro de uma existente
+-- ---------------------------------------------------------------------------
+--
+-- Medido em 2026-08-14: a tag tem **22 mercados** na janela de 180 dias acima do
+-- piso de download, e os 22 passam na triagem. A distribuição é o argumento:
+--
+--   361k  Hantavirus pandemic in 2026?
+--   105k  Ebola pandemic in 2026?
+--    73k  New pandemic in 2026?
+--    47k  Hantavirus vaccine in 2026?
+--   6,3k  Will there be at least 3000 measles cases in the U.S. in 2026?
+--   ...   mais oito de contagem de casos de sarampo, de 1,6k a 5k
+--
+-- Dentro de `geopolitica-e-conflitos` (corte medido em 46k) ou de
+-- `macro-e-mercados` (corte em 99k), entrariam os três primeiros e a cauda
+-- inteira morreria no ranking de liquidez. E a cauda é justamente a parte mais
+-- interessante: "pelo menos 3.000 casos de sarampo nos EUA em 2026" é uma regra
+-- com número, data e fonte — o formato em que manchete e resolução mais
+-- divergem. Cortá-la por liquidez seria deixar o teto expressar uma opinião
+-- sobre assunto, que é exatamente o defeito que o teto POR CATEGORIA existe para
+-- não ter (ver `radar_max_por_categoria`).
+--
+-- Custo do desenho, e ele é limitado por construção: a categoria tem 22
+-- mercados e o teto é 100, então ela nunca chega a morder. Rodado com a
+-- categoria em memória, o roster sai de 600 para 622 — +3,7%, ~2,1 mil
+-- linhas/dia a mais na cadência de 15 min. O backstop global
+-- (`radar_roster_max` = 800) continua sem morder.
+--
+-- Uma consequência que vale registrar antes que vire dúvida: aqui quem decide o
+-- recorte NÃO é o teto, é o PISO DE DOWNLOAD. A liquidez do corte da categoria
+-- sai em 645, encostada nos 500 de `radar_min_liquidity` — os 22 são simplesmente
+-- todos os mercados de pandemia que a Gamma entrega acima do piso. Se um dia
+-- interessar a cauda abaixo disso, o botão é o piso, não o teto.
+--
+-- ---------------------------------------------------------------------------
+-- O que NÃO entra, e é decisão
+-- ---------------------------------------------------------------------------
+--
+-- As outras 16 exclusões do relatório ficam FORA por decisão do dono: filmes de
+-- 2026 ("top grossing movie", 13 mercados), "Will Jesus Christ return before
+-- 2027?" (781k), "Is Earth flat?" (157k) e "New Stranger Things episode". Não é
+-- notícia que ele acompanha, e a regra não tem o que ler — mercado de escatologia
+-- não tem manchete que o mova, tem preço parado em zero com um lado só.
+--
+-- A tag `health` também fica fora desta rodada: tem UM mercado na janela (uma
+-- reclassificação de BPC-157 pela FDA, 1,9k de liquidez). Não é buraco no mapa,
+-- é tag vazia — fica registrada aqui para quem reabrir a conversa não ter que
+-- medir de novo.
+
+update public.system_config
+   set radar_temas = radar_temas || '{"saude-e-pandemias": ["pandemics"]}'::jsonb
+ where id = 1;
+
+-- O default da coluna vai junto: `system_config` tem uma linha só, mas um
+-- default que discorda do valor corrente é uma armadilha para quem um dia
+-- recriar a linha. Mesmo cuidado da 20260814021300.
+alter table public.system_config
+  alter column radar_temas set default
+    '{"ia-e-tecnologia": ["ai", "tech"],
+      "brasil": ["brazil"],
+      "macro-e-mercados": ["economy", "finance", "business", "crypto"],
+      "geopolitica-e-conflitos": ["geopolitics", "world"],
+      "eleicoes-e-politica": ["elections", "politics"],
+      "esporte-de-temporada": ["sports"],
+      "saude-e-pandemias": ["pandemics"]}'::jsonb;
+
+comment on column public.system_config.radar_temas is
+  'Categorias que o radar coleta: {"categoria": ["tag da Gamma", ...]}. Categoria e propriedade estavel, e por isso e criterio de coleta; ela vai gravada em events.radar_tema. A lista e mais larga que a tese de hoje de proposito — historico nao se recupera. saude-e-pandemias entrou em 20260814 como categoria PROPRIA (22 mercados): dentro de outra, a cauda de contagem de casos morreria no ranking de liquidez, e e a cauda que tem regra cheia de condicao. Tag desconhecida vira aviso no log, nao lista vazia em silencio.';
+
+-- ---------------------------------------------------------------------------
+-- Verificação depois do apply
+-- ---------------------------------------------------------------------------
+--
+--   -- 1. a categoria está lá, e as outras seis intactas
+--   select jsonb_pretty(radar_temas) from public.system_config where id = 1;
+--
+--   -- 2. o roster novo, sem gravar nada (mesmo com a flag ligada)
+--   --    npm run radar:coletor -- --dry-run
+--   --    espera: ~622 no roster, sendo ~22 em saude-e-pandemias, e a linha
+--   --    "com o livro de UM lado só" acima de zero — se ela vier zerada, o
+--   --    critério do livro não mudou de verdade.
+--
+--   -- 3. depois de ligar, a série de um mercado de um lado só tem mid NULO
+--   select e.question, s.best_bid, s.best_ask, s.mid_price, s.spread
+--     from public.polymarket_snapshots s
+--     join public.events e on e.id = s.event_id
+--    where e.radar_tracked and (s.best_bid is null or s.best_ask is null)
+--    order by s.captured_at desc limit 20;
+--   -- mid_price e spread TÊM que estar nulos em toda linha desta lista.
+--   -- Qualquer 0.5000 aqui é o defeito de volta.

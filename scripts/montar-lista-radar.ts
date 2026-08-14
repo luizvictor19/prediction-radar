@@ -1,5 +1,6 @@
 import type { CallResult } from './lib/probe-net.js';
 import { SPACING_MS, call, callCounts, isRecord, num, section, table, totalCalls } from './lib/probe-net.js';
+import { DEFAULT_PAIRING_CONFIG, extractEntities, jaccard, tokenize } from './lib/market-pairing.js';
 
 /**
  * Lista candidata do radar — a frente que troca prever por vigiar.
@@ -29,7 +30,16 @@ import { SPACING_MS, call, callCounts, isRecord, num, section, table, totalCalls
 const LABEL = 'radar-lista';
 
 const GAMMA = process.env['POLYMARKET_GAMMA_URL'] ?? 'https://gamma-api.polymarket.com';
-const OUT_FILE = 'probes/radar/lista-candidata.md';
+const OUT_FILE = 'probes/radar/lista-candidata-v2.md';
+
+/**
+ * Tags de evento, em disco.
+ *
+ * Mesma razão do cache da janela: a categoria de um evento não muda entre uma
+ * calibração e a seguinte, e sem cache cada ajuste de piso custaria as ~9
+ * chamadas de tag de novo. Com ele, `--reuse` roda com ZERO chamadas.
+ */
+const TAGS_FILE = 'probes/radar/tags.json';
 
 /**
  * A janela coletada, em disco.
@@ -80,6 +90,10 @@ interface Args {
   precoMax: number;
   tetoCategoria: number;
   tetoEvento: number;
+  tetoAssunto: number;
+  /** Corte de tamanho de descrição que separa `tese` de `controle`. */
+  cortePapel: number;
+  alvoControle: number;
   n: number;
   /** Exige book de dois lados. Ver `sanidadeDeBook`. */
   book: boolean;
@@ -99,14 +113,38 @@ const DEFAULTS: Args = {
   // vale gastar análise. Reaproveitar a régua existente vale mais do que inventar
   // uma segunda — e a distribuição impressa abaixo mostra onde ela cai.
   liqMin: 5_000,
-  vol24Min: 0,
+  // Piso de volume 24h. O número está justificado no relatório contra a
+  // distribuição medida — e a distribuição é o argumento, não o número.
+  //
+  // O que ele mata, e é o defeito que ele existe para matar: "Government
+  // shutdown by October 1" tinha 13 mil de liquidez e UM DÓLAR de volume em 24h.
+  // Liquidez é ordem parada; volume é gente negociando. A tese é "sai notícia →
+  // o preço exagera → volta", e mercado que ninguém negocia não exagera: ele
+  // fica onde o último trade o deixou.
+  vol24Min: 500,
   precoMin: 0.15,
   precoMax: 0.85,
-  // 12 de 40 = 30%: nenhum tema passa de um terço da lista. Não dá para ser
-  // muito mais apertado — a janela de 4–8 semanas só tem ~7 categorias grossas,
-  // e um teto de 5 travaria a lista em 35 por aritmética, não por critério.
-  tetoCategoria: 12,
+  // 20 de 40 = 50%, e foi 12 na v1. Subiu porque o trabalho dele mudou de mãos.
+  //
+  // Na v1 o teto de categoria era a ÚNICA defesa contra monocultura, e por isso
+  // era apertado. Ele defendia mal: barrava por rótulo grosso ("politics") sem
+  // saber que sete daqueles mercados eram a mesma notícia sobre o Irã. Agora o
+  // teto de assunto faz esse trabalho direto, e medindo: com ele em 3, manter a
+  // categoria em 12 descartava 18 candidatos bons por uma razão que o teto fino
+  // já cobria. Aqui ele vira o que sobrou de útil — a garantia de que UMA
+  // categoria não é a lista inteira.
+  tetoCategoria: 20,
   tetoEvento: 2,
+  // Teto por ASSUNTO. O teto por evento não bastava: na v1 o Irã apareceu em 7
+  // dos 40 sob sete `eventId` diferentes — acordo nuclear, bloqueio, reunião
+  // diplomática, cessar-fogo, Ormuz. São sete eventos e UMA notícia: se o Irã
+  // fecha acordo, os sete andam juntos. Contá-los como sete observações é o
+  // mesmo defeito de contar dois checkpoints da mesma partida como duas
+  // evidências — infla a amostra sem informar nada.
+  tetoAssunto: 3,
+  // Mediana da descrição no universo da janela, medida na v1. Ver `papelDe`.
+  cortePapel: 975,
+  alvoControle: 8,
   n: 40,
   book: true,
   spreadMax: 0.1,
@@ -137,7 +175,7 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     }
 
     const match =
-      /^--(semana-min|semana-max|liq-min|vol24-min|preco-min|preco-max|teto-categoria|teto-evento|n|spread-max|max-tag-calls)=(.+)$/.exec(
+      /^--(semana-min|semana-max|liq-min|vol24-min|preco-min|preco-max|teto-categoria|teto-evento|teto-assunto|corte-papel|alvo-controle|n|spread-max|max-tag-calls)=(.+)$/.exec(
         arg,
       );
     if (match === null) return { error: `argumento desconhecido: ${arg}` };
@@ -154,6 +192,9 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     else if (key === 'preco-max') args.precoMax = value;
     else if (key === 'teto-categoria') args.tetoCategoria = Math.max(1, Math.round(value));
     else if (key === 'teto-evento') args.tetoEvento = Math.max(1, Math.round(value));
+    else if (key === 'teto-assunto') args.tetoAssunto = Math.max(1, Math.round(value));
+    else if (key === 'corte-papel') args.cortePapel = Math.round(value);
+    else if (key === 'alvo-controle') args.alvoControle = Math.round(value);
     else if (key === 'n') args.n = Math.max(1, Math.round(value));
     else if (key === 'spread-max') args.spreadMax = value;
     else args.maxTagCalls = Math.round(value);
@@ -440,10 +481,16 @@ async function coletarJanela(from: string, to: string, janelas: { n: number }): 
  * brasileira entrariam sob `brazil`, `global-elections` e `main-election` como se
  * fossem três temas, e a monocultura passaria pelo teto sem encostar nele.
  */
+/*
+ * Do MAIS específico para o mais genérico, e a ordem é o critério inteiro.
+ *
+ * A v1 tinha `politics` no topo e por isso rotulava "Will there be no change in
+ * Fed interest rates" como política — o evento tem as duas tags, e a primeira da
+ * lista ganhava. O efeito não era cosmético: inflava `politics` contra o próprio
+ * teto de categoria, que então barrava mercado de economia por conta de uma
+ * decisão de juros mal rotulada.
+ */
 const CATEGORIAS_TOPO = [
-  'politics',
-  'geopolitics',
-  'elections',
   'crypto',
   'economy',
   'business',
@@ -458,6 +505,9 @@ const CATEGORIAS_TOPO = [
   'culture',
   'pop-culture',
   'entertainment',
+  'elections',
+  'geopolitics',
+  'politics',
   'world',
 ];
 
@@ -472,7 +522,31 @@ async function buscarTags(eventIds: readonly string[], maxCalls: number): Promis
   const mapa = new Map<string, string>();
   let calls = 0;
 
-  for (let i = 0; i < eventIds.length; i += TAG_BATCH) {
+  // Cache em disco primeiro. Tag de evento não muda entre calibrações, e sem
+  // isto cada ajuste de piso pagaria as chamadas de novo — pela segunda vez, à
+  // toa, contra uma API gratuita.
+  const { readFile, writeFile, mkdir } = await import('node:fs/promises');
+  const { dirname } = await import('node:path');
+  const cache = new Map<string, string[]>();
+  try {
+    const bruto = JSON.parse(await readFile(TAGS_FILE, 'utf8')) as Record<string, string[]>;
+    for (const [id, tags] of Object.entries(bruto)) cache.set(id, tags);
+  } catch {
+    // Sem cache ainda. Não é erro: a primeira passada é que o cria.
+  }
+
+  const faltam: string[] = [];
+  for (const id of eventIds) {
+    const tags = cache.get(id);
+    if (tags === undefined) faltam.push(id);
+    else mapa.set(id, categoriaDeTags(tags));
+  }
+  if (faltam.length === 0) {
+    console.error(`[${LABEL}] tags: ${mapa.size} do cache, 0 chamadas`);
+    return mapa;
+  }
+
+  for (let i = 0; i < faltam.length; i += TAG_BATCH) {
     if (calls >= maxCalls) {
       console.error(
         `[${LABEL}] AVISO: teto de ${maxCalls} chamadas de tag atingido — ` +
@@ -480,7 +554,7 @@ async function buscarTags(eventIds: readonly string[], maxCalls: number): Promis
       );
       break;
     }
-    const lote = eventIds.slice(i, i + TAG_BATCH);
+    const lote = faltam.slice(i, i + TAG_BATCH);
     const query = [...lote.map((id) => `id=${encodeURIComponent(id)}`), `limit=${TAG_BATCH}`].join('&');
     const res = await get('/events', query);
     calls += 1;
@@ -490,9 +564,14 @@ async function buscarTags(eventIds: readonly string[], maxCalls: number): Promis
       const tags = Array.isArray(raw['tags'])
         ? raw['tags'].filter(isRecord).map((t) => str(t['slug'])).filter((s) => s !== '')
         : [];
+      cache.set(str(raw['id']), tags);
       mapa.set(str(raw['id']), categoriaDeTags(tags));
     }
   }
+
+  await mkdir(dirname(TAGS_FILE), { recursive: true });
+  await writeFile(TAGS_FILE, `${JSON.stringify(Object.fromEntries(cache))}\n`, 'utf8');
+  console.error(`[${LABEL}] tags: ${mapa.size} eventos, ${calls} chamadas novas`);
 
   return mapa;
 }
@@ -510,6 +589,18 @@ interface Candidato {
   /** Distância em dias entre `endDate` e a data citada mais próxima na regra. */
   desvioPrazo: number | null;
   categoria: string;
+  papel: 'tese' | 'controle';
+  /** Rótulo legível do grupo de assunto. `—` quando o grupo tem um membro só. */
+  assunto: string;
+  /**
+   * Identidade do grupo, e é ela que o teto conta — não o rótulo.
+   *
+   * Os dois se separaram quando o rótulo de grupo unitário virou `—`: contar
+   * pelo rótulo faria TODOS os assuntos únicos serem o mesmo assunto, e o teto
+   * de 3 cortaria a lista em três mercados sem par. O rótulo é para ler; o id é
+   * para contar.
+   */
+  grupoId: number;
 }
 
 /**
@@ -533,6 +624,206 @@ function sanidadeDeBook(m: GammaMarket): boolean {
   const { bestBid: bid, bestAsk: ask } = m;
   if (bid === null || ask === null) return false;
   return bid > 0 && ask < 1 && ask > bid;
+}
+
+// ---------------------------------------------------------------------------
+// Assunto — o agrupamento que o `eventId` não faz
+// ---------------------------------------------------------------------------
+
+const MESES_SET = new Set(MESES);
+
+/**
+ * Componentes de entidade de uma pergunta, para servirem de chave de assunto.
+ *
+ * `extractEntities` do gerador da spec 003 devolve nomes próprios inteiros —
+ * "us-iran final nuclear deal" sai como UMA entidade. Para ligar mercados por
+ * assunto isso é grosso demais: o mercado do bloqueio não repete a frase toda,
+ * ele diz "Iranian". Quebrar em componentes é o que faz `iran` ser a chave
+ * compartilhada em vez de uma frase que só casa consigo mesma.
+ *
+ * Mês e número saem: eles ligariam "September 30" com "September 30" e
+ * agrupariam metade da janela por prazo comum, que não é assunto nenhum.
+ */
+function componentesDeAssunto(pergunta: string): Set<string> {
+  const out = new Set<string>();
+  for (const entidade of extractEntities(pergunta)) {
+    for (const parte of entidade.split(/[\s\-]+/)) {
+      // Dois caracteres entram: `US` é componente, e sem ele "US-Iran Final
+      // Nuclear Deal" compartilhava só `iran` com "US-Iran meeting" — uma chave
+      // só, Jaccard 0,15, e o mercado mais comprido da lista ficava fora do
+      // grupo do próprio assunto. Sigla de dois é sigla, não ruído; o que
+      // protege contra ruído é a regra de duas chaves, não o comprimento.
+      if (parte.length < 2) continue;
+      if (MESES_SET.has(parte)) continue;
+      if (/^[\d.,$%]+$/.test(parte)) continue;
+      out.add(parte);
+    }
+  }
+  return out;
+}
+
+/**
+ * Duas chaves são a mesma coisa dita de dois jeitos?
+ *
+ * Só o caso do gentílico: `russia`/`russian`, `iran`/`iranian`. Prefixo com no
+ * mínimo 4 caracteres, que é onde ele para de gerar falso positivo — abaixo
+ * disso `new`/`news` já casaria. Não é stemmer e não pretende ser: um stemmer
+ * de verdade aqui seria mais superfície de erro do que os dois casos que ele
+ * resolve.
+ */
+function mesmaChave(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [curta, longa] = a.length <= b.length ? [a, b] : [b, a];
+  return curta.length >= 4 && longa.startsWith(curta);
+}
+
+interface GrupoAssunto {
+  /** Rótulo legível: a chave compartilhada mais frequente do grupo. */
+  rotulo: string;
+  membros: number[];
+}
+
+/**
+ * Agrupa candidatos por assunto: união de "compartilham entidade" com
+ * "são textualmente parecidos".
+ *
+ * Union-find sobre duas arestas possíveis. A primeira é entidade compartilhada
+ * — é ela que junta o acordo nuclear com o bloqueio e com Ormuz. A segunda é
+ * Jaccard sobre os tokens da pergunta, no MESMO limiar de 0,4 da camada 3 do
+ * gerador da spec 003, e pega o que a entidade não pega: duas perguntas sobre a
+ * mesma coisa escritas sem nome próprio em comum.
+ *
+ * UMA entidade compartilhada é indício, não prova, e a primeira versão disto
+ * tratava como prova. O resultado foi um grupo "russia" com 13 mercados que
+ * fundia a guerra na Ucrânia, a taxa do banco central russo e a eleição
+ * parlamentar — três coisas que não andam juntas. Nome de país não é assunto: é
+ * dimensão.
+ *
+ * A causa está na pergunta em Title Case. "Russia Elections: United Russia Wins
+ * Every Region?" tem TODA palavra capitalizada, então `extractEntities` devolve
+ * `region`, `united`, `wins`, `every` como se fossem nomes próprios — e `region`
+ * ligou a eleição russa com "Regional Board Chair" da Suécia. Corte por
+ * frequência não resolve isso: `russia` aparece em 5 de 44 e é legítimo no mesmo
+ * patamar em que `region` é lixo.
+ *
+ * Então a entidade só liga acompanhada: de uma SEGUNDA entidade compartilhada,
+ * ou de similaridade textual mínima. Os três números abaixo foram medidos contra
+ * os casos que importam nesta janela — ver `LIGACAO_*`.
+ */
+/** Texto sozinho basta. Mesmo limiar da camada 3 do gerador da spec 003. */
+const LIGACAO_JACCARD_FORTE = DEFAULT_PAIRING_CONFIG.textSimilarity;
+/**
+ * Com uma entidade só, o texto precisa concordar um pouco.
+ *
+ * 0,25 é onde os dois casos medidos se separam: "Iran charges Hormuz fees" e
+ * "Strait of Hormuz traffic returns to normal" compartilham só `hormuz` e dão
+ * 0,30 — mesmo assunto, tem que ligar. "Russia capture Kostyantynivka" e "Bank
+ * of Russia key rate" compartilham só `russia` e dão 0,18 — assuntos diferentes,
+ * não pode ligar.
+ */
+const LIGACAO_JACCARD_FRACO = 0.25;
+function agruparPorAssunto(cands: readonly Candidato[]): GrupoAssunto[] {
+  const n = cands.length;
+  const chaves = cands.map((c) => componentesDeAssunto(c.m.question));
+  const tokens = cands.map((c) => new Set(tokenize(c.m.question)));
+
+  const pai = Array.from({ length: n }, (_, i) => i);
+  const raiz = (i: number): number => {
+    let r = i;
+    while (pai[r] !== r) r = pai[r] as number;
+    while (pai[i] !== r) [i, pai[i]] = [pai[i] as number, r];
+    return r;
+  };
+  const unir = (a: number, b: number): void => {
+    const [ra, rb] = [raiz(a), raiz(b)];
+    if (ra !== rb) pai[rb] = ra;
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const ci = chaves[i] as Set<string>;
+      const cj = chaves[j] as Set<string>;
+
+      let compartilhadas = 0;
+      for (const a of ci) {
+        for (const b of cj) {
+          if (mesmaChave(a, b)) {
+            compartilhadas += 1;
+            break;
+          }
+        }
+        if (compartilhadas >= 2) break;
+      }
+
+      const sim = jaccard(tokens[i] as Set<string>, tokens[j] as Set<string>);
+      const liga =
+        sim >= LIGACAO_JACCARD_FORTE ||
+        compartilhadas >= 2 ||
+        (compartilhadas === 1 && sim >= LIGACAO_JACCARD_FRACO);
+      if (liga) unir(i, j);
+    }
+  }
+
+  const porRaiz = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = raiz(i);
+    const lista = porRaiz.get(r);
+    if (lista === undefined) porRaiz.set(r, [i]);
+    else lista.push(i);
+  }
+
+  return [...porRaiz.values()].map((membros) => {
+    const contagem = new Map<string, number>();
+    for (const i of membros) {
+      for (const t of chaves[i] as Set<string>) contagem.set(t, (contagem.get(t) ?? 0) + 1);
+    }
+    const ranking = [...contagem.entries()]
+      .filter(([, c]) => c > 1)
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    const [melhor, segunda] = ranking;
+
+    // Grupo de um não tem assunto compartilhado: não há com quem compartilhar.
+    // Rotulá-lo com a própria pergunta truncada enchia a coluna de ruído e dava
+    // ao leitor a impressão de que ali havia agrupamento.
+    if (membros.length === 1) return { rotulo: '—', membros };
+    // O `*` marca grupo cuja chave dominante não está em todos os membros — é
+    // onde o agrupamento juntou perguntas com a mesma FORMA e assunto diferente.
+    // O caso vivo: "Bank of Japan (...) September Meeting" e "Bank of Russia (...)
+    // September Meeting" compartilham `bank` e `meeting` e ficam a 0,30 de
+    // Jaccard. São dois bancos centrais, não um assunto — e nenhum limiar
+    // separa os dois sem separar também "Hormuz" de "Hormuz", que é o par que o
+    // agrupamento existe para juntar. Fica agrupado, e fica VISÍVEL que está.
+    const heterogeneo = melhor !== undefined && melhor[1] < membros.length;
+    if (melhor === undefined) return { rotulo: `grupo de ${membros.length}*`, membros };
+    // Heterogêneo mostra as DUAS chaves mais compartilhadas. Uma chave só
+    // rotulava de "russia" um grupo que continha Fed e Banco do Japão — o rótulo
+    // mentia com mais confiança do que o agrupamento errava.
+    const rotulo = heterogeneo && segunda !== undefined ? `${melhor[0]}+${segunda[0]}*` : melhor[0] + (heterogeneo ? '*' : '');
+    return { rotulo, membros };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Papel: tese ou controle
+// ---------------------------------------------------------------------------
+
+/**
+ * O tamanho da regra é o tamanho da superfície de interpretação.
+ *
+ * `tese` é onde ler com cuidado deveria dar vantagem: regra longa, com ressalva,
+ * fonte nomeada, cláusula de escape. `controle` é onde ler com cuidado NÃO
+ * deveria ajudar — a regra é curta porque delega a resolução a um placar:
+ * resultado oficial do TSE, decisão anunciada do banco central, score final,
+ * feed de preço. Não há o que ler errado.
+ *
+ * O corte é a mediana da descrição no universo da janela (975 caracteres). Ele
+ * é grosseiro e é dito assim: separa superfície de interpretação por PROXY, não
+ * por leitura. O controle existe justamente para que isso seja falseável — se a
+ * vantagem aparecer igual nos dois lados, o que se achou foi sorte, e a proxy
+ * (não o método) é a primeira suspeita.
+ */
+function papelDe(descLen: number, corte: number): 'tese' | 'controle' {
+  return descLen > corte ? 'tese' : 'controle';
 }
 
 // ---------------------------------------------------------------------------
@@ -782,6 +1073,9 @@ async function relatorio(
       descLen: m.description.length,
       desvioPrazo: ancoraNoTexto(texto, Date.parse(m.endDate)),
       categoria: 'sem-tag',
+      papel: papelDe(m.description.length, args.cortePapel),
+      assunto: '—',
+      grupoId: -1,
     });
   }
 
@@ -810,6 +1104,28 @@ async function relatorio(
       [0],
     ),
   );
+  // Sensibilidade do piso de volume: o número escolhido é uma decisão, e uma
+  // decisão sem o custo dela ao lado é um número inventado com cara de critério.
+  const operaveis = naFaixa.filter((x) => x.liquidez >= args.liqMin && x.spread <= args.spreadMax);
+  const qVolOper = quantis(operaveis.map((x) => x.volume24h));
+  console.log(
+    `\n  Volume 24h entre os ${operaveis.length} que passam liquidez e spread — ` +
+      `p10 ${usd(qVolOper.p10)}, mediana ${usd(qVolOper.mediana)}, p90 ${usd(qVolOper.p90)}:\n`,
+  );
+  console.log(
+    table(
+      ['piso de volume 24h', 'sobrevivem', 'fração'],
+      [0, 100, 250, 500, 1000, 2500, 5000, 10000].map((piso) => {
+        const n = operaveis.filter((x) => x.volume24h >= piso).length;
+        return [
+          piso === args.vol24Min ? `${usd(piso)}  <- escolhido` : usd(piso),
+          String(n),
+          `${((100 * n) / Math.max(1, operaveis.length)).toFixed(0)}%`,
+        ];
+      }),
+      [0],
+    ),
+  );
   console.log(`\n  sobreviveram: ${passaram.length}`);
 
   // -------------------------------------------------------------------------
@@ -821,56 +1137,201 @@ async function relatorio(
   for (const c of passaram) c.categoria = tags.get(c.m.eventId ?? '') ?? 'sem-tag';
 
   // -------------------------------------------------------------------------
-  // 5. Seleção com teto por categoria
+  // 5. Espelhos: dentro do mesmo evento, YES somando ~1 é UM mercado
+  // -------------------------------------------------------------------------
+  //
+  // "BoJ sem mudança" a 0,27 e "BoJ +25 bps" a 0,72 somam 0,99. Julgar os dois é
+  // julgar um: quem acha que 0,27 está baixo acha, pela mesma conta, que 0,72
+  // está alto. Duas linhas na lista, uma opinião — e no fim uma amostra que
+  // parece ter o dobro do tamanho que tem.
+  //
+  // O par fica com o de MAIOR volume, não com o mais comprido: a descrição dos
+  // dois lados de um espelho é a mesma regra, então o desempate por tamanho
+  // seria sorteio, e o volume é o que decide onde a reação aparece primeiro.
+  const porEventoMercados = new Map<string, Candidato[]>();
+  for (const c of passaram) {
+    const k = c.m.eventId ?? c.m.id;
+    const lista = porEventoMercados.get(k);
+    if (lista === undefined) porEventoMercados.set(k, [c]);
+    else lista.push(c);
+  }
+
+  const espelhos: Array<[Candidato, Candidato]> = [];
+  const descartadosEspelho = new Set<string>();
+  for (const lista of porEventoMercados.values()) {
+    const ordenados = [...lista].sort((a, b) => b.volume24h - a.volume24h);
+    const mantidos: Candidato[] = [];
+    for (const c of ordenados) {
+      const gemeo = mantidos.find((k) => {
+        const soma = k.preco + c.preco;
+        return soma >= 0.97 && soma <= 1.03;
+      });
+      if (gemeo === undefined) mantidos.push(c);
+      else {
+        espelhos.push([gemeo, c]);
+        descartadosEspelho.add(c.m.id);
+      }
+    }
+  }
+  const semEspelho = passaram.filter((c) => !descartadosEspelho.has(c.m.id));
+
+  console.log(section('5. Espelhos'));
+  console.log(
+    espelhos.length === 0
+      ? '  Nenhum par com YES somando entre 0,97 e 1,03 dentro do mesmo evento.'
+      : table(
+          ['mantido (maior volume)', 'preço', 'descartado', 'preço', 'soma'],
+          espelhos.map(([k, d]) => [
+            k.m.question.slice(0, 42),
+            num(k.preco),
+            d.m.question.slice(0, 42),
+            num(d.preco),
+            num(k.preco + d.preco),
+          ]),
+          [0, 2],
+        ),
+  );
+  console.log(`\n  ${descartadosEspelho.size} descartados por espelho; sobram ${semEspelho.length}`);
+
+  // -------------------------------------------------------------------------
+  // 6. Assunto
+  // -------------------------------------------------------------------------
+  const grupos = agruparPorAssunto(semEspelho);
+  grupos.forEach((g, gi) => {
+    for (const i of g.membros) {
+      const c = semEspelho[i] as Candidato;
+      c.assunto = g.rotulo;
+      c.grupoId = gi;
+    }
+  });
+
+  console.log(section('6. Assuntos'));
+  console.log(`  ${grupos.length} assuntos distintos entre os ${semEspelho.length} candidatos.`);
+  const multi = grupos.filter((g) => g.membros.length > 1).sort((a, b) => b.membros.length - a.membros.length);
+  console.log(
+    multi.length === 0
+      ? '  Nenhum assunto com mais de um mercado.'
+      : `\n${table(
+          ['assunto', 'mercados', 'membros'],
+          multi.map((g) => [
+            g.rotulo,
+            String(g.membros.length),
+            g.membros
+              .slice(0, 2)
+              .map((i) => (semEspelho[i] as Candidato).m.question.slice(0, 34))
+              .join(' / '),
+          ]),
+          [0, 2],
+        )}\n\n  * = a chave do rótulo não está em todos os membros: mesma forma de pergunta,\n    assunto possivelmente diferente. Ver o comentário em \`agruparPorAssunto\`.`,
+  );
+
+  // -------------------------------------------------------------------------
+  // 7. Seleção em duas trilhas, com os três tetos
   // -------------------------------------------------------------------------
   const porCategoria = new Map<string, number>();
   const porEvento = new Map<string, number>();
+  const porAssunto = new Map<number, number>();
   const escolhidos: Candidato[] = [];
   let barradosCategoria = 0;
   let barradosEvento = 0;
+  let barradosAssunto = 0;
 
-  for (const c of passaram) {
-    if (escolhidos.length >= args.n) break;
-    // O teto por EVENTO vem primeiro porque é onde a monocultura mora de fato.
-    // A eleição brasileira é UM evento com 32 mercados — um por candidato — e as
-    // descrições deles são a mesma regra com o nome trocado. Sem este teto, a
-    // ordenação por tamanho de descrição enfileira os 32 juntos e entrega uma
-    // lista que parece variada por categoria e é uma pergunta só.
+  const tentar = (c: Candidato): boolean => {
     const evento = c.m.eventId ?? c.m.id;
+    if ((porAssunto.get(c.grupoId) ?? 0) >= args.tetoAssunto) {
+      barradosAssunto += 1;
+      return false;
+    }
     if ((porEvento.get(evento) ?? 0) >= args.tetoEvento) {
       barradosEvento += 1;
-      continue;
+      return false;
     }
     if ((porCategoria.get(c.categoria) ?? 0) >= args.tetoCategoria) {
       barradosCategoria += 1;
-      continue;
+      return false;
     }
+    porAssunto.set(c.grupoId, (porAssunto.get(c.grupoId) ?? 0) + 1);
     porEvento.set(evento, (porEvento.get(evento) ?? 0) + 1);
     porCategoria.set(c.categoria, (porCategoria.get(c.categoria) ?? 0) + 1);
     escolhidos.push(c);
+    return true;
+  };
+
+  // O controle entra PRIMEIRO, e por volume. Primeiro porque ele é cota, não
+  // sobra: na v1 os controles eram o que restava depois de encher a lista, e o
+  // que restava tinha volume zero. Por volume porque um controle que não negocia
+  // não serve de comparação — ele não teria como reagir à notícia nem se a
+  // leitura ajudasse.
+  const controles = semEspelho.filter((c) => c.papel === 'controle').sort((a, b) => b.volume24h - a.volume24h);
+  for (const c of controles) {
+    if (escolhidos.length >= Math.min(args.alvoControle, args.n)) break;
+    tentar(c);
+  }
+  // A tese entra por tamanho de descrição, que é a proxy da spec.
+  const teses = semEspelho.filter((c) => c.papel === 'tese').sort((a, b) => b.descLen - a.descLen);
+  for (const c of teses) {
+    if (escolhidos.length >= args.n) break;
+    tentar(c);
   }
 
-  console.log(section('4. Seleção'));
+  // Sobrou vaga e ainda há controle? Ele NÃO entra.
+  //
+  // O controle é cota, não enchimento — e esta é a lição da v1 escrita ao
+  // contrário. Lá a lista completava 40 com o que sobrava; aqui completar com
+  // controle daria 12 num alvo de 8, e o que se ganharia era comprimento. O
+  // braço de comparação não fica melhor por ser maior que o braço comparado, e
+  // uma lista de 30 honesta vale mais que 34 com quatro linhas de enchimento.
+
+  const daTese = escolhidos.filter((c) => c.papel === 'tese');
+  const doControle = escolhidos.filter((c) => c.papel === 'controle');
+  const medianaVol = (lista: readonly Candidato[]): number => quantis(lista.map((c) => c.volume24h)).mediana;
+
+  console.log(section('7. Seleção'));
   console.log(
     table(
       ['categoria', 'escolhidos', 'disponíveis'],
       [...porCategoria.entries()]
         .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => [k, String(v), String(passaram.filter((c) => c.categoria === k).length)]),
+        .map(([k, v]) => [k, String(v), String(semEspelho.filter((c) => c.categoria === k).length)]),
       [0],
     ),
   );
   console.log(
     `\n  ${escolhidos.length} de ${args.n} preenchidos — ` +
-      `teto de ${args.tetoEvento}/evento barrou ${barradosEvento}, ` +
-      `teto de ${args.tetoCategoria}/categoria barrou ${barradosCategoria}, ` +
-      `${new Set(escolhidos.map((c) => c.m.eventId)).size} eventos distintos.`,
+      `teto de ${args.tetoAssunto}/assunto barrou ${barradosAssunto}, ` +
+      `${args.tetoEvento}/evento barrou ${barradosEvento}, ` +
+      `${args.tetoCategoria}/categoria barrou ${barradosCategoria}.`,
   );
+  console.log(
+    `  ${new Set(escolhidos.map((c) => c.m.eventId)).size} eventos distintos, ` +
+      `${new Set(escolhidos.map((c) => c.grupoId)).size} assuntos distintos.`,
+  );
+  console.log(
+    table(
+      ['papel', 'escolhidos', 'disponíveis', 'volume 24h mediano'],
+      [
+        ['tese', String(daTese.length), String(semEspelho.filter((c) => c.papel === 'tese').length), usd(medianaVol(daTese))],
+        [
+          'controle',
+          String(doControle.length),
+          String(semEspelho.filter((c) => c.papel === 'controle').length),
+          usd(medianaVol(doControle)),
+        ],
+      ],
+      [0],
+    ),
+  );
+  if (doControle.length < args.alvoControle) {
+    console.log(
+      `\n  AVISO: ${doControle.length} controles, alvo era ${args.alvoControle}. Não afrouxei o piso de volume\n` +
+        '  para completar: controle que não negocia não serve de comparação, que é a razão de ele existir.',
+    );
+  }
   if (escolhidos.length < args.n) {
     console.log(
       `  AVISO: a janela não tem ${args.n} mercados que passem nos filtros E caibam nos tetos.\n` +
-        '  Isso é resultado, não falha: significa que o universo operável de 4–8 semanas é mais estreito\n' +
-        '  do que a lista pedida. Afrouxar teto ou piso é decisão de quem aprova.',
+        '  Isso é resultado, não falha: o universo operável de 4–8 semanas é mais estreito que a lista pedida.\n' +
+        '  Afrouxar teto ou piso é decisão de quem aprova, e o custo de afrouxar está no funil acima.',
     );
   }
 
@@ -909,18 +1370,28 @@ async function relatorio(
     const { mkdir, writeFile } = await import('node:fs/promises');
     const { dirname } = await import('node:path');
 
-    const linhas = escolhidos.map((c, i) => {
+    // A ordem da SAÍDA não é a ordem da seleção. O controle é escolhido primeiro
+    // (é cota, e por volume), mas quem lê a lista quer ver a tese primeiro, do
+    // mais comprido para o mais curto — é a ordem em que a proxy fala.
+    const ordenados = [
+      ...daTese.sort((a, b) => b.descLen - a.descLen),
+      ...doControle.sort((a, b) => b.volume24h - a.volume24h),
+    ];
+
+    const linhas = ordenados.map((c, i) => {
       const link =
         c.m.eventSlug === null || c.m.eventSlug === ''
           ? `https://polymarket.com/market/${c.m.slug}`
           : `https://polymarket.com/event/${c.m.eventSlug}/${c.m.slug}`;
       const celulas = [
         String(i + 1),
+        c.papel,
         c.m.question.replace(/\|/g, '\\|'),
+        `**${usd(c.volume24h)}**`,
+        c.assunto,
         c.categoria,
         num(c.preco),
         usd(c.liquidez),
-        usd(c.volume24h),
         dia(c.m.endDate),
         String(c.descLen),
         `[abrir](${link})`,
@@ -934,7 +1405,7 @@ async function relatorio(
     const acimaDaMediana = escolhidos.filter((c) => c.descLen > qUniverso.mediana).length;
 
     const md = [
-      '# Radar — lista candidata',
+      '# Radar — lista candidata v2',
       '',
       `Preços lidos em ${coletadaEm} por \`scripts/montar-lista-radar.ts\`. **Nada foi marcado ` +
         'como `tracked`** — a lista existe para ser aprovada, e marcar é escrita no banco (H4).',
@@ -944,24 +1415,33 @@ async function relatorio(
       `- Mercados **abertos** (\`closed=false, active=true, archived=false\`) com \`endDate\` entre ` +
         `${dia(de)} e ${dia(ate)} — ${args.semanaMin} a ${args.semanaMax} dias.`,
       `- Preço do YES entre ${args.precoMin} e ${args.precoMax}.`,
-      `- Liquidez ≥ ${usd(args.liqMin)} USD.` +
+      `- Liquidez ≥ ${usd(args.liqMin)} USD e **volume 24h ≥ ${usd(args.vol24Min)} USD**.` +
         (args.book ? `  Book de dois lados com spread ≤ ${args.spreadMax}.` : '  Sanidade de book DESLIGADA.'),
-      `- Descartados os mercados cujo \`endDate\` cai depois do limite externo que a própria regra nomeia.`,
-      `- Ordenados por tamanho da \`description\`, com teto de ${args.tetoCategoria} por categoria e ` +
-        `${args.tetoEvento} por evento — ${new Set(escolhidos.map((c) => c.m.eventId)).size} eventos distintos.`,
+      `- Espelhos removidos: dentro do mesmo evento, dois mercados com YES somando 0,97–1,03 são um só. ` +
+        `Caíram ${descartadosEspelho.size}.`,
+      `- Tetos: ${args.tetoAssunto} por assunto, ${args.tetoEvento} por evento, ${args.tetoCategoria} por categoria — ` +
+        `${new Set(escolhidos.map((c) => c.grupoId)).size} assuntos e ` +
+        `${new Set(escolhidos.map((c) => c.m.eventId)).size} eventos distintos.`,
+      '',
+      '## Os dois papéis',
+      '',
+      `**tese** (${daTese.length}, volume mediano ${usd(medianaVol(daTese))}) — regra acima de ${args.cortePapel} ` +
+        'caracteres: ressalva, fonte nomeada, cláusula de escape. É onde ler com cuidado deveria dar vantagem.',
+      '',
+      `**controle** (${doControle.length}, volume mediano ${usd(medianaVol(doControle))}) — regra curta porque ` +
+        'delega a resolução a um placar: resultado oficial, decisão anunciada, score final, feed de preço. ' +
+        'Ler com atenção não deveria ajudar. Se a vantagem aparecer igual nos dois lados, o que se achou foi ' +
+        'sorte, não leitura — é para isso que o controle está aqui, e ele passa no mesmo piso de volume.',
       '',
       `Universo da janela: ${universo.length} mercados. Passaram nos filtros: ${passaram.length}. ` +
-        `Mediana da descrição: ${qUniverso.mediana} (universo) → ${qEscolhidos.mediana} (escolhidos), ${num(razao)}×.`,
-      '',
-      `**Onde a proxy para de discriminar.** ${acimaDaMediana} dos ${escolhidos.length} têm regra mais comprida ` +
-        `que a mediana do universo (${qUniverso.mediana} caracteres); os outros ${escolhidos.length - acimaDaMediana} ` +
-        'entraram porque as vagas sobraram depois dos tetos, não porque a regra deles seja complicada. ' +
-        'O topo da lista é onde a tese vive; a cauda é preenchimento, e vale ler como tal.',
+        `Depois de espelho e tetos: ${escolhidos.length}. ` +
+        `Mediana da descrição: ${qUniverso.mediana} (universo) → ${qEscolhidos.mediana} (escolhidos), ${num(razao)}×; ` +
+        `${acimaDaMediana} dos ${escolhidos.length} estão acima da mediana do universo.`,
       '',
       '## Os mercados',
       '',
-      '| # | pergunta | categoria | preço | liquidez | vol 24h | prazo | desc | link |',
-      '| --- | --- | --- | ---: | ---: | ---: | --- | ---: | --- |',
+      '| # | papel | pergunta | **vol 24h** | assunto | categoria | preço | liquidez | prazo | desc | link |',
+      '| --- | --- | --- | ---: | --- | --- | ---: | ---: | --- | ---: | --- |',
       ...linhas,
       '',
     ].join('\n');

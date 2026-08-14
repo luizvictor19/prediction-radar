@@ -180,6 +180,160 @@ export async function fetchEventsBySlugs(
   return get<GammaEvent[]>(url);
 }
 
+// ---------------------------------------------------------------------------
+// O universo do radar: por TAG, e não por varredura de calendário
+// ---------------------------------------------------------------------------
+
+/**
+ * O id numérico de uma tag, a partir do slug.
+ *
+ * Existe porque `/markets` só entende `tag_id`. Medido em 2026-08-13:
+ * `tag_slug=ai` em `/markets` devolve 200 e a MESMA página que a chamada sem
+ * filtro nenhum — o parâmetro é ignorado em silêncio, e um coletor que
+ * acreditasse nele vigiaria a lista inteira do Polymarket achando que estava
+ * lendo só IA. Em `/events` o `tag_slug` funciona; são endpoints diferentes.
+ *
+ * `null` quando a tag não existe. O chamador decide se isso é bug de config ou
+ * tag renomeada — aqui não dá para saber.
+ */
+export async function fetchTagIdBySlug(slug: string): Promise<string | null> {
+  try {
+    const tag = await get<{ id?: string | number } | null>(
+      `${GAMMA_URL}/tags/slug/${encodeURIComponent(slug)}`,
+    );
+    const id = tag?.id;
+    return id == null ? null : String(id);
+  } catch (err) {
+    if (err instanceof GammaHttpError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Uma página de markets de uma tag, dentro de uma janela de prazo.
+ *
+ * Quatro parâmetros do servidor fazem o trabalho pesado, e a diferença entre
+ * eles importa (medido em 2026-08-13):
+ *
+ *   `tag_id`             funciona. É o recorte de CATEGORIA.
+ *   `end_date_min/max`   funcionam, inclusive em `/events`.
+ *   `liquidity_num_min`  funciona.
+ *   `volume_24hr_min`    NÃO funciona — aceito e ignorado. 63 dos 100 markets
+ *                        da primeira página voltaram abaixo do piso pedido.
+ *
+ * `orderByLiquidity` é o que torna a paginação BARATA e CORRETA ao mesmo tempo,
+ * e sem ele o coletor estava errado dos dois jeitos. Sem ordenação, quatro das
+ * doze tags do radar saturam o teto de offset 2000 (crypto, elections, politics
+ * e sports devolvem 2100 markets na janela de 180 dias): o universo vinha
+ * truncado numa ordem que a Gamma não promete, então o corte por liquidez era
+ * feito sobre meia lista. E custava 155 chamadas / 107 MB por renovação.
+ *
+ * Com `order=liquidityNum&ascending=false` a ordem é monotônica DENTRO e ENTRE
+ * páginas (medido: página 1 termina em 36.446 e a 2 começa em 35.365), então
+ * quem quer os N maiores de uma tag lê ceil(N/100) páginas e prova que não
+ * perdeu nada. `order=liquidity` NÃO serve: ordena pela coluna texto e sai não
+ * monotônica.
+ *
+ * `limit` satura em 100 — pedir 500 devolve 100, sem erro.
+ */
+export async function fetchMarketsByTag(params: {
+  tagId: string;
+  endDateMin: string;
+  endDateMax: string;
+  minLiquidity?: number;
+  limit?: number;
+  offset?: number;
+  orderByLiquidity?: boolean;
+}): Promise<GammaMarket[]> {
+  const {
+    tagId,
+    endDateMin,
+    endDateMax,
+    minLiquidity,
+    limit = 100,
+    offset = 0,
+    orderByLiquidity = true,
+  } = params;
+
+  const query = new URLSearchParams({
+    closed: 'false',
+    active: 'true',
+    archived: 'false',
+    tag_id: tagId,
+    end_date_min: endDateMin,
+    end_date_max: endDateMax,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (minLiquidity !== undefined) query.set('liquidity_num_min', String(minLiquidity));
+  if (orderByLiquidity) {
+    query.set('order', 'liquidityNum');
+    query.set('ascending', 'false');
+  }
+
+  return get<GammaMarket[]>(`${GAMMA_URL}/markets?${query.toString()}`);
+}
+
+/**
+ * Teto de tokens por chamada ao `POST /books`.
+ *
+ * Medido em 2026-08-13, todos 200 e com a lista completa de volta:
+ *
+ *    50 tokens ->  173 KB, 352ms
+ *   100 tokens ->  342 KB, 457ms
+ *   200 tokens ->  642 KB, 668ms
+ *   300 tokens ->  916 KB, 636ms
+ *   500 tokens -> 1284 KB, 850ms
+ *
+ * Ou seja: o custo por token CAI com o lote (3,5 KB/token a 50, 2,6 KB a 500) e
+ * o limite não foi encontrado. 250 é metade do maior valor confirmado — margem
+ * deliberada, porque um limite não documentado pode mudar sem aviso e o preço
+ * de errar aqui é o ciclo inteiro sem foto. Com ele, 300 mercados custam 2
+ * chamadas em vez de 6.
+ */
+export const MAX_TOKENS_PER_BOOK_REQUEST = 250;
+
+/**
+ * Os livros de vários tokens numa requisição só.
+ *
+ * O que o `GET /book` faz para um token, este faz para 50 — e é a diferença
+ * entre 150 requisições por foto e 3. O corpo é a lista de `{token_id}`; a
+ * resposta vem na mesma forma de `ClobOrderbook`, com `asset_id` para reparear.
+ *
+ * Ordenação dos níveis, medida e contra-intuitiva: `bids` vem CRESCENTE e `asks`
+ * DECRESCENTE — o melhor de cada lado é o ÚLTIMO elemento. Ler o primeiro
+ * inverte o spread inteiro sem dar erro (ver `bestLevels`).
+ */
+export async function fetchBooks(tokenIds: readonly string[]): Promise<ClobOrderbook[]> {
+  if (tokenIds.length === 0) return [];
+  if (tokenIds.length > MAX_TOKENS_PER_BOOK_REQUEST) {
+    throw new Error(
+      `fetchBooks: ${tokenIds.length} tokens excede o máximo de ${MAX_TOKENS_PER_BOOK_REQUEST}`,
+    );
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${CLOB_URL}/books`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(tokenIds.map(id => ({ token_id: id }))),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new GammaHttpError(res.status, `${CLOB_URL}/books`);
+    return (await res.json()) as ClobOrderbook[];
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Timeout after ${FETCH_TIMEOUT_MS}ms fetching ${CLOB_URL}/books`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * @deprecated Gamma API ignores negRiskMarketID as a server-side filter — returns the full
  * paginated universe instead. Use DB aggregation (events table) for group size checks.

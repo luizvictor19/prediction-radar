@@ -5,6 +5,7 @@ import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { collectEarlyMarkets } from './collectors/early-markets-collector.js';
 import { collectDiscovery } from './collectors/discovery-collector.js';
 import { collectWatchlist } from './collectors/watchlist-collector.js';
+import { collectRadar } from './collectors/radar-collector.js';
 import { detectResolvedMarkets } from './collectors/resolved-detector.js';
 import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
@@ -168,6 +169,21 @@ async function main(): Promise<void> {
   // aplicar migration.
   cron.schedule('*/5 * * * *', () => {
     void runEsportsAnalyst().catch(err => console.error('[cron esports_analyst]', err));
+  });
+
+  // Coletor do radar: a lista viva de mercados que o dono consegue julgar, e a
+  // série de preço dela. Nasce desligado (`radar_collector_enabled`).
+  //
+  // O tick de 5 min NÃO é a cadência de nada. Quem decide são os dois intervalos
+  // da config — foto a cada 15 min, roster a cada 6h — e o tick só precisa ser
+  // mais rápido que o menor deles. Mesmo desenho da watchlist.
+  //
+  // Sem execução no start, como o resolver e o enricher: o primeiro ciclo é o
+  // mais caro que existe (renova o roster inteiro, ~30 chamadas à Gamma) e o
+  // boot já dispara nove outras cargas contra o mesmo Postgres. O que se ganha
+  // esperando até 5 minutos é nada: a série é de dias, não de minutos.
+  cron.schedule('*/5 * * * *', () => {
+    void collectRadar().catch(err => console.error('[cron radar]', err));
   });
 
   // Partições de `esports_snapshots` (spec 000, item 3): cria as dos próximos

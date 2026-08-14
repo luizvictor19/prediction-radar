@@ -224,6 +224,22 @@ const MONTHS = new Set([
 ]);
 
 /**
+ * Sobreposição de Jaccard entre dois conjuntos de tokens.
+ *
+ * Estava embutida em `generateCandidates` e saiu para o escopo do módulo quando
+ * `montar-lista-radar.ts` precisou da MESMA medida para agrupar mercados por
+ * assunto. Duas implementações de "quão parecidos são estes dois textos" é como
+ * se acaba com dois limiares que se chamam 0,4 e não significam a mesma coisa.
+ */
+export function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let hit = 0;
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  for (const t of small) if (big.has(t)) hit++;
+  return hit / (a.size + b.size - hit);
+}
+
+/**
  * Entidades de uma pergunta: nomes próprios, tickers, números e datas.
  *
  * Regex e heurística, sem modelo — é a camada 2 e ela tem que ser grátis. O
@@ -583,14 +599,6 @@ export function generateCandidates(
       else posting.push(i);
     }
   });
-
-  const jaccard = (a: Set<string>, b: Set<string>): number => {
-    if (a.size === 0 || b.size === 0) return 0;
-    let hit = 0;
-    const [small, big] = a.size <= b.size ? [a, b] : [b, a];
-    for (const t of small) if (big.has(t)) hit++;
-    return hit / (a.size + b.size - hit);
-  };
 
   const scored = new Set<number>();
   const edges = new Map<number, number[]>();
