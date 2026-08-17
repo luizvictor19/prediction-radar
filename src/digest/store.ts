@@ -1,6 +1,19 @@
 import { supabase } from '../lib/supabase.js';
+import { keyOf, type DigestedIndex } from './leituras.js';
 import type { DigestResult } from './digest.js';
 import type { DigestInput } from './prompts.js';
+
+// As chaves e as perguntas sobre elas moram em `leituras.ts`, que não importa o
+// cliente do banco e por isso pode ter teste sem rede. Reexportadas aqui porque
+// quem consome a digestão consome este módulo.
+export {
+  jaCarregado,
+  jaDigerido,
+  leiturasDoTexto,
+  proximaLeitura,
+  type DigestedIndex,
+  type DigestedKey,
+} from './leituras.js';
 
 /**
  * A leitura do que digerir, e o payload do que gravar.
@@ -143,22 +156,16 @@ export async function readMarketsToDigest(): Promise<MarketToDigest[]> {
   return markets;
 }
 
-export interface DigestedKey {
-  eventId: string;
-  descriptionSha256: string;
+interface DigestedRow {
+  event_id: string;
+  description_sha256: string;
   model: string;
-  promptVersion: string;
+  prompt_version: string;
+  leitura_n?: number;
 }
 
-export interface DigestedIndex {
-  /** `false` enquanto a migration não estiver aplicada. */
-  tabelaExiste: boolean;
-  keys: Set<string>;
-}
-
-function keyOf(k: DigestedKey): string {
-  return `${k.eventId}|${k.descriptionSha256}|${k.model}|${k.promptVersion}`;
-}
+const COLUNAS_SEM_LEITURA = 'event_id, description_sha256, model, prompt_version';
+const COLUNAS_COM_LEITURA = `${COLUNAS_SEM_LEITURA}, leitura_n`;
 
 /**
  * O que já foi digerido, para o laço não pagar duas vezes pelo mesmo texto.
@@ -168,47 +175,94 @@ function keyOf(k: DigestedKey): string {
  * de não envelhecer em silêncio, e ele mora aqui em uma linha.
  *
  * Tabela ausente não é erro: até o apply, tudo está por digerir.
+ *
+ * A COLUNA ausente também não é erro aqui — mas é impedimento lá na frente. A
+ * primeira página é pedida com `leitura_n`; se o PostgREST recusar, o mesmo
+ * pedido sai sem ela e `colunaLeituraN` fica `false`. A distinção importa
+ * porque as duas ausências têm consequências opostas: sem TABELA tudo está por
+ * digerir e o degrau 1 roda; sem COLUNA o nivelamento não pode rodar, porque
+ * ele grava duas leituras da mesma chave.
  */
 export async function readDigested(): Promise<DigestedIndex> {
   const keys = new Set<string>();
+  const keysComLeitura = new Set<string>();
+  const leiturasPorTexto = new Map<string, number>();
+  const maxLeituraPorChave = new Map<string, number>();
+  const combinacoes = new Map<string, number>();
+  let colunaLeituraN = true;
+  let colunas = COLUNAS_COM_LEITURA;
 
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('market_rule_digests')
-      .select('event_id, description_sha256, model, prompt_version')
+      .select(colunas)
       .order('id')
       .range(from, from + PAGE - 1);
 
-    if (error) {
-      return { tabelaExiste: false, keys };
+    // Uma única tentativa de recuo, e só na primeira página: se a coluna não
+    // existe, o erro vem já na primeira e o custo é um round-trip. Recuar em
+    // qualquer página faria uma falha transitória no meio da paginação virar
+    // "a coluna não existe", que é um diagnóstico errado e caro.
+    if (error && colunaLeituraN && from === 0) {
+      colunaLeituraN = false;
+      colunas = COLUNAS_SEM_LEITURA;
+      ({ data, error } = await supabase
+        .from('market_rule_digests')
+        .select(colunas)
+        .order('id')
+        .range(from, from + PAGE - 1));
     }
 
-    const rows = (data ?? []) as Array<{
-      event_id: string;
-      description_sha256: string;
-      model: string;
-      prompt_version: string;
-    }>;
+    if (error) {
+      return {
+        tabelaExiste: false,
+        colunaLeituraN: false,
+        keys,
+        keysComLeitura,
+        leiturasPorTexto,
+        maxLeituraPorChave,
+        combinacoes,
+      };
+    }
+
+    const rows = (data ?? []) as unknown as DigestedRow[];
 
     for (const row of rows) {
-      keys.add(
-        keyOf({
-          eventId: row.event_id,
-          descriptionSha256: row.description_sha256,
-          model: row.model,
-          promptVersion: row.prompt_version,
-        }),
+      const chave = keyOf({
+        eventId: row.event_id,
+        descriptionSha256: row.description_sha256,
+        model: row.model,
+        promptVersion: row.prompt_version,
+      });
+      keys.add(chave);
+
+      leiturasPorTexto.set(
+        row.description_sha256,
+        (leiturasPorTexto.get(row.description_sha256) ?? 0) + 1,
       );
+
+      // Sem a coluna, toda linha existente É a leitura 1 — a unique antiga
+      // garantia uma linha por chave de 4 partes. O `?? 1` não é chute.
+      const n = row.leitura_n ?? 1;
+      keysComLeitura.add(`${chave}|${n}`);
+
+      const combo = `${row.model}|${row.prompt_version}`;
+      combinacoes.set(combo, (combinacoes.get(combo) ?? 0) + 1);
+      maxLeituraPorChave.set(chave, Math.max(maxLeituraPorChave.get(chave) ?? 0, n));
     }
 
     if (rows.length < PAGE) break;
   }
 
-  return { tabelaExiste: true, keys };
-}
-
-export function jaDigerido(index: DigestedIndex, key: DigestedKey): boolean {
-  return index.keys.has(keyOf(key));
+  return {
+    tabelaExiste: true,
+    colunaLeituraN,
+    keys,
+    keysComLeitura,
+    leiturasPorTexto,
+    maxLeituraPorChave,
+    combinacoes,
+  };
 }
 
 export interface DigestRows {
@@ -235,11 +289,18 @@ export function buildDigestRows(
   result: DigestResult,
   promptVersion: string,
   model: string,
+  /**
+   * O índice da leitura. Default 1 porque é o que toda passada da escada faz —
+   * uma leitura por (mercado, texto, modelo, versão). Só o nivelamento manda
+   * outro valor, e ele o calcula com `proximaLeitura`.
+   */
+  leituraN = 1,
 ): DigestRows {
   return {
     digest: {
       event_id: market.eventId,
       description_sha256: result.descriptionSha256,
+      leitura_n: leituraN,
       resolve_sim: result.output.resolveSim,
       resolve_nao: result.output.resolveNao,
       fonte: result.output.fonte,

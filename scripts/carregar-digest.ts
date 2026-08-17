@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
 import { section, table } from './lib/probe-net.js';
 import { supabase } from '../src/lib/supabase.js';
-import { readDigested, jaDigerido, type DigestedIndex } from '../src/digest/store.js';
+import { readDigested, jaCarregado, type DigestedIndex } from '../src/digest/store.js';
 import { tiposDe } from '../src/digest/prompts.js';
 import { SEVERIDADES } from '../src/digest/prompts.js';
 
@@ -25,7 +25,11 @@ import { SEVERIDADES } from '../src/digest/prompts.js';
  *
  *   npm run carregar-digest -- --arquivo=probes/digest/degrau-3-v4.json
  *   npm run carregar-digest -- --arquivo=probes/digest/degrau-3-v4.json --confirmar
- *   npm run carregar-digest -- --verificar
+ *   npm run carregar-digest -- --verificar [--arquivo=CAMINHO]
+ *
+ * O `--verificar` confere o banco CONTRA o artefato, e por isso aceita
+ * `--arquivo`: sem o número esperado de filhas, "esta regra não tinha pegadinha"
+ * e "as pegadinhas dela não gravaram" são a mesma linha na tela.
  *
  * ## O que este script NÃO faz
  *
@@ -164,8 +168,24 @@ function validar(entradas: readonly Entrada[]): string[] {
   return problemas;
 }
 
+/**
+ * O índice da leitura de uma linha, com o default explícito.
+ *
+ * `?? 1` e não `String(...)`: os artefatos anteriores à `20260817163046` não
+ * têm o campo, e `String(undefined)` daria a chave `...|undefined`, que não
+ * casaria com a linha `leitura_n = 1` do banco. O resultado seria uma carga
+ * que regrava tudo achando que nada estava lá.
+ */
+function leituraDe(d: Record<string, unknown>): number {
+  const raw = d['leitura_n'];
+  const n = raw === undefined || raw === null ? 1 : Number(raw);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 function chaveDe(d: Record<string, unknown>): string {
-  return [d['event_id'], d['description_sha256'], d['model'], d['prompt_version']].join('|');
+  return [d['event_id'], d['description_sha256'], d['model'], d['prompt_version'], leituraDe(d)].join(
+    '|',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -183,16 +203,22 @@ interface Resultado {
 /**
  * Um lote: os pais, depois as filhas com o `digest_id` que o banco devolveu.
  *
- * O casamento entre pai devolvido e filhas é pela CHAVE de quatro colunas
- * (evento, hash, modelo, versão), e não pela ordem do array. A ordem que o
- * PostgREST devolve não é promessa de contrato, e casar por posição é o tipo de
- * suposição que funciona em teste e troca as filhas de lugar em produção.
+ * O casamento entre pai devolvido e filhas é pela CHAVE de cinco colunas
+ * (evento, hash, modelo, versão, leitura), e não pela ordem do array. A ordem
+ * que o PostgREST devolve não é promessa de contrato, e casar por posição é o
+ * tipo de suposição que funciona em teste e troca as filhas de lugar em
+ * produção.
+ *
+ * `leitura_n` entrou na chave junto com a `20260817163046`. Sem ela, um lote de
+ * nivelamento — que traz a leitura 2 e a 3 do MESMO (evento, hash, modelo,
+ * versão) — teria duas linhas com a mesma chave, e as filhas da leitura 3
+ * seriam penduradas no `digest_id` da leitura 2. Silenciosamente.
  */
 async function carregarLote(lote: readonly Entrada[]): Promise<Resultado> {
   const { data, error } = await supabase
     .from('market_rule_digests')
     .insert(lote.map(e => e.digest))
-    .select('id, event_id, description_sha256, model, prompt_version');
+    .select('id, event_id, description_sha256, model, prompt_version, leitura_n');
 
   if (error !== null) throw new Error(`insert em market_rule_digests falhou: ${error.message}`);
 
@@ -246,40 +272,253 @@ async function carregarLote(lote: readonly Entrada[]): Promise<Resultado> {
 }
 
 /**
- * O reparo: digestões gravadas que ficaram sem nenhuma filha.
+ * O reparo: conferir o que está no banco contra o que o artefato mandou gravar.
  *
  * Só existe porque supabase-js não abre transação. Uma queda entre o insert do
  * pai e o das filhas deixa um estado que a chave de deduplicação considera
  * "pronto" — e é a única forma de esta carga perder dado em silêncio.
+ *
+ * A versão anterior procurava pai sem filho, e por isso não sabia responder a
+ * única pergunta que importa. `will-luis-diaz-win-the-2026-ballon-dor` saiu como
+ * "sem filhas" na primeira conferência: o artefato traz zero pegadinhas e zero
+ * ambiguidades para ele — regra de três parágrafos, o modelo não achou nada. É
+ * vazio LEGÍTIMO. Uma digestão cujas quatro pegadinhas se perderam entre um
+ * insert e o outro aparecia exatamente igual na mesma lista. "Não tinha filho" e
+ * "o filho não gravou" só se distinguem contra o artefato, que é onde está o
+ * número esperado — então é contra ele que se confere.
+ *
+ * O que a conferência classifica:
+ *   - `ok`            — a contagem no banco é a do artefato (inclui 0 = 0).
+ *   - `PERDA`         — o banco tem MENOS filhas que o artefato. É o defeito.
+ *   - `sobra`         — o banco tem MAIS. Não é perda, mas é insert repetido.
+ *   - `não conferível`— digestão no banco que não está neste artefato (veio de
+ *                       outra passada). Não é acusação; é falta de referência.
+ *   - `não carregada` — entrada do artefato que não chegou ao banco.
  */
-async function verificarOrfas(): Promise<void> {
-  const { data: digests, error } = await supabase
-    .from('market_rule_digests')
-    .select('id, event_id, prompt_version')
-    .limit(2000);
-  if (error !== null) throw new Error(`leitura falhou: ${error.message}`);
+interface Esperado {
+  eventId: string;
+  pegadinhas: number;
+  ambiguidades: number;
+}
 
-  const linhas = (digests ?? []) as Array<Record<string, unknown>>;
-  const semFilhas: string[] = [];
+/** Uma divergência entre banco e artefato, ainda sem slug — ele vem depois. */
+interface Divergencia {
+  digestId: string;
+  eventId: string;
+  pegadinhas: number;
+  ambiguidades: number;
+  esperaPegadinhas: number;
+  esperaAmbiguidades: number;
+}
 
-  for (const d of linhas) {
+function chaveDigest(k: {
+  eventId: string;
+  sha: string;
+  model: string;
+  promptVersion: string;
+  leituraN: number;
+}): string {
+  return `${k.eventId}|${k.sha}|${k.model}|${k.promptVersion}|${k.leituraN}`;
+}
+
+/**
+ * As filhas, contadas em memória e não com um `count` por digestão.
+ *
+ * 752 digestões vezes duas tabelas seriam 1504 idas ao banco em série para
+ * somar números que cabem numa página cada. Paginado por `digest_id` — a coluna
+ * do índice — e não por `id`, porque a ordem que importa aqui é a do
+ * agrupamento.
+ */
+async function contarFilhas(tabela: string): Promise<Map<string, number>> {
+  const contagem = new Map<string, number>();
+  const PAGINA = 1000;
+
+  for (let from = 0; ; from += PAGINA) {
+    const { data, error } = await supabase
+      .from(tabela)
+      .select('digest_id')
+      .order('digest_id')
+      .range(from, from + PAGINA - 1);
+    if (error !== null) throw new Error(`leitura de ${tabela} falhou: ${error.message}`);
+
+    const rows = (data ?? []) as Array<{ digest_id: string }>;
+    for (const r of rows) contagem.set(r.digest_id, (contagem.get(r.digest_id) ?? 0) + 1);
+    if (rows.length < PAGINA) break;
+  }
+
+  return contagem;
+}
+
+/**
+ * O slug dos eventos que o relatório vai imprimir.
+ *
+ * O artefato guarda `event_id`, não slug — e um UUID não diz que mercado é.
+ * A busca é `where id in (...)`, chave primária, em pedaços de 50: dezenas de
+ * linhas por índice único, não os 711 MB de `events`. E só roda para o que vai
+ * ser impresso — nunca para as 752.
+ */
+async function slugsDe(ids: readonly string[]): Promise<Map<string, string>> {
+  const slugs = new Map<string, string>();
+  if (ids.length === 0) return slugs;
+
+  for (let i = 0; i < ids.length; i += 50) {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, slug')
+      .in('id', ids.slice(i, i + 50));
+    if (error !== null) throw new Error(`leitura de events falhou: ${error.message}`);
+    for (const r of (data ?? []) as Array<{ id: string; slug: string | null }>) {
+      if (r.slug !== null) slugs.set(r.id, r.slug);
+    }
+  }
+
+  return slugs;
+}
+
+async function verificarContraArtefato(arquivo: string): Promise<void> {
+  const raw = JSON.parse(await readFile(arquivo, 'utf8')) as unknown[];
+  const entradas = raw.filter(ehEntrada);
+
+  const esperado = new Map<string, Esperado>();
+  for (const e of entradas) {
+    const chave = chaveDigest({
+      eventId: String(e.digest['event_id']),
+      sha: String(e.digest['description_sha256']),
+      model: String(e.digest['model']),
+      promptVersion: String(e.digest['prompt_version']),
+      leituraN: leituraDe(e.digest),
+    });
+    esperado.set(chave, {
+      eventId: String(e.digest['event_id']),
+      pegadinhas: e.pegadinhas.length,
+      ambiguidades: e.ambiguidades.length,
+    });
+  }
+
+  const digests: Array<Record<string, unknown>> = [];
+  const PAGINA = 500;
+  for (let from = 0; ; from += PAGINA) {
+    const { data, error } = await supabase
+      .from('market_rule_digests')
+      .select('id, event_id, description_sha256, model, prompt_version, leitura_n')
+      .order('id')
+      .range(from, from + PAGINA - 1);
+    if (error !== null) throw new Error(`leitura falhou: ${error.message}`);
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    digests.push(...rows);
+    if (rows.length < PAGINA) break;
+  }
+
+  const [nPegadinhas, nAmbiguidades] = await Promise.all([
+    contarFilhas('digest_pegadinhas'),
+    contarFilhas('digest_ambiguidades'),
+  ]);
+
+  const perdas: Divergencia[] = [];
+  const sobras: Divergencia[] = [];
+  const naoConferiveis: string[] = [];
+  const vistas = new Set<string>();
+  let ok = 0;
+  let vaziosLegitimos = 0;
+
+  for (const d of digests) {
     const id = String(d['id']);
-    const [{ count: nPeg }, { count: nAmb }] = await Promise.all([
-      supabase.from('digest_pegadinhas').select('id', { count: 'exact', head: true }).eq('digest_id', id),
-      supabase.from('digest_ambiguidades').select('id', { count: 'exact', head: true }).eq('digest_id', id),
-    ]);
-    if ((nPeg ?? 0) === 0 && (nAmb ?? 0) === 0) semFilhas.push(`${id}  event=${String(d['event_id'])}`);
+    const chave = chaveDigest({
+      eventId: String(d['event_id']),
+      sha: String(d['description_sha256']),
+      model: String(d['model']),
+      promptVersion: String(d['prompt_version']),
+      leituraN: leituraDe(d),
+    });
+    vistas.add(chave);
+
+    const alvo = esperado.get(chave);
+    if (alvo === undefined) {
+      naoConferiveis.push(`${id}  event=${String(d['event_id'])}  ${String(d['prompt_version'])}`);
+      continue;
+    }
+
+    const peg = nPegadinhas.get(id) ?? 0;
+    const amb = nAmbiguidades.get(id) ?? 0;
+    const div: Divergencia = {
+      digestId: id,
+      eventId: alvo.eventId,
+      pegadinhas: peg,
+      ambiguidades: amb,
+      esperaPegadinhas: alvo.pegadinhas,
+      esperaAmbiguidades: alvo.ambiguidades,
+    };
+
+    if (peg < alvo.pegadinhas || amb < alvo.ambiguidades) {
+      perdas.push(div);
+      continue;
+    }
+    if (peg > alvo.pegadinhas || amb > alvo.ambiguidades) {
+      sobras.push(div);
+      continue;
+    }
+    ok += 1;
+    if (alvo.pegadinhas === 0 && alvo.ambiguidades === 0) vaziosLegitimos += 1;
   }
 
-  console.log(section('Digestões sem nenhuma filha'));
-  if (semFilhas.length === 0) {
-    console.log(`  nenhuma — as ${linhas.length} digestões têm pegadinha ou ambiguidade.`);
-    console.log('  (zero dos dois é possível de verdade: regra simples existe. Confira no relatório');
-    console.log('   antes de apagar qualquer coisa.)');
-    return;
+  const naoCarregadas = [...esperado.entries()].filter(([chave]) => !vistas.has(chave));
+
+  console.log(section(`Conferência contra o artefato — ${arquivo}`));
+  console.log(
+    table(
+      ['medida', 'valor'],
+      [
+        ['entradas no artefato', String(entradas.length)],
+        ['digestões no banco', String(digests.length)],
+        ['batem com o artefato', String(ok)],
+        ['  das quais vazio legítimo', String(vaziosLegitimos)],
+        ['PERDA (falta filha)', String(perdas.length)],
+        ['sobra (filha a mais)', String(sobras.length)],
+        ['não conferíveis (outro artefato)', String(naoConferiveis.length)],
+        ['não carregadas', String(naoCarregadas.length)],
+      ],
+      [0],
+    ),
+  );
+
+  const paraImprimir = naoCarregadas.slice(0, 40).map(([, alvo]) => alvo);
+  const slugs = await slugsDe([
+    ...new Set([...perdas, ...sobras, ...paraImprimir].map(x => x.eventId)),
+  ]);
+  const nome = (eventId: string): string => slugs.get(eventId) ?? `event=${eventId}`;
+  const contagens = (d: Divergencia): string =>
+    `pegadinhas ${d.pegadinhas}/${d.esperaPegadinhas}  ambiguidades ${d.ambiguidades}/${d.esperaAmbiguidades}`;
+
+  if (perdas.length > 0) {
+    console.log(section('PERDA — o banco tem menos filhas que o artefato'));
+    console.log('  Estas precisam de reparo: a digestão está gravada, e a chave de dedup a');
+    console.log('  considera pronta, então uma nova carga NÃO vai reinseri-las.');
+    for (const p of perdas) console.log(`    ${nome(p.eventId)}  ${contagens(p)}  digest=${p.digestId}`);
   }
-  console.log(`  ${semFilhas.length} de ${linhas.length}:`);
-  for (const s of semFilhas) console.log(`    ${s}`);
+
+  if (sobras.length > 0) {
+    console.log(section('Sobra — o banco tem mais filhas que o artefato'));
+    for (const s of sobras) console.log(`    ${nome(s.eventId)}  ${contagens(s)}  digest=${s.digestId}`);
+  }
+
+  if (naoCarregadas.length > 0) {
+    console.log(section('Não carregadas — estão no artefato, não estão no banco'));
+    for (const alvo of paraImprimir) {
+      console.log(`    ${nome(alvo.eventId)}  (${alvo.pegadinhas} peg, ${alvo.ambiguidades} amb)`);
+    }
+    if (naoCarregadas.length > 40) console.log(`    ... e mais ${naoCarregadas.length - 40}.`);
+  }
+
+  if (naoConferiveis.length > 0) {
+    console.log(section('Não conferíveis — no banco, fora deste artefato'));
+    console.log('  Vieram de outra passada. Rode com --arquivo= no artefato delas para conferir.');
+    for (const n of naoConferiveis.slice(0, 40)) console.log(`    ${n}`);
+    if (naoConferiveis.length > 40) console.log(`    ... e mais ${naoConferiveis.length - 40}.`);
+  }
+
+  if (perdas.length === 0 && naoCarregadas.length === 0) {
+    console.log(`\n  Nada a reparar deste artefato.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +535,7 @@ async function main(): Promise<void> {
   }
 
   if (parsed.verificar) {
-    await verificarOrfas();
+    await verificarContraArtefato(parsed.arquivo);
     return;
   }
 
@@ -338,15 +577,57 @@ async function main(): Promise<void> {
   }
   console.log(`  já no banco:         ${digeridos.keys.size} digestões`);
 
+  // A ARMADILHA do passo 2b, fechada aqui.
+  //
+  // Um artefato de nivelamento traz a leitura 2 e a 3 do MESMO (evento, hash,
+  // modelo, versão) — de propósito, é o que nivelar quer dizer. Com a coluna
+  // ausente, o insert não tem onde gravar o índice, as duas linhas colidem na
+  // unique antiga e a carga falha no meio, com parte gravada.
+  //
+  // Parar ANTES, com o motivo escrito, é a diferença entre um erro e um
+  // incidente.
+  const leiturasExtras = entradas.filter(e => leituraDe(e.digest) > 1).length;
+  if (leiturasExtras > 0 && !digeridos.colunaLeituraN) {
+    console.error(
+      `\n[${LABEL}] o artefato tem ${leiturasExtras} leituras com leitura_n > 1 e a coluna\n` +
+        '  market_rule_digests.leitura_n não existe no banco.\n' +
+        '  Aplique a 20260817163046_leitura_n_em_market_rule_digests.sql antes de carregar.\n' +
+        '  Nada foi gravado.',
+    );
+    process.exit(1);
+    return;
+  }
+
+  // `jaCarregado` (chave de CINCO partes) e não `jaDigerido` (quatro).
+  //
+  // Com `jaDigerido`, toda leitura de nivelamento seria pulada — o texto já foi
+  // digerido, a chave de quatro casa — e o script terminaria "com sucesso"
+  // tendo gravado zero. É a mesma família da migration que roda verde enquanto
+  // falha: o silêncio passando por resultado.
   const pendentes = entradas.filter(
     e =>
-      !jaDigerido(digeridos, {
-        eventId: String(e.digest['event_id']),
-        descriptionSha256: String(e.digest['description_sha256']),
-        model: String(e.digest['model']),
-        promptVersion: String(e.digest['prompt_version']),
-      }),
+      !jaCarregado(
+        digeridos,
+        {
+          eventId: String(e.digest['event_id']),
+          descriptionSha256: String(e.digest['description_sha256']),
+          model: String(e.digest['model']),
+          promptVersion: String(e.digest['prompt_version']),
+        },
+        leituraDe(e.digest),
+      ),
   );
+
+  // Zero pendentes com leituras extras no artefato é resultado legítimo — é a
+  // carga repetida do mesmo nivelamento. Fica DITO em vez de silencioso, porque
+  // "0 gravadas" e "0 porque a chave não distingue" imprimem o mesmo número, e
+  // só um deles é resultado.
+  if (pendentes.length === 0 && leiturasExtras > 0) {
+    console.log(
+      `\n  as ${leiturasExtras} leituras extras deste artefato já estão no banco, cada uma com o\n` +
+        '  seu leitura_n. Carga repetida, nada a gravar — e isto é a chave funcionando.',
+    );
+  }
 
   const problemas = validar(pendentes);
   console.log(

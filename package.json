@@ -40,6 +40,8 @@
     "polymarket:universe": "tsx scripts/probe-polymarket-universe.ts",
     "digerir": "tsx scripts/digerir-regras.ts",
     "carregar-digest": "tsx scripts/carregar-digest.ts",
+    "medir-consistencia": "tsx scripts/medir-consistencia.ts",
+    "nivelar": "tsx scripts/nivelar-leituras.ts",
     "radar:lista": "tsx scripts/montar-lista-radar.ts",
     "radar:coletor": "tsx scripts/radar-coletor.ts",
     "radar:categorias": "tsx scripts/radar-categorias.ts",
