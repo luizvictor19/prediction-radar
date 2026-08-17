@@ -1,0 +1,682 @@
+[
+  {
+    "digest": {
+      "event_id": "804602e9-926c-4b3f-9329-f0a6e80f2273",
+      "description_sha256": "65ffd83ee00a4bcbc021491d29260a4d6a99d2e4573c807773d1d871e735335b",
+      "resolve_sim": [
+        "Os EUA iniciarem uma ofensiva militar com a intenção de estabelecer controle sobre qualquer porção do território terrestre cubano até 31 de dezembro de 2026, 23:59 ET."
+      ],
+      "resolve_nao": [
+        "Se a condição de resolução SIM não for satisfeita até o prazo, o mercado resolve NÃO (complemento)."
+      ],
+      "fonte": "Consenso de fontes confiáveis",
+      "prazo": "December 31, 2026, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 65,
+      "tokens_output": 9618,
+      "tokens_cache_read": 3584,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002752,
+      "latency_ms": 81048
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A regra exige que a ofensiva tenha a intenção de estabelecer controle sobre território cubano. Ataques aéreos ou navais sem intenção de ocupar terra não resolvem SIM.",
+        "severidade": "muda_resultado",
+        "trecho": "intended to establish control over any portion of Cuban land territory",
+        "cenario": "Se os EUA realizarem apenas bombardeios aéreos, sem planos de ocupação terrestre, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A regra resolve SIM com o início da ofensiva, mesmo que o controle nunca seja estabelecido.",
+        "severidade": "muda_resultado",
+        "trecho": "commences a military offensive",
+        "cenario": "Se os EUA iniciarem uma invasão que seja repelida sem qualquer controle, quem leu só o título pode esperar NÃO pela falta de sucesso, mas a regra dá SIM no início da ofensiva."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Terra sob controle de facto dos EUA na criação do mercado é considerada território soberano dos EUA, não cubano. Ações em Guantánamo, por exemplo, não contam.",
+        "severidade": "muda_resultado",
+        "trecho": "land de facto controlled by Cuba or the United States as market creation, will be considered the sovereign territory of that country",
+        "cenario": "Se os EUA reforçarem sua base em Guantánamo, quem leu só o título espera SIM, mas a regra dá NÃO porque essa terra é considerada território dos EUA."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "leitura_a": "11:59 PM no horário padrão do leste (EST, UTC-5)",
+        "leitura_b": "11:59 PM no horário de verão do leste (EDT, UTC-4)"
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "consensus of credible sources",
+        "leitura_a": "Um consenso entre grandes veículos de imprensa relatando o mesmo fato",
+        "leitura_b": "Uma única fonte oficial (como o governo dos EUA) é suficiente, se for considerada confiável"
+      },
+      {
+        "ordinal": 3,
+        "tipo": "escopo_de_entidade",
+        "trecho": "land de facto controlled by Cuba or the United States",
+        "leitura_a": "Apenas territórios onde há presença militar ou ocupação física efetiva no momento da criação do mercado",
+        "leitura_b": "Inclui também territórios sob influência administrativa ou econômica dominante, mesmo sem presença militar"
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "29c912a7-bd36-4c85-9712-83f23fc5f217",
+      "description_sha256": "3cb4c0c0f4f1317e9013578f756a84c2d98a833d91d8af31fcf0f5f02314385e",
+      "resolve_sim": [
+        "Donald Trump renunciar ou ser removido do cargo de Presidente, ou deixar de ser Presidente dos Estados Unidos de forma permanente, até 31 de agosto de 2026, 23:59 ET.",
+        "Um anúncio de renúncia ou remoção de Donald Trump antes de 31 de agosto de 2026, 23:59 ET resolverá imediatamente para 'Sim', independentemente de quando a renúncia/remoção entre em vigor.",
+        "Invocação sustentada da Vigésima Quinta Emenda, Seção 4 (ou seja, se ambas as Casas do Congresso, por voto de dois terços, confirmarem a determinação do Vice-Presidente e do Gabinete de incapacidade presidencial) até 31 de agosto de 2026, 23:59 ET."
+      ],
+      "resolve_nao": [
+        "Se nenhuma das condições de 'Sim' ocorrer até 31 de agosto de 2026, 23:59 ET, o mercado resolve 'Não'.",
+        "Remoção temporária (por exemplo, invocação temporária da Seção 3 da 25ª Emenda ou invocação da Seção 4 não sustentada por ambas as Casas do Congresso) ou impeachment sem remoção não contam para 'Sim' e, portanto, resultam em 'Não'."
+      ],
+      "fonte": "Consenso de reportagens confiáveis",
+      "prazo": "August 31, 2026, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 51,
+      "tokens_output": 10440,
+      "tokens_cache_read": 3712,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002982,
+      "latency_ms": 84690
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A regra exige remoção permanente: afastamento temporário (como invocação da Seção 3 da 25ª Emenda) não conta, mesmo que o título sugira que qualquer saída valha.",
+        "severidade": "muda_resultado",
+        "trecho": "Only permanent removal from office will qualify.",
+        "cenario": "Se Trump for temporariamente afastado pela Seção 3 da 25ª Emenda por um dia, quem leu só o título espera 'Sim', mas a regra dá 'Não'."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "leitura_a": "11:59 PM Horário de Verão do Leste (EDT, UTC-4)",
+        "leitura_b": "11:59 PM Horário Padrão do Leste (EST, UTC-5)"
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "leitura_a": "Uma única reportagem crível já estabelece o fato.",
+        "leitura_b": "É necessário um acordo (consenso) entre múltiplas reportagens críveis."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "outro",
+        "trecho": "for any period of time",
+        "leitura_a": "Qualquer afastamento, mesmo temporário, conta como 'fora do cargo'.",
+        "leitura_b": "Apenas afastamento permanente conta, conforme esclarece a regra em 'Only permanent removal from office will qualify'."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "5c01b1d1-c4e9-46a1-9608-f08664233ab7",
+      "description_sha256": "0fba60e03908266ebca3e0912823008f81e7c17727c2f01637efc1e4a2c23df0",
+      "resolve_sim": [
+        "O 1º lugar da lista oficial Google Year in Search Global 'People' de 2026 for Lionel Messi."
+      ],
+      "resolve_nao": [
+        "Se a lista for publicada e o 1º lugar for outra pessoa que não Lionel Messi, o mercado resolve NÃO."
+      ],
+      "fonte": "A 'specified list' publicada por Google (a lista oficial Year in Search Global 'People' de 2026).",
+      "prazo": "March 31, 2027, 11:59 PM ET",
+      "anula_se": [
+        "Se Google não publicar a lista especificada até March 31, 2027, 11:59 PM ET, o mercado resolve para 'Other'."
+      ],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 41,
+      "tokens_output": 10464,
+      "tokens_cache_read": 3712,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002988,
+      "latency_ms": 90946
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O título sugere qualquer ranking de 'pessoa mais buscada'; a regra restringe à lista oficial Year in Search Global 'People' — outras métricas de busca não valem.",
+        "severidade": "muda_resultado",
+        "trecho": "Google’s official Year in Search Global \"People\" list for 2026",
+        "cenario": "Se uma medição de buscas do Google (não a lista Year in Search) mostrar Messi em 1º, mas a lista oficial apontar outro, quem leu só o título espera SIM, a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A posição só vale no recorte Global; rankings por país ou região não contam.",
+        "severidade": "muda_resultado",
+        "trecho": "with location selected to Global",
+        "cenario": "Se a lista global não tiver Messi em 1º, mas a lista de um país (ex.: Argentina) tiver, quem leu só o título espera SIM, a regra dá NÃO."
+      },
+      {
+        "ordinal": 3,
+        "texto": "O mercado pode resolver assim que a lista for divulgada, antes do fim de 2026 — não precisa esperar 31/12.",
+        "severidade": "muda_timing",
+        "trecho": "This market may resolve as soon as the specified list for 2026 is released.",
+        "cenario": "Se a lista sair em dezembro de 2026, o mercado resolve na data de publicação, não no último dia do ano."
+      },
+      {
+        "ordinal": 4,
+        "texto": "Se a lista não for publicada, o desfecho é 'Other' — não é SIM nem NÃO.",
+        "severidade": "muda_resultado",
+        "trecho": "If Google does not release the specified list by March 31, 2027, 11:59 PM ET, this market will resolve to “Other.”",
+        "cenario": "Se a lista não for lançada até o prazo, quem leu o título espera que o mercado resolva NÃO (já que Messi não foi confirmado #1), mas a regra manda resolver 'Other'."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "leitura_a": "23:59 EDT (horário de verão da costa leste dos EUA)",
+        "leitura_b": "23:59 EST (horário padrão da costa leste dos EUA)"
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "7b20a21b-f187-4309-82e1-81247f62646d",
+      "description_sha256": "2d9294ce6d47acf5f3c03f0cb63f83e293cdcec1567f8766ff36201387b904b1",
+      "resolve_sim": [
+        "A IMF Portwatch publica uma média móvel diária de 7 dias de chamadas de trânsito ('Arrivals of Ships') para o Estreito de Ormuz igual ou acima de 60, e o primeiro dado qualificante publicado ocorre no mês de dezembro de 2026.",
+        "Contam apenas navios de contêineres, granel seco, roll-on/roll-off, carga geral e petroleiros; navios não reportados pela IMF Portwatch não são considerados."
+      ],
+      "resolve_nao": [
+        "O primeiro dado qualificante (média móvel de 7 dias ≥ 60) ocorre em um mês anterior a dezembro de 2026, fazendo o mercado resolver NÃO imediatamente.",
+        "Nenhum dado qualificante é publicado até que os dados de 31/12/2026 sejam publicados (ou, se não publicados, até 31/01/2027), resolvendo para 'No Return to Normal Traffic in 2026'."
+      ],
+      "fonte": "IMF Portwatch, especificamente os dados de transit calls publicados para o Estreito de Ormuz em https://portwatch.imf.org/pages/cb5856222a5b4105adc6ee7e880a1730, tanto no gráfico quanto em arquivos para download.",
+      "prazo": "31 de janeiro de 2027, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 33,
+      "tokens_output": 20483,
+      "tokens_cache_read": 3968,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.005795,
+      "latency_ms": 168881
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O mercado não pergunta se o tráfego está normal em dezembro, mas qual é o PRIMEIRO mês com média móvel de 7 dias ≥ 60. Se esse mês for anterior a dezembro, o mercado resolve NÃO imediatamente, mesmo que dezembro continue acima de 60.",
+        "severidade": "muda_resultado",
+        "trecho": "The qualifying month will be the calendar month containing the date associated with the first qualifying data point published by IMF PortWatch.",
+        "cenario": "Se a média móvel de 7 dias atingir 60 em outubro de 2026 e continuar acima disso em dezembro, quem leu só o título espera SIM, mas a regra resolve NÃO porque o primeiro mês qualificante é outubro."
+      },
+      {
+        "ordinal": 2,
+        "texto": "O limiar de 60 é sobre a média móvel de 7 dias, não sobre a contagem diária. Um único dia com muitos navios não basta.",
+        "severidade": "muda_resultado",
+        "trecho": "publishes a daily 7-day moving average of transit calls",
+        "cenario": "Se em 5 de dezembro houver 100 chamadas de trânsito, mas a média móvel dos 7 dias até essa data for 50, quem acha que o retorno ao normal é medido por dia esperaria SIM, mas a regra exige a média de 7 dias."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Nem todo navio conta: apenas contêineres, granel seco, roll-on/roll-off, carga geral e petroleiros. Navios de outros tipos ou não reportados pela IMF Portwatch são ignorados.",
+        "severidade": "muda_resultado",
+        "trecho": "Daily transit calls include container, dry bulk, roll-on/roll-off, general cargo, and tanker ships.",
+        "cenario": "Se houver grande aumento de navios de passageiros, mas os tipos listados ficarem abaixo de 60, quem considera todo o tráfego esperaria SIM, mas a regra exclui passageiros."
+      },
+      {
+        "ordinal": 4,
+        "texto": "O mercado pode não resolver em 31/12/2026: se a IMF Portwatch não publicar dados para essa data até 31/01/2027, a resolução é adiada e usa os dados disponíveis até então.",
+        "severidade": "muda_timing",
+        "trecho": "If no data has been published for December 31, 2026 by January 31, 2027, 11:59 PM ET, this market will resolve based on data published up to that point.",
+        "cenario": "Se os dados de 31/12/2026 não forem publicados até 31/01/2027, quem esperava saber o resultado em dezembro verá o mercado resolver só em janeiro."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "data_ambigua",
+        "trecho": "the specified month",
+        "leitura_a": "Refere-se a dezembro de 2026, o mês mencionado no título e na cláusula de 31/12/2026.",
+        "leitura_b": "Refere-se a qualquer mês que venha a ser o 'próximo mês' qualificante, que pode não ser dezembro."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "outro",
+        "trecho": "the market may remain open until the end of the third calendar day (ET)",
+        "leitura_a": "O mercado pode, discricionariamente, permanecer aberto até o fim do terceiro dia corrido (ET) para correções; não é obrigatório.",
+        "leitura_b": "O mercado obrigatoriamente permanecerá aberto até o fim do terceiro dia corrido (ET) para permitir correções."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "b77beb11-5e88-4d9d-b74a-803eecfa16bc",
+      "description_sha256": "d5fd02af7e03939d29bb8d9398514a5a29b1d4cba8aca47a3de5bdbba586e765",
+      "resolve_sim": [
+        "O total de cortes (na unidade de 25 bps, incluindo cortes de emergência, com 50 bps contando como 2 e cortes de 1–24 bps contando como 1) realizados pelo Fed em 2026 for exatamente 7."
+      ],
+      "resolve_nao": [
+        "Resolve NÃO se o total de cortes em 2026 for diferente de 7. A regra prevê resolução antecipada para NÃO se o número de cortes já ultrapassar 7 antes do prazo."
+      ],
+      "fonte": "Comunicados do FOMC após reuniões programadas em 2026 e o site oficial do Federal Reserve.",
+      "prazo": "December 31, 2026, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 95,
+      "tokens_output": 10883,
+      "tokens_cache_read": 3712,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003113,
+      "latency_ms": 94299
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "Cortes de emergência fora das reuniões programadas do FOMC contam para o total, mesmo que o título só mencione 'Fed rate cuts'.",
+        "severidade": "muda_resultado",
+        "trecho": "Emergency rate cuts outside of scheduled FOMC meetings will also count toward the total number of cuts in 2026.",
+        "cenario": "Se o Fed fizer 6 cortes em reuniões programadas e 1 corte de emergência, quem lê só o título e considera apenas reuniões programadas espera 6 cortes (NÃO), mas a regra conta 7 (SIM)."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Um corte de 50 bps conta como 2 cortes de 25 bps, então o número de cortes não é igual ao número de reuniões com corte.",
+        "severidade": "muda_resultado",
+        "trecho": "For example, if the Fed cuts rates by 50 bps after a meeting, it would be considered 2 cuts (of 25 bps each).",
+        "cenario": "Se o Fed cortar 50 bps em três reuniões e 25 bps em uma, quem conta reuniões vê 4 cortes (NÃO), mas a regra conta 7 cortes (SIM)."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Cortes de 1 a 24 bps (inclusive) contam como 1 corte, mesmo sendo menores que 25 bps.",
+        "severidade": "muda_resultado",
+        "trecho": "Note that cuts between 1–24 bps (inclusive) will also be considered 1 rate cut.",
+        "cenario": "Se o Fed fizer 6 cortes de 25 bps e um corte de 10 bps, quem espera que apenas cortes de 25 bps contem vê 6 cortes (NÃO), mas a regra conta 7 (SIM)."
+      },
+      {
+        "ordinal": 4,
+        "texto": "O mercado pode resolver NÃO antes do fim do ano, assim que o número de cortes ultrapassar 7, sem esperar até 31/12.",
+        "severidade": "muda_timing",
+        "trecho": "This market will resolve early to \"No\" if the specified number of cuts becomes impossible — i.e., if more cuts have already occurred than the strike in question.",
+        "cenario": "Se o Fed fizer 8 cortes até outubro, quem espera resolução em 31/12 prevê capital preso até lá, mas a regra resolve NÃO imediatamente."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "outro",
+        "trecho": "This market will resolve according to the exact amount of cuts of 25 basis points in 2026 by the Fed (including any cuts made during the December meeting).",
+        "leitura_a": "Um corte que não seja múltiplo de 25 bps (por exemplo, 30 bps) conta como 1 corte, pois qualquer redução da taxa é um corte único.",
+        "leitura_b": "Um corte de 30 bps não é um corte de 25 bps nem se enquadra em 1–24 bps; a regra não especifica como contar, podendo ser interpretado como 1 corte, 2 cortes ou arredondado."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "70125c59-2b02-45ea-a7ab-f9d65741bf00",
+      "description_sha256": "c1f6413449fd76cbef939aef48e19849e4b018a3025a37fc8e5b71f0a1e55076",
+      "resolve_sim": [
+        "Resolve SIM se Marco Rubio for o indivíduo que oficialmente ocupa o cargo de chefe de Estado da Venezuela em 31/12/2026 às 12 PM ET, conforme a definição de 'officially holds' da regra."
+      ],
+      "resolve_nao": [
+        "Resolve NÃO se outro indivíduo (que não Marco Rubio) for o chefe de Estado oficial em 31/12/2026 às 12 PM ET.",
+        "Resolve NÃO se nenhum indivíduo ocupar o cargo — o mercado resolve para 'No Head of State', o que equivale a NÃO para a pergunta sobre Rubio.",
+        "Resolve NÃO se Marco Rubio se enquadrar em alguma das exclusões da regra (nomeação sem efeito até a data, posse após 31/12/2026, mandato expirado, capacidade não oficial, sucessor não nomeado, etc.)."
+      ],
+      "fonte": "Informação oficial do governo da Venezuela reconhecido pela ONU; se o governo não declarar claramente, a lista da ONU e, em última instância, consenso de reportagens confiáveis.",
+      "prazo": "Dec 31, 2026 at 12 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 128,
+      "tokens_output": 13979,
+      "tokens_cache_read": 3840,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003986,
+      "latency_ms": 120787
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O título fala em 'leader' (líder), mas a regra exige o cargo oficial de chefe de Estado. Quem tiver o poder de fato sem nomeação formal não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "officially holds the position of the head of state of Venezuela",
+        "cenario": "Se Marco Rubio controlar o país em 31/12/2026 mas não tiver sido formalmente nomeado/empossado, quem leu só o título espera SIM, e a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "O mercado resolve a um instante exato: meio-dia (12 PM) ET de 31/12/2026. Assumir o cargo depois desse horário, ainda que no mesmo dia, não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "on Dec 31, 2026 at 12 PM ET",
+        "cenario": "Se Rubio for empossado às 14h de 31/12/2026, quem leu o título 'end of 2026' espera SIM (ele é o líder no fim do dia), mas a regra dá NÃO porque às 12 PM ET ele ainda não estava no cargo."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Ser anunciado, nomeado ou designado sem que a nomeação tenha efeito até 31/12/2026 não constitui ocupar oficialmente o cargo.",
+        "severidade": "muda_resultado",
+        "trecho": "nominated, announced, or designated as the head of state of Venezuela but appointment not yet effective",
+        "cenario": "Se Rubio for anunciado em 30/12/2026 como futuro chefe de Estado, com posse em 02/01/2027, quem leu o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 4,
+        "texto": "Se houver mais de um chefe de Estado listado, o mercado resolve para quem tiver status primário, e não para qualquer um dos listados.",
+        "severidade": "muda_resultado",
+        "trecho": "this market will resolve to the individual who is listed as having primary status.",
+        "cenario": "Se o governo venezuelano listar Rubio e outro como chefes e o outro tiver status primário, quem leu o título espera SIM (Rubio é listado), mas a regra dá NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "leitura_a": "Exige concordância de múltiplas fontes independentes e confiáveis.",
+        "leitura_b": "Permite uma avaliação geral sem critério numérico definido de fontes."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "outro",
+        "trecho": "In the event that more than one official head of state is listed by the Venezuelan  government, this market will resolve to the individual who is listed as having primary status.",
+        "leitura_a": "O status primário é aquele marcado explicitamente na lista do governo.",
+        "leitura_b": "O status primário pode ser inferido do cargo/título (ex.: 'Presidente' vs. 'interino'), mesmo sem marcação explícita."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "outro",
+        "trecho": "or otherwise confirmed by official government information as being the head of state of Venezuela",
+        "leitura_a": "A confirmação oficial do governo é uma via alternativa à nomeação/posse; uma declaração oficial bastaria.",
+        "leitura_b": "A confirmação oficial apenas corrobora que a nomeação e a posse já ocorreram; sozinha não basta."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "ad8f603e-b087-484a-a352-d674ed391ade",
+      "description_sha256": "45d0e3782c446d32add909d78977bec294475dbd0396f79e2c8ccc8f6f3c3fa6",
+      "resolve_sim": [
+        "Gideon Sa’ar ser oficialmente nomeado e empossado como Primeiro-Ministro de Israel após a eleição parlamentar de 27 de outubro de 2026.",
+        "Se uma eleição antecipada for convocada, Gideon Sa’ar ser oficialmente nomeado e empossado como Primeiro-Ministro após essa eleição antecipada."
+      ],
+      "resolve_nao": [
+        "NÃO é o complemento: qualquer resultado em que Gideon Sa’ar não seja o próximo indivíduo oficialmente nomeado e empossado como Primeiro-Ministro, incluindo a posse de outro indivíduo ou a resolução para 'Other' por não haver PM empossado até o prazo."
+      ],
+      "fonte": "Informações oficiais do Governo de Israel; consenso de veículos de imprensa confiáveis.",
+      "prazo": "December 31, 2027, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 8,
+      "tokens_output": 15316,
+      "tokens_cache_read": 3712,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.004342,
+      "latency_ms": 126451
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A resolução exige nomeação oficial e posse formal; não basta vencer a eleição ou ser designado.",
+        "severidade": "muda_resultado",
+        "trecho": "officially appointed and sworn in",
+        "cenario": "Se Gideon Sa’ar vencer a eleição e for indicado, mas não for oficialmente nomeado e empossado até o prazo, quem leu só o título espera SIM, mas a regra não resolve SIM."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Primeiros-ministros interinos ou de transição não contam para a resolução, mesmo que estejam no cargo.",
+        "severidade": "muda_resultado",
+        "trecho": "Any interim or caretaker Prime Minister will not count toward the resolution of this market.",
+        "cenario": "Se Gideon Sa’ar se tornar primeiro-ministro interino após uma eleição, sem ser formalmente empossado para um mandato pleno, o título sugere que ele é o próximo PM, mas a regra não conta."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Eleições antecipadas podem resolver o mercado imediatamente, sem esperar a eleição programada.",
+        "severidade": "muda_timing",
+        "trecho": "If an election is called early, this market will immediately resolve to the individual who is officially appointed and sworn in after that election.",
+        "cenario": "Se uma eleição antecipada ocorrer antes de outubro de 2026 e um PM for empossado, o mercado resolve imediatamente; quem leu só o título pode esperar a resolução apenas após a eleição programada."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "leitura_a": "11:59 PM Eastern Daylight Time (UTC-4)",
+        "leitura_b": "11:59 PM Eastern Standard Time (UTC-5)"
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting may also be used",
+        "leitura_a": "Um consenso de veículos confiáveis é alcançado quando a maioria deles reporta o mesmo fato.",
+        "leitura_b": "Um consenso exige que todos os veículos confiáveis concordem, sem exceção."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "88417233-af6a-43e7-8a1c-beb38224dada",
+      "description_sha256": "14b25088963b8ac3f823090c8a48ec78d1f4bd2020de093f7e48eca070257d84",
+      "resolve_sim": [
+        "A primary republicana para governador da Flórida ocorre e Jay Collins é o vencedor."
+      ],
+      "resolve_nao": [
+        "A primary republicana para governador da Flórida ocorre e o vencedor é um candidato diferente de Jay Collins."
+      ],
+      "fonte": "Florida Republican Party, pelo primeiro anúncio oficial dos resultados; consenso esmagador de reportagens confiáveis pode ser suficiente.",
+      "prazo": "18 de agosto de 2026, sem fuso horário especificado na regra",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 57,
+      "tokens_output": 10520,
+      "tokens_cache_read": 3584,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003004,
+      "latency_ms": 93564
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O mercado resolve pela primary, não pela nomeação final: se Jay Collins vencer a primary mas depois for substituído como candidato do partido, o mercado ainda resolve SIM.",
+        "severidade": "muda_resultado",
+        "trecho": "will resolve according to the winner of the Republican Primary for Governor of Florida",
+        "cenario": "Se Jay Collins vencer a primary republicana e depois o partido o substituir por outro candidato, quem leu só o título espera NÃO (ele não é o nominee final), mas a regra resolve SIM porque ele venceu a primary."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Se a primary não ocorrer, o mercado resolve “Other”, não NÃO.",
+        "severidade": "muda_resultado",
+        "trecho": "If no 2026 Florida Republican Gubernatorial Primary takes place, this market will resolve to “Other.”",
+        "cenario": "Se a primary for cancelada ou não ocorrer, quem leu só o título espera NÃO (Collins não é o indicado), mas a regra resolve “Other”."
+      },
+      {
+        "ordinal": 3,
+        "texto": "A fonte é a primeira declaração oficial do partido; uma correção posterior não altera a resolução.",
+        "severidade": "muda_resultado",
+        "trecho": "the first official announcement of the results from the Florida Republican Party",
+        "cenario": "Se o partido anunciar primeiro um vencedor diferente e depois corrigir para Jay Collins, quem leu só o título espera SIM (Collins é o vencedor final), mas a regra resolve pela primeira declaração, dando NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "data_ambigua",
+        "trecho": "scheduled to take place on August 18, 2026",
+        "leitura_a": "Se a primary for adiada para outra data, ainda é a mesma primary e o vencedor dela decide.",
+        "leitura_b": "Se a primary não ocorrer em 18 de agosto de 2026, é considerada “no primary” e o mercado resolve “Other”."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "an overwhelming consensus of credible reporting may suffice",
+        "leitura_a": "“Consenso esmagador” exige que a grande maioria das fontes confiáveis reporte o mesmo vencedor.",
+        "leitura_b": "Qualquer maioria entre fontes confiáveis é suficiente, mesmo que não seja esmagadora."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "outro",
+        "trecho": "The resolution source for this market will be the first official announcement of the results from the Florida Republican Party; however, an overwhelming consensus of credible reporting may suffice.",
+        "leitura_a": "O anúncio oficial do partido é a fonte definitiva; o consenso só é usado se não houver anúncio.",
+        "leitura_b": "O consenso esmagador de reportagens pode ser usado como fonte mesmo quando existe um anúncio oficial do partido."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "5c9dcf73-86f7-4007-9878-0a958d492653",
+      "description_sha256": "8227f6aee16c1c99271d7a0437b63f7b452b3e01b4a3ddfdeb54ad10a68ac8e1",
+      "resolve_sim": [
+        "A taxa semanal de hospitalização por influenza por 100.000 habitantes, reportada pelo CDC FluSurv-NET para a semana especificada, é maior que 0,1 conforme reportado (com precisão de uma casa decimal)."
+      ],
+      "resolve_nao": [
+        "A taxa semanal de hospitalização por influenza por 100.000 habitantes, reportada pelo CDC FluSurv-NET para a semana especificada, é menor ou igual a 0,1 (ou seja, não é maior que 0,1).",
+        "Se a taxa para a semana especificada não for divulgada até o prazo estipulado (11:59 PM ET no décimo dia após a liberação do relatório semanal anterior do FluView), o mercado resolve para o menor bracket (neste mercado binário, NÃO)."
+      ],
+      "fonte": "CDC FluView / FluSurv-NET",
+      "prazo": "11:59 PM ET on the tenth calendar day following the date of the prior FluView weekly report release",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 100,
+      "tokens_output": 10631,
+      "tokens_cache_read": 3712,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003043,
+      "latency_ms": 90087
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A precisão do CDC é de uma casa decimal: se a taxa real for 0,12, o CDC reporta 0,1, e o mercado resolve NÃO, pois 0,1 não é maior que 0,1.",
+        "severidade": "muda_resultado",
+        "trecho": "CDC FluView reports the weekly FluSurv-NET hospitalization rate per 100,000 population to one decimal point (e.g., 0.1).",
+        "cenario": "Se a taxa real for 0,12, o CDC reporta 0,1; quem leu só o título espera SIM (pois 0,12>0,1), mas a regra resolve NÃO porque o valor reportado é 0,1."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Se o CDC não divulgar a taxa até o prazo (10 dias após o relatório anterior), o mercado resolve para o menor bracket, independentemente do valor real.",
+        "severidade": "muda_resultado",
+        "trecho": "If the FluSurv-NET hospitalization rate for the specified week is not released by 11:59 PM ET on the tenth calendar day following the date of the prior FluView weekly report release, this market will resolve to the lowest bracket.",
+        "cenario": "Se o CDC atrasar a divulgação da semana além do prazo de 10 dias, quem leu só o título espera aguardar a divulgação, mas a regra resolve NÃO imediatamente."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Apenas a taxa semanal do FluSurv-NET conta; taxas cumulativas, estimativas, projeções ou relatórios estaduais não podem ser usados para a resolução.",
+        "severidade": "muda_resultado",
+        "trecho": "Only the CDC FluSurv-NET weekly hospitalization rate per 100,000 population for the specified week will qualify, regardless of the cumulative influenza-associated hospitalization rate, estimates, projections, state-level reports, or other influenza surveillance metrics published by the CDC or other sources.",
+        "cenario": "Se a taxa cumulativa da temporada for maior que 0,1 e a taxa semanal for menor, quem leu só o título pode considerar a cumulativa e esperar SIM, mas a regra usa apenas a semanal e resolve NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "leitura_a": "ET significa Eastern Standard Time (UTC-5).",
+        "leitura_b": "ET significa Eastern Daylight Time (UTC-4)."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "data_ambigua",
+        "trecho": "the specified week",
+        "leitura_a": "A semana especificada é a semana 31 de 2026, conforme a data fim da plataforma (14/08/2026).",
+        "leitura_b": "A semana especificada é a semana 31 de outro ano, pois a regra não explicita o ano."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "e1476f25-82bf-4b76-9009-39cf3f1791d0",
+      "description_sha256": "c1f6413449fd76cbef939aef48e19849e4b018a3025a37fc8e5b71f0a1e55076",
+      "resolve_sim": [
+        "O indivíduo que oficialmente ocupa o cargo de chefe de Estado da Venezuela em 31/12/2026 às 12 PM ET, conforme a definição da regra, é Nicolás Maduro."
+      ],
+      "resolve_nao": [
+        "Qualquer resultado em que o chefe de Estado determinado pela regra não seja Nicolás Maduro, incluindo a ausência de chefe de Estado ('No Head of State')."
+      ],
+      "fonte": "Governo da Venezuela reconhecido pela ONU (fonte primária); se o governo não declarar claramente quem é o chefe de Estado, a lista da ONU e um consenso de reportagens confiáveis.",
+      "prazo": "Dec 31, 2026 at 12 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v3",
+      "tokens_input": 1,
+      "tokens_output": 15671,
+      "tokens_cache_read": 3968,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.004444,
+      "latency_ms": 127877
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O mercado resolve com base em quem ocupa oficialmente o cargo, não em quem detém o poder de fato. Uma pessoa com controle real do país, mas sem nomeação formal, não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "officially holds the position of the head of state of Venezuela",
+        "cenario": "Se Nicolás Maduro tiver o controle de facto do país em 31/12/2026, mas não tiver sido formalmente nomeado, confirmado e empossado até essa data, quem leu só o título espera SIM, mas a regra resolve NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Ser apenas nomeado, anunciado ou designado como chefe de Estado, sem que a nomeação esteja efetiva, não constitui ocupação oficial do cargo.",
+        "severidade": "muda_resultado",
+        "trecho": "nominated, announced, or designated as the head of state of Venezuela but appointment not yet effective",
+        "cenario": "Se Maduro for designado como o próximo chefe de Estado antes de 31/12/2026, mas a nomeação só se tornar efetiva em 2027, quem leu só o título pode esperar SIM, mas a regra resolve NÃO."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Se o governo venezuelano não declarar claramente quem é o chefe de Estado, a resolução usa a lista da ONU, que pode indicar alguém diferente de quem controla o país.",
+        "severidade": "muda_resultado",
+        "trecho": "If the Venezuelan government does not clearly state who is the head of state, the market will resolve to the individual who is listed as the Head of State by the UN",
+        "cenario": "Se o governo da Venezuela não emitir uma declaração clara sobre quem é o chefe de Estado, e a ONU listar outra pessoa que não Maduro, quem leu só o título pode esperar SIM (se Maduro estiver no controle), mas a regra resolve para a pessoa listada pela ONU."
+      },
+      {
+        "ordinal": 4,
+        "texto": "Se mais de um chefe de Estado for listado oficialmente, o mercado resolve para o que tiver status primário; se não houver distinção, para o que primeiro assumiu o cargo.",
+        "severidade": "muda_resultado",
+        "trecho": "In the event that more than one official head of state is listed by the Venezuelan government, this market will resolve to the individual who is listed as having primary status. If no distinction is made, the market will resolve to the individual who first assumed the position.",
+        "cenario": "Se o governo da Venezuela listar Maduro e outra pessoa como chefes de Estado, e a outra pessoa tiver status primário, o mercado resolve para a outra pessoa, não para Maduro."
+      },
+      {
+        "ordinal": 5,
+        "texto": "O mercado resolve no instante exato de 12 PM ET em 31/12/2026, não no fim do dia ou do ano. Quem ocupar o cargo nesse momento é o chefe de Estado, independentemente do que acontecer depois.",
+        "severidade": "muda_timing",
+        "trecho": "at 12 PM ET",
+        "cenario": "Se Maduro for chefe de Estado na manhã de 31/12/2026, mas renunciar às 13h ET, ele ainda era chefe de Estado às 12 PM ET, então o mercado resolve SIM; quem leu só o título 'end of 2026' pode esperar que a renúncia antes do fim do dia mude a resposta, mas a regra fixa o meio-dia."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "12 PM ET",
+        "leitura_a": "12:00 PM Eastern Standard Time (UTC-5)",
+        "leitura_b": "12:00 PM Eastern Daylight Time (UTC-4)"
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "leitura_a": "Um consenso entre as principais organizações de notícias respeitáveis.",
+        "leitura_b": "Qualquer conjunto de reportagens considerado confiável, sem critério explícito."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "outro",
+        "trecho": "does not clearly state",
+        "leitura_a": "O governo não emitiu nenhuma declaração oficial indicando quem é o chefe de Estado.",
+        "leitura_b": "O governo emitiu declarações, mas elas são contraditórias ou ambíguas sobre quem exatamente ocupa o cargo."
+      }
+    ]
+  }
+]

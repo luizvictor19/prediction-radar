@@ -1,0 +1,662 @@
+[
+  {
+    "digest": {
+      "event_id": "dfbad072-17b4-4f2e-a1f1-a671887c685f",
+      "description_sha256": "789348b98098dda4c7de4b231ceccb58e9e4e9c1b1bf708b37a2ca266dc5cdc1",
+      "resolve_sim": [
+        "O Chicago White Sox vencer a World Series de 2026 da MLB."
+      ],
+      "resolve_nao": [
+        "Se o Chicago White Sox não for o time vencedor da World Series de 2026 da MLB.",
+        "Se em algum momento se tornar impossível para o Chicago White Sox vencer a World Series de 2026 conforme as regras da MLB (ex.: eliminação nos playoffs)."
+      ],
+      "fonte": "Informações oficiais da MLB (https://www.mlb.com/); um consenso de reportagens confiáveis também pode ser usado.",
+      "prazo": "31 de dezembro de 2026, ET (horário da costa leste dos EUA).",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 4330,
+      "tokens_output": 4114,
+      "tokens_cache_read": 384,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.001763,
+      "latency_ms": 32051
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O mercado pode resolver NÃO antes do fim da temporada, no momento da eliminação do White Sox nos playoffs — não espera a World Series terminar.",
+        "severidade": "muda_timing",
+        "trecho": "If at any point it becomes impossible for a listed team to win the 2026 MLB World Series per the rules of MLB (e.g., they are eliminated in the playoffs), the corresponding market will resolve to “No”.",
+        "cenario": "Se o Chicago White Sox for eliminado nos playoffs de 2026 antes da World Series, quem leu só o título espera que o mercado resolva somente após a World Series, mas a regra resolve NÃO já no momento da eliminação."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A regra prevê um terceiro desfecho 'Other' para cancelamento ou ausência de vencedor no prazo — não é NÃO automático.",
+        "severidade": "muda_resultado",
+        "trecho": "If the 2026 MLB season is cancelled, postponed after December 31, 2026 ET, or there is otherwise no winner declared within that timeframe, this market will resolve to “Other”.",
+        "cenario": "Se a temporada de 2026 da MLB for cancelada, quem leu só o título espera NÃO (não houve World Series), mas a regra resolve 'Other'."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "precedencia_de_fonte",
+        "trecho": "The primary resolution source will be official information from MLB (https://www.mlb.com/); however, a consensus of credible reporting may also be used.",
+        "trecho_conflito": null,
+        "leitura_a": "A MLB é a fonte primária; reportagens confiáveis só são usadas se a informação oficial estiver ausente.",
+        "leitura_b": "O consenso de reportagens confiáveis pode ser usado mesmo quando divirja da informação oficial, já que a regra diz 'may also be used'."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "57c753f1-8615-46f5-9696-9541a5bb2f16",
+      "description_sha256": "e57adb0f05f81da149a593425bbf3cc5f7d54603e5221fcd91e1f74b4d4b5779",
+      "resolve_sim": [
+        "A Apple for a maior empresa do mundo em capitalização de mercado em 31 de agosto de 2026, no fechamento do mercado."
+      ],
+      "resolve_nao": [
+        "Se a Apple não for a maior empresa do mundo em capitalização de mercado em 31 de agosto de 2026, no fechamento do mercado (a regra só descreve o SIM; o NÃO é o complemento)."
+      ],
+      "fonte": "Consenso de reportagens confiáveis (a consensus of credible reporting)",
+      "prazo": "31 de agosto de 2026, no fechamento do mercado; a regra não especifica fuso horário.",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 4254,
+      "tokens_output": 6848,
+      "tokens_cache_read": 384,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002518,
+      "latency_ms": 54583
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A liderança intradiária não conta; o que define a resolução é a posição no fechamento do mercado.",
+        "severidade": "muda_resultado",
+        "trecho": "as of market close",
+        "cenario": "Se a Apple for a maior durante o pregão de 31/08/2026 mas cair para segunda colocada no fechamento, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A resolução segue o consenso de reportagens confiáveis, não necessariamente o dado objetivo de fechamento; se as reportagens apontarem outra empresa, a regra prevalece.",
+        "severidade": "muda_resultado",
+        "trecho": "The resolution source for this market will be a consensus of credible reporting.",
+        "cenario": "Se os dados de fechamento mostrarem a Apple como a maior, mas o consenso das reportagens confiáveis indicar outra empresa, quem leu só o título espera SIM, mas a regra dá NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fonte_vaga",
+        "trecho": "The resolution source for this market will be a consensus of credible reporting.",
+        "trecho_conflito": null,
+        "leitura_a": "É preciso que múltiplas reportagens de veículos confiáveis concordem sobre qual é a maior empresa.",
+        "leitura_b": "Uma única reportagem de um veículo confiável pode bastar, se for a única a cobrir o assunto de forma confiável."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "limiar_de_borda",
+        "trecho": "the largest company in the world by market cap",
+        "trecho_conflito": null,
+        "leitura_a": "Se houver empate exato no topo, não há uma única maior empresa; a Apple só resolve SIM se for estritamente a maior.",
+        "leitura_b": "Se a Apple estiver empatada com outra no topo, ela ainda é uma das maiores, então resolve SIM."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "7c30cdb3-bbcf-421e-9b3e-b7a2f21a50b5",
+      "description_sha256": "43c4bf4589be731ca6419e8b54d9f0a0874e7572a4497e617adf4ae12d6e1025",
+      "resolve_sim": [
+        "O candle de 1 minuto da Binance para BTC/USDT às 12:00 ET (meio-dia) na data do título tem um preço 'Close' final maior que US$ 76.000."
+      ],
+      "resolve_nao": [
+        "Caso contrário — em particular, se o 'Close' do candle das 12:00 ET for igual ou inferior a US$ 76.000."
+      ],
+      "fonte": "Binance, especificamente os preços 'Close' do BTC/USDT atualmente disponíveis em https://www.binance.com/en/trade/BTC_USDT com '1m' e 'Candles' selecionados.",
+      "prazo": "12:00 ET (meio-dia) na data do título (15/08).",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 4357,
+      "tokens_output": 8508,
+      "tokens_cache_read": 384,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002998,
+      "latency_ms": 65252
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A resolução usa exclusivamente o candle de 1 minuto das 12:00 ET — qualquer outro momento do dia em que o Bitcoin esteja acima de US$ 76.000 não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title",
+        "cenario": "Se o preço do Bitcoin ficar acima de US$ 76.000 em qualquer outro minuto do dia 15/08, mas no candle das 12:00 ET o Close for igual ou abaixo, quem leu só o título espera SIM, mas a regra resolve NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A referência é o par BTC/USDT da Binance — outras corretoras ou pares de negociação são irrelevantes.",
+        "severidade": "muda_resultado",
+        "trecho": "this market is about the price according to Binance BTC/USDT, not according to other exchanges or trading pairs",
+        "cenario": "Se outras corretoras mostrarem o Bitcoin acima de US$ 76.000 ao meio-dia ET, mas a Binance mostrar igual ou abaixo, quem leu só o título espera SIM, mas a regra resolve NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "12:00 in the ET timezone (noon)",
+        "trecho_conflito": null,
+        "leitura_a": "ET significa Eastern Standard Time (UTC-5), então 12:00 ET = 17:00 UTC.",
+        "leitura_b": "ET significa Eastern Daylight Time (UTC-4), então 12:00 ET = 16:00 UTC, correspondendo ao fim registrado pela plataforma."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "dcd5ee1b-7828-4579-b283-079ca93a22fa",
+      "description_sha256": "2a92f292289c4fb43bb8ec746bfc0bf46cedc96ed007d6f810acdd155592f654",
+      "resolve_sim": [
+        "O atual regime da República Islâmica do Irã for derrubado, entrar em colapso ou deixar de governar até 30 de setembro de 2026, 23:59 ET, havendo um consenso amplo de reportagens indicando que as estruturas centrais da República Islâmica (por exemplo, o cargo de Líder Supremo, o Conselho dos Guardiões e o controle da IRGC sob autoridade clerical) foram dissolvidas, incapacitadas, substituídas por um sistema de governo fundamentalmente diferente, ou perderam o poder de facto sobre a maioria da população do Irã, de modo que a República Islâmica deixe de exercer poder soberano; a derrubada pode ocorrer por revolução, guerra civil, golpe militar ou abdicação voluntária, mas só qualifica se houver uma ruptura clara na continuidade do regime."
+      ],
+      "resolve_nao": [
+        "Resolve NÃO se as condições do SIM não forem atendidas até 30 de setembro de 2026, 23:59 ET, inclusive quando a mudança for apenas um evento político rotineiro (eleições, reformas, sucessão de liderança), um golpe interno ou mudança de poder que preserve as estruturas centrais da República Islâmica, ou uma perda parcial de território ou desafio de grupos rebeldes/exilados sem que a República Islâmica deixe de administrar a maioria da população iraniana dentro do Irã."
+      ],
+      "fonte": "Consenso de reportagens confiáveis (consensus of credible reporting).",
+      "prazo": "September 30, 2026, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 4458,
+      "tokens_output": 13681,
+      "tokens_cache_read": 384,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.00446,
+      "latency_ms": 106701
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "Eleições, reformas ou sucessão de liderança não qualificam como queda do regime; o título esconde que é preciso dissolver as estruturas centrais.",
+        "severidade": "muda_resultado",
+        "trecho": "Routine political events such as elections, reforms, or leadership succession do not qualify.",
+        "cenario": "Se um novo presidente for eleito ou o líder supremo for substituído sem que as estruturas da República Islâmica sejam dissolvidas, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Um golpe militar não basta se as estruturas centrais da República Islâmica (como o Líder Supremo e a IRGC sob autoridade clerical) forem preservadas.",
+        "severidade": "muda_resultado",
+        "trecho": "Internal coups or power shifts that preserve the Islamic Republic’s core structures also do not qualify.",
+        "cenario": "Se um general da IRGC tomar o poder nominal, mas o cargo de Líder Supremo e o Conselho dos Guardiões continuarem funcionando, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Perda parcial de território ou desafios de rebeldes/exilados só qualificam se a República Islâmica deixar de administrar a maioria da população iraniana dentro do Irã.",
+        "severidade": "muda_resultado",
+        "trecho": "Partial loss of territory or challenges from rebel or exile groups will not qualify unless the Islamic Republic no longer administers the majority of the Iranian population within Iran.",
+        "cenario": "Se grupos rebeldes controlarem uma região, mas o governo ainda administrar a maioria da população, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 4,
+        "texto": "A abdicação voluntária do líder só qualifica se a República Islâmica deixar de exercer poder soberano; abdicar sem desmontar o sistema não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "but only qualifies if the Islamic Republic no longer exercises sovereign power.",
+        "cenario": "Se o Líder Supremo abdicar, mas outro ocupar o cargo e as instituições seguirem intactas, quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 5,
+        "texto": "A resolução exige consenso amplo de reportagens; uma queda real do regime sem cobertura convergente até o prazo não basta.",
+        "severidade": "muda_resultado",
+        "trecho": "This requires a broad consensus of reporting indicating that core structures of the Islamic Republic (e.g. the office of the Supreme Leader, the Guardian Council, IRGC control under clerical authority) have been dissolved, incapacitated, or replaced by a fundamentally different governing system or otherwise lost de facto power over a majority of the population of Iran.",
+        "cenario": "Se o regime for derrubado de fato, mas a cobertura da imprensa ainda não tiver convergido até 30 de setembro, quem leu só o título espera SIM, mas a regra pode dar NÃO por falta do consenso exigido."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "September 30, 2026, 11:59 PM ET",
+        "trecho_conflito": null,
+        "leitura_a": "O prazo é 30/09/2026 às 23:59 no horário padrão do Leste (EST, UTC-5).",
+        "leitura_b": "O prazo é 30/09/2026 às 23:59 no horário de verão do Leste (EDT, UTC-4)."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "The resolution source will be a consensus of credible reporting.",
+        "trecho_conflito": null,
+        "leitura_a": "O consenso é maioria simples entre reportagens confiáveis.",
+        "leitura_b": "O consenso exige concordância quase unânime entre as principais fontes."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "criterio_discricionario",
+        "trecho": "replaced by a fundamentally different governing system",
+        "trecho_conflito": null,
+        "leitura_a": "Qualquer sistema que não seja a teocracia atual (ex.: uma república secular ou um governo militar não clerical) é fundamentalmente diferente e qualifica.",
+        "leitura_b": "Só uma mudança que desmonte as instituições clericais e estabeleça uma nova ordem constitucional explícita é fundamentalmente diferente."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "66ba17f3-cb1a-4846-8c90-a159aa3af4c8",
+      "description_sha256": "0fba60e03908266ebca3e0912823008f81e7c17727c2f01637efc1e4a2c23df0",
+      "resolve_sim": [
+        "Angel Reese for #1 na lista oficial 'People' Global do Year in Search do Google para 2026."
+      ],
+      "resolve_nao": [
+        "Se Angel Reese não for a pessoa #1 na lista especificada.",
+        "Se o Google não publicar a lista até 31 de março de 2027, 23:59 ET, o mercado resolve para 'Other'."
+      ],
+      "fonte": "A lista especificada, conforme publicada pelo Google.",
+      "prazo": "March 31, 2027, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 3369,
+      "tokens_output": 14423,
+      "tokens_cache_read": 1408,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.00453,
+      "latency_ms": 107694
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O ranking é o da categoria 'People' com filtro Global, não o de buscas em geral nem o de um país específico.",
+        "severidade": "muda_resultado",
+        "trecho": "This market will resolve according to the individual ranked #1 in Google’s official Year in Search Global \"People\" list for 2026.",
+        "cenario": "Se Angel Reese for a pessoa mais buscada em 2026 no ranking geral ou nos EUA, mas não estiver em 1º na lista Global 'People', quem leu só o título espera SIM, mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "O mercado pode resolver assim que a lista for publicada, antes mesmo do fim do ano civil.",
+        "severidade": "muda_timing",
+        "trecho": "This market may resolve as soon as the specified list for 2026 is released.",
+        "cenario": "Se o Google publicar a lista em dezembro de 2026 antes do dia 31, quem esperava resolução apenas no fim do ano verá o mercado resolver antecipadamente."
+      },
+      {
+        "ordinal": 3,
+        "texto": "A data-limite para a lista é 31/03/2027, muito depois do fim registrado pela plataforma (31/12/2026).",
+        "severidade": "muda_timing",
+        "trecho": "If Google does not release the specified list by March 31, 2027, 11:59 PM ET, this market will resolve to “Other.”",
+        "cenario": "Se a lista não sair até 31/12/2026, quem confia na data da plataforma espera resolução no fim de 2026, mas a regra mantém o mercado aberto até 31/03/2027."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "March 31, 2027, 11:59 PM ET",
+        "trecho_conflito": null,
+        "leitura_a": "11:59 PM Eastern Standard Time (EST, UTC-5).",
+        "leitura_b": "11:59 PM Eastern Daylight Time (EDT, UTC-4)."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "criterio_discricionario",
+        "trecho": "This market may resolve as soon as the specified list for 2026 is released.",
+        "trecho_conflito": null,
+        "leitura_a": "O mercado será resolvido imediatamente após a publicação da lista.",
+        "leitura_b": "O mercado tem permissão para resolver nesse momento, mas pode esperar por decisão do operador."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "escopo_de_entidade",
+        "trecho": "This market will resolve according to the individual ranked #1 in Google’s official Year in Search Global \"People\" list for 2026.",
+        "trecho_conflito": null,
+        "leitura_a": "Se houver empate no topo da lista e Angel Reese estiver entre os #1, resolve SIM.",
+        "leitura_b": "Se houver empate no topo, resolve SIM apenas se Angel Reese for a única #1."
+      },
+      {
+        "ordinal": 4,
+        "tipo": "formato_do_mercado",
+        "trecho": "this market will resolve to “Other.”",
+        "trecho_conflito": null,
+        "leitura_a": "O mercado tem três resultados possíveis: SIM (Angel Reese #1), NÃO (outra pessoa #1) e OUTRO (lista não publicada).",
+        "leitura_b": "O mercado é binário; 'Other' é apenas um rótulo para NÃO, já que Angel Reese não fica #1 sem lista."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "370649a4-a847-4b69-bf54-72c93d79384e",
+      "description_sha256": "7af37b690c8a0e71269b07bd1d53d45e020567caef637bf098d89dc5dfdc9ad7",
+      "resolve_sim": [
+        "Se, em 30 de setembro de 2026, no fechamento do mercado, a Microsoft for a empresa com a maior capitalização de mercado do mundo."
+      ],
+      "resolve_nao": [
+        "A regra define que o mercado resolve para a maior empresa do mundo; se essa empresa não for a Microsoft, o mercado resolve NÃO."
+      ],
+      "fonte": "consensus of credible reporting",
+      "prazo": "30 de setembro de 2026, as of market close (fuso não especificado)",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 151,
+      "tokens_output": 9984,
+      "tokens_cache_read": 4480,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.002879,
+      "latency_ms": 85522
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "O desfecho não é determinado por dados oficiais de mercado, mas por um consenso de reportagens confiáveis; se os números oficiais e as reportagens divergirem, o mercado segue o consenso.",
+        "severidade": "muda_resultado",
+        "trecho": "The resolution source for this market will be a consensus of credible reporting.",
+        "cenario": "Se no dia 30/09/2026 a Microsoft for a maior empresa segundo os dados oficiais da bolsa, mas as reportagens confiáveis apontarem outra empresa como a maior, quem leu apenas o título espera SIM, mas a regra resolve NÃO, pois a fonte é o consenso das reportagens."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "trecho_conflito": null,
+        "leitura_a": "O consenso é formado quando múltiplos veículos de imprensa confiáveis apontam o mesmo resultado; não há número mínimo definido.",
+        "leitura_b": "Não há critério para o que conta como 'consenso' nem como 'credible', de modo que qualquer conjunto de reportagens pode ser invocado para justificar uma resolução."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "momento_ambiguo",
+        "trecho": "as of market close",
+        "trecho_conflito": null,
+        "leitura_a": "Refere-se ao fechamento do pregão da bolsa onde a Microsoft está listada (por exemplo, NASDAQ), tipicamente às 16h no fuso do leste dos EUA.",
+        "leitura_b": "Refere-se ao fechamento de qualquer mercado de valores global, sem especificar qual bolsa ou horário, podendo variar conforme a fonte."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "formato_do_mercado",
+        "trecho": "This market will resolve to the largest company in the world by market cap",
+        "trecho_conflito": null,
+        "leitura_a": "O mercado resolve SIM se a Microsoft for essa maior empresa; caso contrário, NÃO — a pergunta binária é a lente pela qual a afirmação é lida.",
+        "leitura_b": "A regra define apenas que o mercado resolve para a maior empresa (um resultado categórico), sem conectar isso a sim/não; o formato binário da pergunta não é contemplado na regra."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "034846e9-0d38-4370-85db-17b6420eb841",
+      "description_sha256": "77bd0e1a00598929cf5ad4e75f16da660dea12c96d0ccbca53550e207afb2b98",
+      "resolve_sim": [
+        "Se qualquer candle de 1 minuto do par BTC/USDT da Binance, no período entre 24/11/2025 14:00 e 31/12/2026 23:59 (ET), tiver preço 'High' final igual ou maior que US$ 150.000."
+      ],
+      "resolve_nao": [
+        "O mercado resolve NÃO se nenhum candle de 1 minuto do par BTC/USDT da Binance na janela especificada tiver High final igual ou maior que US$ 150.000. A regra define apenas o SIM; o NÃO é o complemento desse critério."
+      ],
+      "fonte": "Binance, especificamente o preço 'High' do par BTC/USDT, com gráfico de 1 minuto (1m), conforme https://www.binance.com/en/trade/BTC_USDT.",
+      "prazo": "December 31, 2026, 23:59 in the ET timezone",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 296,
+      "tokens_output": 12080,
+      "tokens_cache_read": 4480,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003487,
+      "latency_ms": 98980
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A janela de contagem começa em 24/11/2025, não no início do mercado ou em qualquer data anterior; um atingimento antes desse início não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "between November 24, 2025, 14:00 and December 31, 2026, 23:59 in the ET timezone",
+        "cenario": "Se o Bitcoin atingir US$ 150.000 antes de 24 de novembro de 2025, quem leu só o título espera SIM, mas a regra resolve NÃO, pois nenhum candle dentro da janela teria High nesse valor."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Só o par BTC/USDT da Binance importa; preços de outras corretoras, outros pares ou mercado à vista são ignorados.",
+        "severidade": "muda_resultado",
+        "trecho": "Prices from other exchanges, different trading pairs, or spot markets will not be considered for the resolution of this market.",
+        "cenario": "Se o Bitcoin atingir US$ 150.000 apenas na Coinbase ou em outro par que não o BTC/USDT da Binance, quem leu só o título espera SIM, mas a regra resolve NÃO."
+      },
+      {
+        "ordinal": 3,
+        "texto": "Basta o High de um candle de 1 minuto; não é necessário que o preço feche acima de US$ 150.000.",
+        "severidade": "muda_resultado",
+        "trecho": "has a final \"High\" price equal to or greater than the price specified in the title.",
+        "cenario": "Se o Bitcoin tocar US$ 150.000 em um único candle de 1 minuto e depois cair, quem leu só o título pode esperar NÃO se achar que é preciso fechar acima, mas a regra resolve SIM pelo High final do candle."
+      },
+      {
+        "ordinal": 4,
+        "texto": "O preço de referência é o do par BTC/USDT (em USDT), não necessariamente o preço em dólar americano (USD).",
+        "severidade": "muda_resultado",
+        "trecho": "any Binance 1 minute candle for Bitcoin (BTC/USDT)",
+        "cenario": "Se o Bitcoin valer US$ 150.000 em dólares, mas o par BTC/USDT da Binance não atingir esse valor (por exemplo, se o USDT desvalorizar), quem leu só o título espera SIM, mas a regra resolve NÃO."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "janela_inclusiva",
+        "trecho": "between November 24, 2025, 14:00 and December 31, 2026, 23:59 in the ET timezone",
+        "trecho_conflito": null,
+        "leitura_a": "Os extremos estão incluídos: contam os candles com início às 14:00 de 24/11/2025 e às 23:59 de 31/12/2026.",
+        "leitura_b": "'Between' é exclusivo: só contam candles estritamente depois das 14:00 de 24/11/2025 e estritamente antes das 23:59 de 31/12/2026; a vela das 23:59 ficaria de fora."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "86ea2b71-3b2c-4a3b-9de7-4bb21c76be80",
+      "description_sha256": "f02ae2e8e4c5cfd5fcf8a9dee5af9972d7a32e92d7a43b20d83937e06941217d",
+      "resolve_sim": [
+        "O Washington Commanders vencer o jogo do Campeonato da NFC de 2027."
+      ],
+      "resolve_nao": [
+        "Se a qualquer momento for impossível para o Washington Commanders vencer o Campeonato da NFC de 2027, segundo as regras da NFL (por exemplo, eliminação nos playoffs), o mercado resolve NÃO.",
+        "Se o Washington Commanders não vencer o jogo do Campeonato da NFC (qualquer outro time vencer), o mercado resolve NÃO (complemento do SIM)."
+      ],
+      "fonte": "Informações oficiais da NFL (https://www.nfl.com/); consenso de reportagens confiáveis pode ser usado.",
+      "prazo": "March 31, 2027 ET",
+      "anula_se": [
+        "Se o jogo do Campeonato da NFC de 2027 for cancelado, adiado para depois de 31 de março de 2027 ET, ou se nenhum vencedor for declarado dentro desse prazo, o mercado resolve para 'Other' (não é SIM nem NÃO)."
+      ],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 242,
+      "tokens_output": 15065,
+      "tokens_cache_read": 4480,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.004315,
+      "latency_ms": 108339
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "Se o jogo do campeonato for cancelado, o mercado não resolve NÃO — resolve para 'Other' (tratado como N/A em um mercado binário).",
+        "severidade": "muda_resultado",
+        "trecho": "If the 2027 NFL NFC championship game is cancelled, postponed after March 31, 2027 ET, or there is otherwise no winner declared within that timeframe, this market will resolve to “Other”.",
+        "cenario": "Se o jogo do Campeonato da NFC for cancelado, quem leu só o título espera NÃO, mas a regra resolve para 'Other'."
+      },
+      {
+        "ordinal": 2,
+        "texto": "O mercado pode resolver NÃO antes do jogo do campeonato, já na eliminação do time nos playoffs.",
+        "severidade": "muda_timing",
+        "trecho": "If at any point it becomes impossible for a listed team to win the 2027 NFL NFC championship per the rules of the NFL (e.g., they are eliminated in the playoffs), the corresponding market will resolve to “No”.",
+        "cenario": "Se o Washington Commanders for eliminado nos playoffs antes do jogo final, quem leu só o título espera esperar o jogo do campeonato, mas a regra resolve NÃO no momento da eliminação."
+      },
+      {
+        "ordinal": 3,
+        "texto": "O mercado pode resolver depois da data de término registrada na plataforma, pois a regra permite que o jogo aconteça (ou o vencedor seja declarado) até 31 de março de 2027 ET.",
+        "severidade": "muda_timing",
+        "trecho": "postponed after March 31, 2027 ET",
+        "cenario": "Se o jogo for adiado para uma data após 25 de janeiro de 2027 (data de término da plataforma), mas antes de 31 de março de 2027, quem leu só o título espera que o mercado resolva em 25 de janeiro, mas a regra permite que a resolução ocorra só depois do jogo."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "precedencia_de_fonte",
+        "trecho": "The primary resolution source will be official information from NFL (https://www.nfl.com/); however, a consensus of credible reporting may also be used.",
+        "trecho_conflito": null,
+        "leitura_a": "A fonte primária é a informação oficial da NFL; o consenso de reportagens só é usado quando não há informação oficial disponível.",
+        "leitura_b": "O consenso de reportagens confiáveis pode ser usado mesmo quando há informação oficial, e pode divergir dela; a regra não diz qual prevalece em conflito."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "trecho_conflito": null,
+        "leitura_a": "O consenso exige concordância de múltiplas reportagens confiáveis; o número mínimo de reportagens e o critério de confiabilidade não são definidos.",
+        "leitura_b": "Qualquer reportagem confiável, ou um pequeno número, pode caracterizar o consenso; não há régua para medir 'credible'."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "data_ambigua",
+        "trecho": "the 2027 NFC championship game",
+        "trecho_conflito": null,
+        "leitura_a": "O jogo do Campeonato da NFC da temporada de 2027 da NFL, disputado em janeiro de 2028.",
+        "leitura_b": "O jogo do Campeonato da NFC disputado no ano civil de 2027, correspondente à temporada de 2026."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "f97f80cb-da95-44b7-8134-d2f03e6c78ac",
+      "description_sha256": "efb5fe8e29e4f58f9d9d12e35f52a94ce8c6b604b2df1bee8de7ad6983310dcd",
+      "resolve_sim": [
+        "Houver um encontro militar entre as forças militares da China (República Popular da China) e do Japão entre 17 de novembro de 2025 e 31 de dezembro de 2026, 23h59 ET, definido como qualquer incidente envolvendo uso de força, como ataques de mísseis, fogo de artilharia, troca de tiros ou outras formas de engajamento militar direto entre as forças militares chinesas e japonesas.",
+        "Dentro desse período, o abalroamento intencional de um navio militar por outro que resulte em dano significativo (por exemplo, um buraco no casco) ou no afundamento do navio contará para resolução 'Sim'."
+      ],
+      "resolve_nao": [
+        "Não houver um encontro militar qualificado entre as forças militares da China e do Japão dentro do período, ou seja, nada que se enquadre na definição acima.",
+        "Ações não violentas, como tiros de advertência, fogo de artilharia em áreas desabitadas, ou lançamentos de mísseis que caiam em águas territoriais ou atravessem espaço aéreo, não contam para 'Sim' e, portanto, resolvem 'Não'.",
+        "Abalroamento intencional que cause apenas dano menor (arranhões, amassados) não conta para 'Sim' e, portanto, resolve 'Não'.",
+        "Encontros envolvendo a Guarda Costeira do Japão (JCG) não contam, pois a JCG não é força militar; portanto, um incidente apenas com a JCG resolve 'Não'."
+      ],
+      "fonte": "consensus of credible reporting",
+      "prazo": "December 31, 2026, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 338,
+      "tokens_output": 11004,
+      "tokens_cache_read": 4480,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.003191,
+      "latency_ms": 81442
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "Tiros de advertência, fogo de artilharia em áreas desabitadas e lançamentos de mísseis que caiam em águas territoriais ou passem por espaço aéreo são explicitamente excluídos: um incidente apenas com essas ações não resolve 'Sim'.",
+        "severidade": "muda_resultado",
+        "trecho": "Non-violent actions, such as warning shots, artillery fire into uninhabited areas, or missile launches that land in territorial waters or pass through airspace, will not qualify for a \"Yes\" resolution.",
+        "cenario": "Se houver apenas tiros de advertência ou lançamento de míssil que caia em águas territoriais, quem leu só o título espera 'Sim', mas a regra dá 'Não'."
+      },
+      {
+        "ordinal": 2,
+        "texto": "A Guarda Costeira Chinesa (CCG) conta como força militar, mas a Guarda Costeira Japonesa (JCG) não: um confronto envolvendo a JCG não é um encontro militar, enquanto um envolvendo a CCG é.",
+        "severidade": "muda_resultado",
+        "trecho": "the China Coast Guard (CCG) is part of the military, however Japan Coast Guard (JCG) is not.",
+        "cenario": "Se a Marinha chinesa e a Guarda Costeira japonesa se enfrentarem, quem leu só o título pode considerar um conflito militar, mas a regra exclui a JCG, então resolve 'Não'."
+      },
+      {
+        "ordinal": 3,
+        "texto": "O abalroamento intencional só conta se causar dano significativo (ex.: buraco no casco) ou afundamento; danos menores como arranhões e amassados não contam.",
+        "severidade": "muda_resultado",
+        "trecho": "Intentional ship ramming that results in significant damage to (e.g., a hole in the hull) or the sinking of a military ship by another will count toward a \"Yes\" resolution, however minor damage (scrapes, dents) will not.",
+        "cenario": "Se houver um abalroamento intencional entre navios militares que cause apenas arranhões ou amassados, quem leu só o título espera 'Sim', mas a regra dá 'Não'."
+      },
+      {
+        "ordinal": 4,
+        "texto": "A janela de tempo começa em 17 de novembro de 2025, não na criação do mercado nem em 1º de janeiro de 2025: um encontro antes dessa data não conta.",
+        "severidade": "muda_resultado",
+        "trecho": "between November 17, 2025, and December 31, 2026, 11:59 PM ET",
+        "cenario": "Se houver um encontro militar em outubro de 2025, antes do início da janela, quem leu o título 'before 2027' espera 'Sim', mas a regra dá 'Não'."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fonte_vaga",
+        "trecho": "a consensus of credible reporting",
+        "trecho_conflito": null,
+        "leitura_a": "Exige a concordância de múltiplas reportagens independentes de veículos considerados confiáveis.",
+        "leitura_b": "Pode ser interpretado como qualquer conjunto de reportagens que o resolvedor considere confiável, mesmo sem consenso amplo ou com poucas fontes."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fuso_ausente",
+        "trecho": "11:59 PM ET",
+        "trecho_conflito": null,
+        "leitura_a": "ET refere-se ao horário local no fuso Eastern Time, que em 31 de dezembro seria EST (UTC-5).",
+        "leitura_b": "ET é uma abreviatura sem especificação de horário de verão, podendo ser EDT (UTC-4), deslocando o limite em uma hora."
+      },
+      {
+        "ordinal": 3,
+        "tipo": "criterio_discricionario",
+        "trecho": "significant damage to (e.g., a hole in the hull)",
+        "trecho_conflito": null,
+        "leitura_a": "Dano significativo é apenas aquele que cria um buraco no casco ou afunda o navio, conforme os exemplos.",
+        "leitura_b": "Dano significativo é qualquer dano substancial que comprometa a operação do navio, mesmo que não seja exatamente um buraco ou afundamento."
+      }
+    ]
+  },
+  {
+    "digest": {
+      "event_id": "93975d5a-63ec-40dd-901a-399d4ffa4dea",
+      "description_sha256": "545d2d6e82d2fa8234df5fc171493da62cf6d2e7c9244b55436676b0fc5f897e",
+      "resolve_sim": [
+        "O Partido Liberal (PL) for a entidade com o maior número de cadeiras na Câmara dos Deputados resultante da eleição de 2026, considerando o desempate alfabético previsto na regra, se houver empate."
+      ],
+      "resolve_nao": [
+        "Qualquer outra entidade (partido político ou federação partidária) tiver o maior número de cadeiras na Câmara dos Deputados resultante da eleição de 2026, após a aplicação do critério de desempate, se aplicável.",
+        "O resultado da eleição não for definitivamente conhecido até 30/06/2027 23:59 ET, caso em que o mercado resolve 'Other' (não resolve SIM)."
+      ],
+      "fonte": "Consenso de reportagens credíveis; em caso de ambiguidade, os resultados oficiais do Tribunal Superior Eleitoral (TSE) ou da Câmara dos Deputados.",
+      "prazo": "June 30, 2027, 11:59 PM ET",
+      "anula_se": [],
+      "model": "deepseek-v4-flash",
+      "prompt_version": "v4",
+      "tokens_input": 419,
+      "tokens_output": 14835,
+      "tokens_cache_read": 4480,
+      "tokens_cache_write": 0,
+      "cost_usd": 0.004275,
+      "latency_ms": 117154
+    },
+    "pegadinhas": [
+      {
+        "ordinal": 1,
+        "texto": "A regra exclui coligações: os assentos de uma coligação da qual o PL faça parte não são contabilizados como do PL. Se a coligação tiver o maior número de cadeiras, mas o PL individualmente não, o mercado resolve NÃO.",
+        "severidade": "muda_resultado",
+        "trecho": "This market's resolution will be based solely on the number of seats held by the named party or electoral federation in the Brazilian Chamber of Deputies as a result of the next Brazilian Chamber of Deputies election, not by any coalition it may be a part of.",
+        "cenario": "Se o PL fizer parte de uma coligação que, no total, eleja o maior número de deputados, mas o PL sozinho não for o partido com mais cadeiras, quem leu apenas o título esperaria SIM (pois a coligação do PL venceu), mas a regra dá NÃO."
+      },
+      {
+        "ordinal": 2,
+        "texto": "Em caso de empate no número de cadeiras, o desempate é feito por ordem alfabética das siglas. O PL pode vencer mesmo empatado, se 'PL' for a primeira sigla em ordem alfabética, ou perder se a outra sigla vier antes.",
+        "severidade": "muda_resultado",
+        "trecho": "In the event of a tie between multiple entities for the most seats held, this market will resolve in favor of the entity whose listed abbreviation appears first in alphabetical order.",
+        "cenario": "Se o PL e outro partido (por exemplo, 'PCdoB') empatarem em número de cadeiras, a sigla 'PCdoB' vem antes de 'PL' em ordem alfabética, então o PL perde; se o empate for com um partido de sigla posterior (por exemplo, 'PSDB'), o PL vence."
+      }
+    ],
+    "ambiguidades": [
+      {
+        "ordinal": 1,
+        "tipo": "fuso_ausente",
+        "trecho": "June 30, 2027, 11:59 PM ET",
+        "trecho_conflito": null,
+        "leitura_a": "ET significa Eastern Standard Time (UTC-5).",
+        "leitura_b": "ET significa Eastern Daylight Time (UTC-4)."
+      },
+      {
+        "ordinal": 2,
+        "tipo": "fonte_vaga",
+        "trecho": "This market will resolve based on the result of the election, as indicated by a consensus of credible reporting.",
+        "trecho_conflito": null,
+        "leitura_a": "Consenso significa concordância entre a maioria dos grandes veículos de imprensa do país.",
+        "leitura_b": "Consenso significa qualquer concordância entre reportagens consideradas críveis, sem critério objetivo definido."
+      }
+    ]
+  }
+]

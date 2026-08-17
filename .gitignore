@@ -14,3 +14,6 @@ npm-debug.log*
 supabase/.temp/
 .claude/settings.local.json
 CLAUDE.local.md
+
+probes/digest/degrau-3-v4.md
+probes/digest/degrau-3-v4.json

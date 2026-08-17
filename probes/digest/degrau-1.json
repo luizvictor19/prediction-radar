@@ -1,0 +1,286 @@
+[
+  {
+    "event_id": "7c30cdb3-bbcf-421e-9b3e-b7a2f21a50b5",
+    "description_sha256": "43c4bf4589be731ca6419e8b54d9f0a0874e7572a4497e617adf4ae12d6e1025",
+    "resolve_sim": [
+      "O candle de 1 minuto da Binance para BTC/USDT às 12:00 no fuso ET (meio-dia) na data do título (15 de agosto de 2026) tem preço de fechamento ('Close') final maior que US$ 76.000."
+    ],
+    "resolve_nao": [
+      "Se o fechamento do candle às 12:00 ET não for maior que US$ 76.000 (ou seja, menor ou igual), resolve 'Não'."
+    ],
+    "fonte": "Binance — preço de fechamento ('Close') do par BTC/USDT, com candle de 1 minuto, conforme disponível em https://www.binance.com/en/trade/BTC_USDT com '1m' e 'Candles' selecionados.",
+    "prazo": "15 de agosto de 2026, às 12:00 ET (meio-dia, horário do leste dos EUA).",
+    "anula_se": [],
+    "pegadinhas": [
+      "O preço pode passar de US$ 76.000 em qualquer outro momento do dia 15 de agosto, mas só o fechamento do candle de 1 minuto às 12:00 ET conta — o restante do dia é ignorado.",
+      "Se o fechamento for exatamente US$ 76.000, resolve 'Não', pois a regra exige 'higher than' (acima), não 'greater or equal'.",
+      "O preço considerado é o do par BTC/USDT da Binance; valores em outras corretoras ou de outros pares (como BTC/USD) não contam."
+    ],
+    "ambiguidades": [
+      "A regra usa 'ET timezone' sem especificar se é EST (UTC-5) ou EDT (UTC-4). Em 15 de agosto, o horário de verão dos EUA está em vigor, então ET corresponde a EDT (UTC-4), mas a ausência de explicitação pode gerar leituras diferentes."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 1904,
+    "tokens_output": 3162,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001152,
+    "latency_ms": 24530
+  },
+  {
+    "event_id": "dfbad072-17b4-4f2e-a1f1-a671887c685f",
+    "description_sha256": "789348b98098dda4c7de4b231ceccb58e9e4e9c1b1bf708b37a2ca266dc5cdc1",
+    "resolve_sim": [
+      "O Chicago White Sox vencer a World Series de 2026 da MLB."
+    ],
+    "resolve_nao": [
+      "Se o Chicago White Sox não vencer a World Series de 2026, o mercado resolve 'Não' (complemento do Sim).",
+      "Se em qualquer momento for impossível o Chicago White Sox vencer a World Series de 2026 segundo as regras da MLB (ex.: eliminado nos playoffs), o mercado resolve 'Não'."
+    ],
+    "fonte": "Informações oficiais da MLB (https://www.mlb.com/), podendo também ser usado um consenso de reportagens confiáveis.",
+    "prazo": "31 de dezembro de 2026 ET",
+    "anula_se": [
+      "Se a temporada de 2026 da MLB for cancelada, adiada para depois de 31 de dezembro de 2026 ET, ou se não houver vencedor declarado nesse prazo, o mercado resolve para 'Other' (nem Sim, nem Não)."
+    ],
+    "pegadinhas": [
+      "O mercado resolve 'Não' assim que o White Sox for eliminado matematicamente, antes do fim da World Series — não espera o término da série.",
+      "Se a temporada for cancelada ou adiada além de 31/12/2026, o resultado é 'Other', não 'Não'."
+    ],
+    "ambiguidades": [
+      "A frase 'postponed after December 31, 2026 ET' pode ser lida como 'adiada para depois de 31/12/2026' ou 'adiada depois de 31/12/2026 (ou seja, a decisão de adiar ocorre após essa data)' — a leitura mais natural é a primeira, mas há espaço para interpretação.",
+      "A expressão 'consensus of credible reporting' não define o que constitui consenso — pode ser interpretada de diferentes maneiras."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 1877,
+    "tokens_output": 3776,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.00132,
+    "latency_ms": 33690
+  },
+  {
+    "event_id": "dcd5ee1b-7828-4579-b283-079ca93a22fa",
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "falha": {
+      "code": "opiniao",
+      "message": "saída contém opinião sobre desfecho em ambiguidades (\"provável\")"
+    }
+  },
+  {
+    "event_id": "57c753f1-8615-46f5-9696-9541a5bb2f16",
+    "description_sha256": "e57adb0f05f81da149a593425bbf3cc5f7d54603e5221fcd91e1f74b4d4b5779",
+    "resolve_sim": [
+      "Apple é a maior empresa do mundo por valor de mercado em 31 de agosto de 2026, ao fechamento do mercado."
+    ],
+    "resolve_nao": [
+      "Como a regra não descreve explicitamente o NÃO, o mercado resolve NÃO quando a condição de SIM não for satisfeita."
+    ],
+    "fonte": "consensus of credible reporting",
+    "prazo": "31 de agosto de 2026, ao fechamento do mercado",
+    "anula_se": [],
+    "pegadinhas": [
+      "Pode parecer que a capitalização intradiária conta, mas a regra exige o valor no fechamento do mercado.",
+      "Pode parecer que 'maior empresa' refere-se a receita ou lucro, mas a regra define especificamente 'by market cap'.",
+      "Pode parecer que uma fonte oficial única decide, mas a regra usa um consenso de reportagens confiáveis, que pode divergir."
+    ],
+    "ambiguidades": [
+      "O trecho 'This market will resolve to the largest company in the world by market cap' pode ser lido como um mercado categórico (resolve para o nome da empresa) ou como uma condição sim/não (se a Apple é a maior). A pergunta sugere sim/não, mas o texto da regra é ambíguo.",
+      "O trecho 'as of market close' não especifica qual mercado ou fuso horário; pode ser o fechamento da bolsa onde a empresa está listada ou um horário padrão.",
+      "O trecho 'consensus of credible reporting' é vago: não define o que conta como 'credible' nem como o consenso é formado."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 1801,
+    "tokens_output": 4535,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001522,
+    "latency_ms": 39063
+  },
+  {
+    "event_id": "66ba17f3-cb1a-4846-8c90-a159aa3af4c8",
+    "description_sha256": "0fba60e03908266ebca3e0912823008f81e7c17727c2f01637efc1e4a2c23df0",
+    "resolve_sim": [
+      "Angel Reese for o indivíduo classificado como #1 na lista oficial 'Year in Search Global People' do Google para 2026."
+    ],
+    "resolve_nao": [
+      "A regra não descreve condição explícita de NÃO; por complemento, resolve NÃO se o #1 da lista for qualquer pessoa diferente de Angel Reese.",
+      "Se o Google não publicar a lista especificada até 31 de março de 2027, 23:59 ET, o mercado resolve para 'Other', que também não é SIM."
+    ],
+    "fonte": "Google (lista oficial 'Year in Search Global People')",
+    "prazo": "31 de março de 2027, 23:59 ET",
+    "anula_se": [],
+    "pegadinhas": [
+      "Pode parecer que ser a pessoa mais pesquisada em qualquer ranking do Google basta, mas a regra exige a lista oficial 'Year in Search Global People' de 2026 — rankings de outras categorias ou ferramentas de tendência não contam.",
+      "Pode parecer que o #1 em uma lista regional (por exemplo, de um país específico) conta, mas a regra exige a seleção de local Global — listas de países individuais não são a fonte de resolução.",
+      "Pode parecer que somente uma lista publicada durante o ano de 2026 é válida, mas a regra permite resolução até 31 de março de 2027; uma lista oficial de 2026 publicada em 2027 ainda conta."
+    ],
+    "ambiguidades": [
+      "O trecho \"March 31, 2027, 11:59 PM ET\" usa 'ET', que pode significar Eastern Standard Time (UTC-5) ou Eastern Daylight Time (UTC-4); a regra não especifica qual, criando uma ambiguidade de uma hora no prazo.",
+      "O trecho \"this market will resolve to “Other”\" é ambíguo: pode significar que o mercado resolve para um terceiro resultado 'Other' (nem SIM nem NÃO), ou pode significar que resolve NÃO porque Angel Reese não é #1, já que não há lista."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 1940,
+    "tokens_output": 7404,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.002345,
+    "latency_ms": 64142
+  },
+  {
+    "event_id": "034846e9-0d38-4370-85db-17b6420eb841",
+    "description_sha256": "77bd0e1a00598929cf5ad4e75f16da660dea12c96d0ccbca53550e207afb2b98",
+    "resolve_sim": [
+      "O mercado resolve 'Sim' se qualquer candle de 1 minuto da Binance para BTC/USDT, entre 24 de novembro de 2025 às 14:00 e 31 de dezembro de 2026 às 23:59 no fuso ET, tiver preço 'High' final igual ou maior que US$ 150.000."
+    ],
+    "resolve_nao": [
+      "Caso contrário, se nenhum candle no período tiver High final igual ou superior a US$ 150.000, o mercado resolve 'Não'."
+    ],
+    "fonte": "Binance, especificamente os preços 'High' do par BTC/USDT em https://www.binance.com/en/trade/BTC_USDT, com candles de 1 minuto.",
+    "prazo": "Entre 24 de novembro de 2025, 14:00 e 31 de dezembro de 2026, 23:59 no fuso ET.",
+    "anula_se": [],
+    "pegadinhas": [
+      "A pergunta sugere que basta o Bitcoin alcançar US$ 150.000 em qualquer exchange; a regra exige o High de um candle de 1 minuto especificamente na Binance no par BTC/USDT, ignorando outras plataformas e pares.",
+      "Parece que o preço de toque em qualquer momento conta; na verdade, apenas o valor final do High do candle de 1 minuto da Binance é considerado, não o preço a cada negociação.",
+      "Parece que a janela vai até 31 de dezembro de 2026 em qualquer fuso; a regra define o limite no fuso ET, então eventos em outros fusos precisam ser convertidos para o timestamp do candle no fuso ET.",
+      "Parece que o período começa na criação do mercado; a regra só considera candles a partir de 24 de novembro de 2025 às 14:00 ET, então eventos anteriores não contam."
+    ],
+    "ambiguidades": [
+      "A expressão 'between November 24, 2025, 14:00 and December 31, 2026, 23:59' não esclarece se o intervalo é inclusivo nos extremos nem se o candle deve ter o tempo de abertura ou de fechamento dentro desse intervalo; a leitura usual é que candles com tempo de abertura entre esses momentos contam, mas outra leitura poderia excluir o candle que começa exatamente no limite final.",
+      "O termo 'ET timezone' admite duas leituras: Eastern Time com horário de verão (EDT/EST alternando) ou um fuso fixo de UTC-5; a regra não especifica o tratamento do horário de verão, o que pode alterar quais candles estão no período."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 403,
+    "tokens_output": 3859,
+    "tokens_cache_read": 1536,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001158,
+    "latency_ms": 31508
+  },
+  {
+    "event_id": "370649a4-a847-4b69-bf54-72c93d79384e",
+    "description_sha256": "7af37b690c8a0e71269b07bd1d53d45e020567caef637bf098d89dc5dfdc9ad7",
+    "resolve_sim": [
+      "Microsoft ser a maior empresa do mundo em capitalização de mercado em 30 de setembro de 2026, no fechamento do mercado."
+    ],
+    "resolve_nao": [
+      "Se Microsoft não for a maior empresa do mundo em capitalização de mercado na data e no horário especificados, o mercado resolve NÃO."
+    ],
+    "fonte": "a consensus of credible reporting",
+    "prazo": "30 de setembro de 2026, no fechamento do mercado (sem fuso horário explícito na regra)",
+    "anula_se": [],
+    "pegadinhas": [
+      "A posição de maior empresa durante o dia não conta: a regra exige 'as of market close', ou seja, apenas o valor no fechamento do mercado.",
+      "A pergunta diz 'maior empresa do mundo', mas a regra define explicitamente 'by market cap', então métricas como receita, lucro ou número de funcionários não contam."
+    ],
+    "ambiguidades": [
+      "Trecho 'as of market close' — não especifica qual mercado: pode ser o fechamento da bolsa na qual a Microsoft está listada (NASDAQ) ou um horário de fechamento global padrão, gerando leituras diferentes.",
+      "Trecho 'a consensus of credible reporting' — não define quais veículos são considerados confiáveis nem como o consenso é apurado, deixando margem para interpretações sobre qual reportagem prevalece."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 258,
+    "tokens_output": 2154,
+    "tokens_cache_read": 1536,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.000661,
+    "latency_ms": 19403
+  },
+  {
+    "event_id": "86ea2b71-3b2c-4a3b-9de7-4bb21c76be80",
+    "description_sha256": "f02ae2e8e4c5cfd5fcf8a9dee5af9972d7a32e92d7a43b20d83937e06941217d",
+    "resolve_sim": [
+      "O Washington Commanders vence o jogo do campeonato da NFC de 2027."
+    ],
+    "resolve_nao": [
+      "Se a qualquer momento se tornar impossível para o Washington Commanders vencer o campeonato da NFC de 2027 de acordo com as regras da NFL (por exemplo, eliminado nos playoffs), o mercado resolve 'Não'.",
+      "Se o vencedor do jogo do campeonato da NFC de 2027 for outro time que não o Washington Commanders, o mercado resolve 'Não' (complemento do SIM)."
+    ],
+    "fonte": "NFL (https://www.nfl.com/), com consenso de reportagens confiáveis como fonte alternativa.",
+    "prazo": "31 de março de 2027, ET (Eastern Time)",
+    "anula_se": [
+      "Se o jogo do campeonato da NFC de 2027 for cancelado, adiado para depois de 31 de março de 2027 ET, ou não houver vencedor declarado nesse prazo, o mercado resolve 'Other' (não resolve sim/não)."
+    ],
+    "pegadinhas": [
+      "Pode parecer que o mercado só resolve depois do jogo do campeonato, mas a regra resolve 'Não' assim que o Washington Commanders for eliminado dos playoffs, mesmo antes do jogo.",
+      "Pode parecer que um jogo cancelado ou adiado sem vencedor resolve 'Não', mas a regra resolve 'Other', não 'Não'."
+    ],
+    "ambiguidades": [
+      "O trecho '2027 NFL NFC championship' não especifica se refere ao jogo do campeonato da temporada de 2027 da NFL (que ocorreria em janeiro de 2028) ou ao jogo do campeonato realizado no ano civil de 2027 (da temporada de 2026).",
+      "O trecho 'postponed after March 31, 2027 ET' pode significar: (a) o jogo foi adiado para uma data posterior a 31 de março, ou (b) a decisão de adiamento ocorre depois de 31 de março, ainda que a nova data seja anterior a essa data."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 349,
+    "tokens_output": 6232,
+    "tokens_cache_read": 1536,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001815,
+    "latency_ms": 51575
+  },
+  {
+    "event_id": "f97f80cb-da95-44b7-8134-d2f03e6c78ac",
+    "description_sha256": "efb5fe8e29e4f58f9d9d12e35f52a94ce8c6b604b2df1bee8de7ad6983310dcd",
+    "resolve_sim": [
+      "Incidente com uso de força, como ataques com mísseis, fogo de artilharia, troca de tiros ou outras formas de engajamento militar direto, entre forças militares da China (República Popular da China) e do Japão, ocorrido entre 17 de novembro de 2025 e 31 de dezembro de 2026, 23h59 ET.",
+      "Abalroamento intencional de um navio militar por outro que resulte em dano significativo (ex.: buraco no casco) ou afundamento, entre forças militares da China e do Japão, ocorrido no mesmo período de 17 de novembro de 2025 a 31 de dezembro de 2026, 23h59 ET."
+    ],
+    "resolve_nao": [
+      "Na ausência de qualquer encontro militar conforme definido entre as forças militares da China e do Japão no período de 17 de novembro de 2025 a 31 de dezembro de 2026, 23h59 ET, o mercado resolve 'Não'."
+    ],
+    "fonte": "Consenso de reportagens confiáveis (consensus of credible reporting)",
+    "prazo": "31 de dezembro de 2026, 23h59 ET",
+    "anula_se": [],
+    "pegadinhas": [
+      "Tiros de advertência, fogo de artilharia para áreas desabitadas e lançamentos de mísseis que caiam em águas territoriais ou cruzem espaço aéreo parecem encontro militar, mas a regra os exclui explicitamente da resolução 'Sim'.",
+      "Abalroamento com danos menores (arranhões, amassados) não conta; apenas danos significativos (ex.: buraco no casco) ou afundamento contam.",
+      "A Guarda Costeira Japonesa (JCG) não é considerada força militar, portanto confrontos envolvendo a JCG não contam; já a Guarda Costeira Chinesa (CCG) conta como militar."
+    ],
+    "ambiguidades": [
+      "'other forms of direct military engagement' — a palavra 'direto' pode ser interpretada como exigindo confronto físico presencial, excluindo formas como guerra cibernética ou eletrônica, sem definição explícita na regra.",
+      "'missile launches that land in territorial waters or pass through airspace' — literalmente, qualquer lançamento de míssil que não atinja um alvo cairá em águas territoriais ou cruzará espaço aéreo; isso poderia excluir até disparos em combate que erram o alvo, embora a intenção pareça ser excluir apenas lançamentos não violentos (como avisos)."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 445,
+    "tokens_output": 6547,
+    "tokens_cache_read": 1536,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001917,
+    "latency_ms": 54677
+  },
+  {
+    "event_id": "93975d5a-63ec-40dd-901a-399d4ffa4dea",
+    "description_sha256": "545d2d6e82d2fa8234df5fc171493da62cf6d2e7c9244b55436676b0fc5f897e",
+    "resolve_sim": [
+      "O Partido Liberal (PL) for o partido ou federação eleitoral que detém o maior número de assentos na próxima Câmara dos Deputados, como resultado da eleição de 4 de outubro de 2026, contando apenas os assentos da entidade nomeada (PL).",
+      "Em caso de empate no maior número de assentos, o PL for a entidade cuja abreviação ('PL') apareça primeiro em ordem alfabética entre as empatadas."
+    ],
+    "resolve_nao": [
+      "O PL não for a entidade com o maior número de assentos, ou, em empate, não vencer pelo critério alfabético.",
+      "Se o resultado da eleição não for definitivamente conhecido até 30 de junho de 2027, 23:59 ET, o mercado resolve para 'Other' (não-SIM)."
+    ],
+    "fonte": "Consenso de reportagens confiáveis; em caso de ambiguidade, resultados oficiais do Tribunal Superior Eleitoral (TSE) ou da Câmara dos Deputados.",
+    "prazo": "Eleição em 4 de outubro de 2026; prazo para resultado definitivo: 30 de junho de 2027, 23:59 ET.",
+    "anula_se": [],
+    "pegadinhas": [
+      "Pode parecer que assentos de uma coligação ou federação eleitoral da qual o PL faça parte contam para o PL; a regra exclui expressamente coligações e considera apenas os assentos da entidade nomeada (partido ou federação), não de qualquer coligação da qual ela participe."
+    ],
+    "ambiguidades": [
+      "O trecho \"if the result of this election isn't known definitively by June 30, 2027, 11:59 PM ET\" admite duas leituras: (a) não houve divulgação de resultado oficial final até a data; (b) há qualquer contestação judicial ou recontagem em andamento, mesmo com um resultado provisório divulgado."
+    ],
+    "model": "deepseek-v4-flash",
+    "prompt_version": "v1",
+    "tokens_input": 526,
+    "tokens_output": 5822,
+    "tokens_cache_read": 1536,
+    "tokens_cache_write": 0,
+    "cost_usd": 0.001725,
+    "latency_ms": 54363
+  }
+]
