@@ -154,6 +154,23 @@ const DEFAULTS: SystemConfig = {
   radar_roster_max: 800,
   radar_snapshot_interval_minutes: 15,
   radar_roster_interval_minutes: 360,
+  // Espelham os defaults da migration da digestão de regras. Não há flag de
+  // liga/desliga aqui — não há cron que digira, e o script exige degrau
+  // explícito no argumento. O que estes fallbacks fazem é permitir rodar o
+  // degrau 1 antes do apply, que é a ordem pedida: medir primeiro, aplicar
+  // depois de ler.
+  digest_model: 'deepseek-v4-flash',
+  digest_prompt_version: 'v1',
+  // 5,00 por medição do degrau 1, não por precaução: US$ 0,00151 por digestão em
+  // deepseek-v4-flash dão ~US$ 1,12 para os 744 mercados do radar, e o degrau 2
+  // (Claude ao lado, 50 mercados) fica perto de US$ 4. Um teto de 1,00 barraria
+  // os dois — ver a migration.
+  digest_daily_budget_usd: 5.0,
+  // 300s e não os 120s originais: a v3 do prompt tem mediana de 84s de latência
+  // e a chamada mais longa estourou os 120s. Cada versão pede mais campos, a
+  // saída cresce e o relógio junto — o prazo apertado vira falha que parece do
+  // fornecedor e é do nosso limite.
+  digest_timeout_ms: 300_000,
   signal_ttl_minutes: 30,
   signal_cooldown_minutes: 60,
   stale_cleanup_threshold_hours: 1,

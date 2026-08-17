@@ -270,6 +270,18 @@ export interface SystemConfig {
   radar_snapshot_interval_minutes: number;
   /** Intervalo entre recálculos do roster. */
   radar_roster_interval_minutes: number;
+  /**
+   * A digestão de regras (`src/digest/`). Não há flag de liga/desliga porque não
+   * há cron: quem roda é `scripts/digerir-regras.ts`, à mão, com o degrau
+   * explícito no argumento. Flag que nada lê promete um desligamento que não
+   * existe.
+   */
+  digest_model: string;
+  digest_prompt_version: string;
+  /** Teto de gasto por dia UTC. Parada dura, no desenho de `analyst_daily_budget_usd`. */
+  digest_daily_budget_usd: number;
+  /** Prazo de UMA digestão, via AbortSignal. Sem retry. */
+  digest_timeout_ms: number;
   signal_ttl_minutes: number;
   signal_cooldown_minutes: number;
   stale_cleanup_threshold_hours: number;

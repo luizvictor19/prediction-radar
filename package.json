@@ -38,6 +38,8 @@
     "liquipedia:probe": "tsx scripts/probe-liquipedia.ts",
     "oddspapi:probe": "tsx scripts/probe-oddspapi.ts",
     "polymarket:universe": "tsx scripts/probe-polymarket-universe.ts",
+    "digerir": "tsx scripts/digerir-regras.ts",
+    "carregar-digest": "tsx scripts/carregar-digest.ts",
     "radar:lista": "tsx scripts/montar-lista-radar.ts",
     "radar:coletor": "tsx scripts/radar-coletor.ts",
     "radar:categorias": "tsx scripts/radar-categorias.ts",
