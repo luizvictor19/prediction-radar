@@ -16,14 +16,63 @@ import { somaDigest, temDigestao } from '../lib/regras';
  * A ordenação é escolhida num seletor explícito. Nunca "inteligente".
  */
 
-type Ordem = 'prazo' | 'var24' | 'var7d' | 'contradicao' | 'liquidez';
+export type Ordem = 'prazo' | 'var24' | 'var7d' | 'contradicao' | 'liquidez';
 
-const ORDENS: { chave: Ordem; rotulo: string }[] = [
-  { chave: 'prazo', rotulo: 'vence em breve' },
-  { chave: 'var24', rotulo: 'maior variação em 24h' },
-  { chave: 'var7d', rotulo: 'maior variação em 7d' },
-  { chave: 'contradicao', rotulo: 'tem contradição interna' },
-  { chave: 'liquidez', rotulo: 'maior liquidez' },
+/**
+ * Uma opção do seletor de ordenação.
+ *
+ * `fato` não é decoração: é a coluna que esta ordem lê, declarada ao lado do
+ * extrator para que uma opção nova tenha de dizer por qual FATO ordena. É o que
+ * `Hoje.test.ts` verifica, e é a única defesa contra alguém acrescentar
+ * "mais promissores" ao seletor sem ninguém reparar.
+ */
+export interface OpcaoDeOrdem {
+  chave: Ordem;
+  rotulo: string;
+  /** A coluna lida. Nunca `prob_self`: a nota do dono não ordena a lista. */
+  fato: string;
+  dir: 'asc' | 'desc';
+  valor: (m: MercadoNaLista) => number | null;
+}
+
+export const ORDENS: OpcaoDeOrdem[] = [
+  {
+    chave: 'prazo',
+    rotulo: 'vence em breve',
+    fato: 'dias_restantes',
+    dir: 'asc',
+    valor: m => m.dias_restantes,
+  },
+  {
+    chave: 'var24',
+    rotulo: 'maior variação em 24h',
+    fato: 'var_24h',
+    dir: 'desc',
+    // Módulo: cair 11 pontos é o mesmo tamanho de movimento que subir 11, e a
+    // direção é opinião sobre o que é bom.
+    valor: m => (m.var_24h === null ? null : Math.abs(m.var_24h)),
+  },
+  {
+    chave: 'var7d',
+    rotulo: 'maior variação em 7d',
+    fato: 'var_7d',
+    dir: 'desc',
+    valor: m => (m.var_7d === null ? null : Math.abs(m.var_7d)),
+  },
+  {
+    chave: 'contradicao',
+    rotulo: 'tem contradição interna',
+    fato: 'contradicoes',
+    dir: 'desc',
+    valor: m => somaDigest(m, 'contradicoes'),
+  },
+  {
+    chave: 'liquidez',
+    rotulo: 'maior liquidez',
+    fato: 'liquidez',
+    dir: 'desc',
+    valor: m => m.liquidez,
+  },
 ];
 
 type Faixa = 'todos' | '2' | '7' | '30' | 'mais';
@@ -98,16 +147,10 @@ export function Hoje({
       conta(antes, 'contradição');
     }
 
-    const ordenada =
-      ordem === 'prazo'
-        ? ordenar(atual, m => m.dias_restantes, 'asc')
-        : ordem === 'var24'
-          ? ordenar(atual, m => (m.var_24h === null ? null : Math.abs(m.var_24h)), 'desc')
-          : ordem === 'var7d'
-            ? ordenar(atual, m => (m.var_7d === null ? null : Math.abs(m.var_7d)), 'desc')
-            : ordem === 'contradicao'
-              ? ordenar(atual, m => somaDigest(m, 'contradicoes'), 'desc')
-              : ordenar(atual, m => m.liquidez, 'desc');
+    // A ordem sai da constante, não de um ternário aqui: assim o teste que trava
+    // o invariante vê exatamente o que a tela usa.
+    const opcao = ORDENS.find(o => o.chave === ordem) ?? ORDENS[0]!;
+    const ordenada = ordenar(atual, opcao.valor, opcao.dir);
 
     return { lista: ordenada, derrubados };
   }, [mercados, ordem, tema, faixa, soContradicao]);
