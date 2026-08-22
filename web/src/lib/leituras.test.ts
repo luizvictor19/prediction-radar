@@ -72,8 +72,9 @@ test('mercado sem digestão não ganha marca de leitura', () => {
 });
 
 test('com dois textos manda o PIOR deles', () => {
-  // FIXTURE SINTÉTICO: nenhum mercado tem dois textos hoje (734 linhas para 734
-  // mercados em 22/08/2026). O pior manda porque a linha é uma só — dizer "3
+  // FIXTURE SINTÉTICO: nenhum mercado tem dois textos hoje — 1033 linhas para
+  // 1033 mercados, medido em 22/08/2026 por `npm run medir:tela-regra`.
+  // O pior manda porque a linha é uma só — dizer "3
   // leituras" com um texto medido uma vez esconde o texto fraco.
   const selo = seloDeCobertura([3, 1]);
 

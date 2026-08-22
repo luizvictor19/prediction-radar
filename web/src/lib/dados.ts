@@ -104,8 +104,9 @@ export function lerRadar(): Promise<MercadoRadar[]> {
  * vezes ou nenhuma. Aí a lista soma a contradição de um texto duas vezes, ou
  * perde a de outro, e em silêncio.
  *
- * Hoje isso não morde: cada mercado tem um texto só (734 linhas para 734
- * mercados em 22/08/2026), e com um texto por mercado `event_id` é único. Mas é
+ * Hoje isso não morde: cada mercado tem um texto só — 1033 linhas para 1033
+ * mercados, medido em 22/08/2026 por `npm run medir:tela-regra` —, e com um
+ * texto por mercado `event_id` é único. Mas é
  * exatamente o caso que `juntarRadarComDigest` e `textosParaLer` passaram a
  * suportar, e uma descrição editada na Polymarket cria a segunda linha.
  *

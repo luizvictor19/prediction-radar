@@ -12,8 +12,9 @@ import type {
 /**
  * FIXTURE SINTÉTICO — não é caso observado.
  *
- * Medido em 22/08/2026, `digest_achados_por_mercado` tinha 734 linhas para 734
- * mercados: NENHUM mercado tem hoje dois textos de regra. O caso abaixo é
+ * Medido em 22/08/2026 por `npm run medir:tela-regra`,
+ * `digest_achados_por_mercado` tinha 1033 linhas para 1033 mercados: NENHUM
+ * mercado tem hoje dois textos de regra. O caso abaixo é
  * construído à mão, e o que ele trava é um defeito LATENTE: a granularidade da
  * view é (mercado, texto), a Polymarket editar uma descrição produz a segunda
  * linha, e nesse dia o defeito passa a morder em produção.
@@ -116,8 +117,8 @@ test('dois mercados que compartilham o mesmo texto de regra recebem cada um o se
 });
 
 test('mercado do radar sem digestão continua na lista, com lista vazia', () => {
-  // 320 dos 1054 do roster estão assim em 22/08/2026. Sumir da lista seria
-  // descarte silencioso.
+  // 20 dos 942 do roster estão assim, medido em 22/08/2026 por
+  // `npm run medir:tela-regra`. Sumir da lista seria descarte silencioso.
   const linhas = juntarRadarComDigest([mercado('e1')], []);
 
   assert.equal(linhas.length, 1);

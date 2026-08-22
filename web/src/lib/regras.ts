@@ -19,9 +19,10 @@ import type {
  * linha de um mercado com dois textos sobrescrever a primeira em silêncio — as
  * contagens de um dos textos somem da tela sem aviso. Por isso o campo é lista.
  *
- * Nenhum mercado tem dois textos hoje (734 linhas para 734 mercados em
- * 22/08/2026), então isto é defeito latente e não sintoma. `dados.ts` já
- * registra a mesma expectativa, evitando `.single()` no `lerAchados`.
+ * Nenhum mercado tem dois textos hoje — 1033 linhas para 1033 mercados, medido
+ * em 22/08/2026 por `npm run medir:tela-regra` —, então isto é defeito latente
+ * e não sintoma. `dados.ts` já registra a mesma expectativa, evitando
+ * `.single()` no `lerAchados`.
  */
 export function juntarRadarComDigest(
   radar: readonly MercadoRadar[],
@@ -59,8 +60,9 @@ export function agruparPorEvento(
 /**
  * O mercado foi digerido?
  *
- * Lista vazia é "não digerido", que é fato sobre o dado e não defeito: medido em
- * 22/08/2026, 320 dos 1054 mercados do roster (30,4%) não têm digestão nenhuma.
+ * Lista vazia é "não digerido", que é fato sobre o dado e não defeito: 20 dos
+ * 942 mercados do roster (2,1%) não têm digestão nenhuma, medido em 22/08/2026
+ * por `npm run medir:tela-regra`.
  */
 export function temDigestao(m: Pick<MercadoNaLista, 'digests'>): boolean {
   return m.digests.length > 0;
