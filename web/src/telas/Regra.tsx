@@ -31,9 +31,11 @@ import { dinheiro, urlPolymarket } from '../lib/formato';
 
 export function Regra({
   mercado,
+  onVoltar,
   onOperar,
 }: {
   mercado: MercadoNaLista;
+  onVoltar: () => void;
   onOperar: () => void;
 }) {
   const [linhas, setLinhas] = useState<LinhaAchados[] | null>(null);
@@ -87,15 +89,24 @@ export function Regra({
 
   return (
     <div className="regra">
+      <button className="voltar" onClick={onVoltar}>
+        ← Hoje
+      </button>
+
       <header>
         <h1>{mercado.pergunta}</h1>
+        {/* One primary button per screen, and this is it. Polymarket is the
+            secondary: leaving for the exchange before the probability is
+            written down is the order the whole flow exists to prevent. */}
         <div className="acoes">
-          <button onClick={onOperar}>registrar minha probabilidade</button>
           {url && (
             <a href={url} target="_blank" rel="noreferrer">
               Polymarket ↗
             </a>
           )}
+          <button className="principal" onClick={onOperar}>
+            Operar neste mercado
+          </button>
         </div>
       </header>
 

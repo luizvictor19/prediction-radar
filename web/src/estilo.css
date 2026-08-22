@@ -47,40 +47,15 @@ body {
   font: 14px/1.6 ui-monospace, monospace;
 }
 
-/* abas */
-.abas {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--linha);
-  margin-bottom: 16px;
-}
-.abas button {
-  padding: 6px 14px;
-  border: 1px solid var(--linha);
-  border-radius: 4px;
-  background: var(--caixa);
-  cursor: pointer;
-  font-size: 15px;
-}
-.abas button.ativa {
-  border-color: var(--marca);
+/* navegação: um passo atrás, sempre no mesmo canto */
+.voltar {
+  display: inline-block;
+  border: 0;
+  background: none;
   color: var(--marca);
-  font-weight: 600;
-}
-.abas button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.abas .selecionado {
-  margin-left: auto;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fraco);
-  font-size: 13px;
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 14px;
 }
 
 /* controles da lista */

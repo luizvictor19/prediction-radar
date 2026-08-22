@@ -43,11 +43,9 @@ function ordenar<T>(itens: T[], valor: (x: T) => number | null, dir: 'asc' | 'de
 export function Hoje({
   mercados,
   onAbrirRegra,
-  onOperar,
 }: {
   mercados: MercadoNaLista[];
   onAbrirRegra: (id: string) => void;
-  onOperar: (id: string) => void;
 }) {
   const [ordem, setOrdem] = useState<Ordem>('prazo');
   const [tema, setTema] = useState<string>('todos');
@@ -214,9 +212,11 @@ export function Hoje({
               )}
             </div>
 
+            {/* One way out of a card, and it goes to the rule. Betting is
+                reached FROM a market, never straight from the list -- you
+                list, you pick, and only then you decide whether to bet. */}
             <div className="acoes">
               <button onClick={() => onAbrirRegra(m.id)}>ler a regra</button>
-              <button onClick={() => onOperar(m.id)}>operar</button>
               {urlPolymarket(m.slug) && (
                 <a href={urlPolymarket(m.slug)!} target="_blank" rel="noreferrer">
                   Polymarket ↗
