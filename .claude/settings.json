@@ -20,6 +20,9 @@
       "Bash(supabase migration up*)",
       "Bash(psql*)",
       "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
       "Bash(npm run oddspapi:probe*)",
       "Read(./.env)",
       "Read(./.env.*)"
