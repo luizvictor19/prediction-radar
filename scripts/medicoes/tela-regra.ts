@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { contemTrecho, fundirPorAbsorcao, type AchadoFundivel } from '../../web/src/lib/dedup.js';
 import {
   agruparPorTexto,
   conferirContraView,
-  contem,
   lerDigestao,
   mascararParaGate,
   montarLinhas,
@@ -97,25 +97,43 @@ type Resultado = {
   ganharamLeitura: number;
   /** Fusões em que o sobrevivente NÃO contém todo mundo que absorveu. */
   invarianteQuebrado: number;
-  /** Absorvidos que tinham mais de um container possível (só na absorção). */
-  containerAmbiguo: number;
 };
 
 /**
  * As três formas de decidir quem funde com quem, medidas lado a lado.
  *
+ * - `absorcao`: a REGRA, e não uma cópia dela. Chama `fundirPorAbsorcao` de
+ *   `web/src/lib/dedup.ts`, a mesma função que a tela usa. O relatório e a tela
+ *   não podem divergir porque não há duas implementações.
+ * - `componentes-continencia`: fecho transitivo sobre continência.
  * - `componentes-encadeadas`: fecho transitivo sobre continência OU
  *   encavalamento de sufixo/prefixo. A leitura literal da spec original.
- * - `componentes-continencia`: fecho transitivo só sobre continência.
- * - `absorcao-continencia`: cada achado é absorvido pelo MAIS LONGO que o
- *   contém, sem transitividade.
  *
- * As duas primeiras são fecho transitivo, e fecho transitivo não preserva o
- * invariante que justifica a regra. `A ⊃ B` e `C ⊃ B` com `A ⊅ C` junta os três
- * num componente cujo sobrevivente não contém o `C`. A terceira é a única em
- * que "o sobrevivente contém tudo que absorveu" é verdade por construção.
+ * As duas últimas existem só para o relatório poder mostrar o que custaria
+ * voltar a elas. Fecho transitivo não preserva o invariante que justifica a
+ * regra: `A ⊃ B` e `C ⊃ B` com `A ⊅ C` junta os três num componente cujo
+ * sobrevivente não contém o `C`.
  */
-type Modo = 'componentes-encadeadas' | 'componentes-continencia' | 'absorcao-continencia';
+type Modo = 'absorcao' | 'componentes-continencia' | 'componentes-encadeadas';
+
+/** `AchadoNoMercado` no contrato que `fundirPorAbsorcao` pede. */
+type Fundivel = AchadoFundivel & { origem_id: string; achado: AchadoNoMercado };
+
+function paraFundivel(a: AchadoNoMercado): Fundivel {
+  return {
+    classe: a.classe,
+    origem: a.origem,
+    subtipos: a.subtipos,
+    trecho: a.trecho,
+    descricao: a.descricao,
+    cenario: a.cenario,
+    leitura_a: a.leitura_a,
+    leitura_b: a.leitura_b,
+    leituras: [...a.leituras],
+    origem_id: a.chave,
+    achado: a,
+  };
+}
 
 function rodarDedup(
   porMercado: Map<string, AchadoNoMercado[]>,
@@ -128,11 +146,19 @@ function rodarDedup(
     fusoes: new Map(),
     ganharamLeitura: 0,
     invarianteQuebrado: 0,
-    containerAmbiguo: 0,
   };
 
   for (const lista of porMercado.values()) {
     r.antes += lista.length;
+
+    if (modo === 'absorcao') {
+      const entrada = lista.map(paraFundivel);
+      const saida = fundirPorAbsorcao(entrada);
+      r.depois += saida.length;
+      contabilizarAbsorcao(entrada, saida, r);
+      continue;
+    }
+
     const grupos = new Map<string, AchadoNoMercado[]>();
     for (const a of lista) {
       const g = grupos.get(grupoDe(a));
@@ -141,18 +167,13 @@ function rodarDedup(
     }
 
     for (const g of grupos.values()) {
-      // Trecho mais longo primeiro; empate pelo texto normalizado, que é
-      // determinístico e não depende da ordem em que o banco devolveu.
       const itens = [...g].sort(
         (x, y) => y.trecho.length - x.trecho.length || x.trechoNorm.localeCompare(y.trechoNorm),
       );
-      const toks = itens.map((i) => i.trechoNorm.split(' '));
-
-      const membros =
-        modo === 'absorcao-continencia'
-          ? absorver(toks, r)
-          : componentes(toks, modo === 'componentes-encadeadas' ? minEncavalamento : Infinity);
-
+      const membros = componentes(
+        itens.map((i) => i.trechoNorm),
+        modo === 'componentes-encadeadas' ? minEncavalamento : Infinity,
+      );
       r.depois += membros.length;
 
       for (const c of membros) {
@@ -160,14 +181,13 @@ function rodarDedup(
         r.fusoes.set(c.length, (r.fusoes.get(c.length) ?? 0) + 1);
         const uniao = new Set<string>();
         let maxIndividual = 0;
-        // O sobrevivente é o primeiro da lista: o trecho mais longo.
-        const sobrevivente = toks[c[0] as number] as string[];
+        const sobrevivente = (itens[c[0] as number] as AchadoNoMercado).trechoNorm;
         let contemTodos = true;
         for (const i of c) {
           const it = itens[i] as AchadoNoMercado;
           for (const l of it.leituras) uniao.add(l);
           maxIndividual = Math.max(maxIndividual, it.leituras.size);
-          if (!contem(sobrevivente, toks[i] as string[])) contemTodos = false;
+          if (!contemTrecho(sobrevivente, it.trechoNorm)) contemTodos = false;
         }
         if (uniao.size > maxIndividual) r.ganharamLeitura++;
         if (!contemTodos) r.invarianteQuebrado++;
@@ -177,9 +197,55 @@ function rodarDedup(
   return r;
 }
 
-/** Fecho transitivo. Devolve cada componente com o índice mais longo na frente. */
-function componentes(toks: readonly string[][], minEncavalamento: number): number[][] {
-  const pai = toks.map((_, i) => i);
+/**
+ * O que a função devolveu, virado estatística.
+ *
+ * `fundirPorAbsorcao` entrega os sobreviventes, não o mapa de quem absorveu
+ * quem. Quem sumiu da saída foi absorvido, e o dono é o único sobrevivente do
+ * mesmo grupo que o contém — o que também é a conferência do invariante: se
+ * nenhum sobrevivente contém o absorvido, a regra quebrou.
+ */
+function contabilizarAbsorcao(
+  entrada: readonly Fundivel[],
+  saida: readonly Fundivel[],
+  r: Resultado,
+): void {
+  const vivos = new Map(saida.map((s) => [s.origem_id, s]));
+  const absorvidosPor = new Map<string, Fundivel[]>();
+
+  for (const a of entrada) {
+    if (vivos.has(a.origem_id)) continue;
+    const dono = saida.find(
+      (s) =>
+        grupoDe(s.achado) === grupoDe(a.achado) &&
+        s.trecho !== null &&
+        a.trecho !== null &&
+        contemTrecho(s.trecho, a.trecho),
+    );
+    if (dono === undefined) {
+      r.invarianteQuebrado++;
+      continue;
+    }
+    const l = absorvidosPor.get(dono.origem_id);
+    if (l === undefined) absorvidosPor.set(dono.origem_id, [a]);
+    else l.push(a);
+  }
+
+  for (const [id, absorvidos] of absorvidosPor) {
+    const dono = vivos.get(id) as Fundivel;
+    r.fusoes.set(absorvidos.length + 1, (r.fusoes.get(absorvidos.length + 1) ?? 0) + 1);
+    const maxIndividual = Math.max(
+      dono.achado.leituras.size,
+      ...absorvidos.map((a) => a.achado.leituras.size),
+    );
+    if (dono.leituras.length > maxIndividual) r.ganharamLeitura++;
+  }
+}
+
+/** Fecho transitivo sobre os trechos normalizados. */
+function componentes(trechos: readonly string[], minEncavalamento: number): number[][] {
+  const toks = trechos.map((t) => t.split(' '));
+  const pai = trechos.map((_, i) => i);
   const raiz = (i: number): number => {
     while (pai[i] !== i) {
       pai[i] = pai[pai[i] as number] as number;
@@ -187,65 +253,27 @@ function componentes(toks: readonly string[][], minEncavalamento: number): numbe
     }
     return i;
   };
-  for (let i = 0; i < toks.length; i++) {
-    for (let j = i + 1; j < toks.length; j++) {
-      const a = toks[i] as string[];
-      const b = toks[j] as string[];
+  for (let i = 0; i < trechos.length; i++) {
+    for (let j = i + 1; j < trechos.length; j++) {
+      const a = trechos[i] as string;
+      const b = trechos[j] as string;
       const junta =
-        contem(a, b) ||
-        contem(b, a) ||
+        contemTrecho(a, b) ||
+        contemTrecho(b, a) ||
         (minEncavalamento !== Infinity &&
-          (encavala(a, b, minEncavalamento) || encavala(b, a, minEncavalamento)));
+          (encavala(toks[i] as string[], toks[j] as string[], minEncavalamento) ||
+            encavala(toks[j] as string[], toks[i] as string[], minEncavalamento)));
       if (junta) pai[raiz(j)] = raiz(i);
     }
   }
   const comps = new Map<number, number[]>();
-  for (let i = 0; i < toks.length; i++) {
+  for (let i = 0; i < trechos.length; i++) {
     const k = raiz(i);
     const c = comps.get(k);
     if (c === undefined) comps.set(k, [i]);
     else c.push(i);
   }
-  // `itens` já veio ordenado do mais longo para o mais curto, então o menor
-  // índice do componente é o trecho mais longo dele.
   return [...comps.values()].map((c) => [...c].sort((a, b) => a - b));
-}
-
-/**
- * Absorção pelo container mais longo, sem transitividade.
- *
- * `toks` chega ordenado do mais longo para o mais curto, então o primeiro
- * container encontrado é o mais longo — e o empate cai no critério de desempate
- * da ordenação, que é o trecho normalizado. Determinístico nos dois eixos.
- */
-function absorver(toks: readonly string[][], r: Resultado): number[][] {
-  const dono = toks.map(() => -1);
-  for (let j = 0; j < toks.length; j++) {
-    let candidatos = 0;
-    for (let i = 0; i < j; i++) {
-      // `i < j` garante container ao menos tão longo; a igualdade de conteúdo
-      // não existe aqui porque o `achado_id` da view já a colapsou.
-      if (contem(toks[i] as string[], toks[j] as string[])) {
-        if (dono[j] === -1) dono[j] = i;
-        candidatos++;
-      }
-    }
-    if (candidatos > 1) r.containerAmbiguo++;
-  }
-  const grupos = new Map<number, number[]>();
-  for (let j = 0; j < toks.length; j++) {
-    // Um absorvido cujo dono também foi absorvido sobe para o dono final: o
-    // container mais longo contém o intermediário, logo contém o absorvido.
-    let d = j;
-    while (dono[d] !== -1) d = dono[d] as number;
-    let g = grupos.get(d);
-    if (g === undefined) {
-      g = [d];
-      grupos.set(d, g);
-    }
-    if (j !== d) g.push(j);
-  }
-  return [...grupos.values()];
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +544,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // M2
   // -------------------------------------------------------------------------
-  const escolhida = rodarDedup(porMercado, 'absorcao-continencia');
+  const escolhida = rodarDedup(porMercado, 'absorcao');
   const compContinencia = rodarDedup(porMercado, 'componentes-continencia');
   const compEncadeada = rodarDedup(porMercado, 'componentes-encadeadas', 3);
 
@@ -548,15 +576,14 @@ async function main(): Promise<void> {
   p();
   p('**Continência não basta: o que quebra o invariante é o fecho transitivo.**');
   p('`A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente, e o');
-  p('sobrevivente `A` não contém o `C`. Trocar sobreposição por continência');
-  p('derruba o número de 410 para 340, não para zero. Zero só sai de abandonar a');
-  p('transitividade: cada achado é absorvido pelo mais longo que o contém, e');
-  p('quem não tem container sobrevive sozinho. É o que a coluna prova.');
+  p('sobrevivente `A` não contém o `C`.');
   p();
   p(
-    `Absorvidos com mais de um container possível: ${escolhida.containerAmbiguo}. ` +
-      `Vão para o mais longo, com desempate pelo trecho normalizado — os dois ` +
-      `eixos determinísticos.`,
+    `Trocar encavalamento por continência derruba o número de ` +
+      `${compEncadeada.invarianteQuebrado} para ${compContinencia.invarianteQuebrado}, não para ` +
+      `zero. Zero só sai de abandonar a transitividade — e custa ` +
+      `${(((compContinencia.antes - compContinencia.depois) / compContinencia.antes - (escolhida.antes - escolhida.depois) / escolhida.antes) * 100).toFixed(1)} ` +
+      `ponto de corte, contra o direito de esconder um achado sem esconder a citação dele.`,
   );
   p();
   p('Distribuição das fusões (variante escolhida):');
@@ -595,7 +622,7 @@ async function main(): Promise<void> {
       }
     }
     porEvento.set(ev, at);
-    const r = rodarDedup(new Map([[k, lista]]), 'absorcao-continencia');
+    const r = rodarDedup(new Map([[k, lista]]), 'absorcao');
     dedupPorEvento.set(ev, (dedupPorEvento.get(ev) ?? 0) + r.depois);
   }
 

@@ -30,7 +30,7 @@ Numerados para poder citar em revisão.
 
 **P4 — Diagnóstico não é operação.** A comparação lado a lado das três leituras serve para auditar o modelo, não para julgar o mercado. Recolhe.
 
-**P5 — Sobreposição é repetição.** Dois achados do mesmo tipo cujos trechos se sobrepõem são o mesmo defeito citado com recorte diferente.
+**P5 — Continência é repetição.** Dois achados do mesmo tipo, um dos quais cita um recorte contido no do outro, são o mesmo defeito citado duas vezes. Sobreposição sem continência NÃO é: `A B C` e `B C D` se cruzam e nenhum dos dois pode representar o outro. A medição mostrou que a diferença entre os dois critérios vale 1,1 ponto de corte e o invariante inteiro — ver seção 4.
 
 ---
 
@@ -72,9 +72,9 @@ Rodar a regra sobre o conjunto atual e reportar: total antes, total depois, e a 
 
 Se o corte for menor que ~15%, a regra não está pagando a complexidade e a gente reavalia.
 
-> **Resultado.** 20.357 → 13.475, corte de **33,8%**. Bem acima dos 15%: a regra paga. Fusões: 2.634 pares, 761 trios, 358 quartetos, 218 quintetos, 6 de sete e 62 de treze. A união sobe a contagem de leituras em 4.026 das 4.039 fusões.
+> **Resultado.** 20.357 → 11.129, corte de **45,3%**. Três vezes os 15%: a regra paga. Fusões: 2.635 pares, 1.138 trios, 432 quartetos, 305 quintetos, e uma cauda até 17. A união sobe a contagem de leituras em 4.625 das 4.703 fusões.
 >
-> A medição também derrubou a formulação original da regra. Ver seção 4.
+> A medição derrubou a formulação original da regra duas vezes: primeiro a sobreposição (ver seção 4), depois a comparação por token. Continência é de **caracteres**, como a spec dizia desde o início — comparar sequências de token separa `...11:59 PM ET` de `...11:59 PM ET, the market...` por causa da vírgula colada, e sozinha essa diferença valia 11 pontos de corte.
 
 **M3 — Distribuição de achados por mercado, separando acusado de herdado.**
 
@@ -87,7 +87,7 @@ Mediana, p90 e máximo. Serve para dimensionar quantos itens a seção principal
 > | total | 16 | 39 | 43 |
 > | acusados | 5 | 10 | 23 |
 > | herdados | 11 | 33 | 37 |
-> | total após a dedup da seção 4 | 12 | 21 | 28 |
+> | total após a dedup da seção 4 | 10 | 16 | 25 |
 > | armadilhas acusadas (`muda_resultado`/`muda_timing`) | 3 | 6 | 13 |
 >
 > A última linha é a que dimensiona a seção 2 da hierarquia: o teto de 5 esconde algo em 109 mercados (10,6%), e 14 mercados (1,4%) não têm nenhuma.
@@ -106,7 +106,7 @@ Este é o número que diz se a seção "Manchete vs regra" tem conteúdo na maio
 
 ---
 
-## 4. Dedup por sobreposição de trecho
+## 4. Dedup por absorção de trecho
 
 **Problema observado.** No mercado do Flávio Bolsonaro:
 
@@ -118,23 +118,42 @@ Mesmo tipo, mesmo defeito, recorte diferente. E em `fuso_ausente`, `June 30, 202
 **Regra.** Dentro do mesmo `(mercado, texto de regra, tipo)`, um achado cujo trecho está **contido** no trecho de outro é absorvido por ele.
 
 - Absorve o **trecho mais longo que o contém**. Sem transitividade: quem não tem container sobrevive sozinho, e um absorvido cujo container também foi absorvido sobe para o container final — que o contém, porque contém o intermediário.
+- Continência é de **caracteres**, alinhada a borda de palavra, sobre o trecho normalizado como o `achado_id` da view o normaliza (espaço colapsado, caixa baixa, pontuação preservada). A borda é o que impede `et` de ser encontrado dentro de `market`.
 - A contagem de leituras vira a **união** das leituras que apontaram qualquer um dos trechos fundidos. Um achado que a leitura 1 citou curto e a leitura 2 citou longo foi encontrado por duas leituras, não por uma cada.
 - `origem` do fundido é `acusado` se **qualquer** um dos fundidos for acusado.
-- Descrição e cenário: fica o do achado com maior concordância; empate resolve pelo trecho mais longo.
+- A prosa fica a do achado com maior concordância **entre os que têm prosa**, e vai em **bloco**.
 
-**Continência, e não sobreposição — a medição mudou esta regra.** A formulação original era "trechos que se sobrepõem", implementada como componentes conexas. Ela corta 36,0% contra 33,8% da continência, e os 2,2 pontos a mais saem de fundir achados que ninguém consegue justificar olhando o item que sobrou.
+**Continência, e não sobreposição — a medição mudou esta regra.** A formulação original era "trechos que se sobrepõem", implementada como componentes conexas. Ela corta 46,4% contra 45,3% da absorção, e os 1,1 ponto a mais sai de fundir achados que ninguém consegue justificar olhando o item que sobrou.
 
-O invariante que a regra usa como argumento — *o sobrevivente contém tudo que absorveu* — é o que dá o direito de esconder os absorvidos. Fecho transitivo não o preserva, e **trocar sobreposição por continência não conserta**: `A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente e o sobrevivente `A` não contém o `C`. Medido, isso acontece em 410 fusões com sobreposição e ainda em 340 só com continência. Com absorção, **zero, por construção**.
+O invariante que a regra usa como argumento — *o sobrevivente contém tudo que absorveu* — é o que dá o direito de esconder os absorvidos. Fecho transitivo não o preserva, e **trocar sobreposição por continência não conserta**: `A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente e o sobrevivente `A` não contém o `C`. Medido, isso acontece em 178 fusões com encavalamento e ainda em 129 só com continência. Com absorção, **zero, por construção**.
 
-**Onde mora.** Função pura em `web/src/lib/`, testável sem banco, com fixture construído a partir de um caso real observado (o do Bolsonaro serve). Não é view, não é migration.
+**A entrada é o CONJUNTO de leituras, não a contagem.** `vezes_encontrado` da view é um número, e união não se calcula com números. A aproximação `min(soma, leituras_do_texto)` acerta em 94,7% das fusões e infla a concordância nas outras, em até +3 leituras — o máximo acertaria em 1,7%. Inflar concordância por conveniência de apresentação é o que a seção 11 proíbe, então quem chama a função tem que trazer os `digest_id`. Consequência para o item 5: a tela de detalhe passa a precisar das tabelas-filhas, e não só da view.
 
-**O que o teste precisa cobrir.**
+**Prosa em bloco, e do maior entre os que têm.** São QUATRO campos e não dois — `descricao` e `cenario` são a prosa da pegadinha, `leitura_a` e `leitura_b` são a da ambiguidade e da contradição, e a view marca os quatro como "não viaja". Duas ressalvas que a medição obrigou:
+
+- *Entre os que têm.* Em 9,6% das fusões o de maior concordância é herdado e não tem prosa nenhuma. "Fica o do maior", sem a ressalva, jogaria fora a única prosa existente e deixaria um item marcado `acusado` sem descrição.
+- *Em bloco.* Descrição de uma leitura com cenário de outra é um par que ninguém escreveu, e a tela o apresentaria como se fosse. Prosa fabricada é pior que prosa ausente.
+
+**Onde mora.** ✅ `web/src/lib/dedup.ts`, função pura e genérica sobre o tipo de quem chama, testada sem banco em `web/src/lib/dedup.test.ts`. Não é view, não é migration.
+
+**O que o teste cobre.**
 
 - **`A B C` e `B C D`.** Sobrepõem-se sem continência, e a regra **não os funde**. É o caso que documenta a escolha: são dois recortes que se cruzam, e nenhum dos dois contém o outro para poder representá-lo.
-- **`A ⊃ B`, `C ⊃ B`, `A ⊅ C`.** Três achados, dois sobreviventes: `B` vai para o mais longo entre `A` e `C`, e o outro fica em pé. O teste tem que provar que o resultado não é um grupo só. Medido, 2.667 absorvidos tinham mais de um container possível — não é caso de laboratório.
-- **Determinismo.** Mesma entrada, mesma saída, sempre. Empate de comprimento resolve pelo trecho normalizado, que não depende da ordem em que o banco devolveu as linhas.
+- **`A ⊃ B`, `C ⊃ B`, `A ⊅ C`.** Fixture do mercado `will-hassan-khomeini-be-head-of-state-in-iran-end-of-2026`, texto lido 30 vezes: `on December 31, 2026 at 12:00 PM ET` (11 leituras, acusado), `at 12:00 PM ET` (1) e `December 31, 2026 at 12:00 PM ET.` (2). Um não tem o `on`, o outro não tem o ponto final, e nenhum contém o outro. Dois sobreviventes, não um. A forma aparece **2.035 vezes em 217 mercados** — não é caso de laboratório.
+- **O invariante, verificado e não assumido.** Para todo absorvido, algum sobrevivente contém o trecho dele literalmente.
+- **Determinismo.** Seis permutações da mesma entrada dão a mesma saída. Empate de comprimento resolve pelo trecho normalizado, que não depende da ordem em que o banco devolveu as linhas.
 
-**Verificar por mutação.** Trocar continência por igualdade exata tem que derrubar teste — e note que igualdade exata corta **0%**, porque o `achado_id` da view já colapsou os trechos idênticos normalizados. Trocar união por máximo na contagem de leituras tem que derrubar teste. Trocar absorção por componentes conexas tem que derrubar teste.
+**Verificado por mutação, nos três eixos** (`22 testes`; cada mutação foi aplicada ao arquivo real e os testes rodados):
+
+| eixo | testes derrubados | os que morderam |
+| --- | ---: | --- |
+| igualdade exata em vez de continência | 10 | `funde trechos que se contêm sem serem iguais` |
+| máximo em vez de união | 3 | `a contagem de leituras do fundido é a UNIÃO` |
+| componentes conexos em vez de absorção | 5 | `dois containers do mesmo trecho continuam dois achados`, `o sobrevivente contém literalmente todo trecho que absorveu` |
+
+Igualdade exata corta **0%** — o `achado_id` da view já colapsou os trechos idênticos normalizados —, então esse eixo mede exatamente o que a regra acrescenta.
+
+O terceiro eixo é o que impede alguém trocar isto por union-find daqui a seis meses. A primeira mutação que escrevi para ele não derrubou teste nenhum, e o defeito era a mutação e não o teste: no array ordenado do mais longo para o mais curto, o ramo que ela acrescentava nunca disparava. A mutação que vale é union-find de verdade sobre a continência tratada como aresta não direcionada.
 
 ---
 
@@ -279,7 +298,7 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 ## 12. Critérios de aceite
 
 1. Os quatro números de M1–M4 estão reportados **antes** do primeiro commit de implementação. ✅ 22/08/2026, `probes/digest/medicoes-tela-regra.md`.
-2. A regra de dedup é função pura, com teste que morde, verificado por mutação em três eixos: igualdade em vez de continência; máximo em vez de união; componentes conexas em vez de absorção.
+2. ✅ A regra de dedup é função pura, com teste que morde, verificado por mutação em três eixos: igualdade em vez de continência (10 testes), máximo em vez de união (3), componentes conexas em vez de absorção (5).
 3. O limiar de boilerplate está escrito no código com o número medido, a data da medição, o comando que a refaz e o motivo do corte — o vale de 9,7% a 31,8%.
 4. O parágrafo explicativo do herdado aparece exatamente uma vez na tela.
 5. A tela distingue visualmente citação de interpretação, e um leitor consegue dizer qual é qual sem legenda.
@@ -294,7 +313,7 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 Um commit por item, árvore limpa entre eles, mensagem de commit escrita para o dono executar.
 
 1. ✅ Medições M1–M4, reportadas em 22/08/2026. O script virou `scripts/medicoes/tela-regra.ts` e o relatório `probes/digest/medicoes-tela-regra.md`: medição que não se repete vale metade.
-2. Dedup por sobreposição (seção 4).
+2. ✅ Dedup por absorção (seção 4) — `web/src/lib/dedup.ts`.
 3. Gate de boilerplate (seção 5).
 4. Herdados recolhidos + explicação única (seção 6).
 5. Reordenação das seções + estados vazios (seção 7).

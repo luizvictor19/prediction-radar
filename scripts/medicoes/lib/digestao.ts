@@ -170,6 +170,8 @@ export type LinhaAchado = {
   trecho_conflito: string | null;
   descricao: string | null;
   cenario: string | null;
+  leitura_a: string | null;
+  leitura_b: string | null;
   chave: string;
 };
 
@@ -191,6 +193,8 @@ export type AchadoNoMercado = AchadoTexto & {
   origem: 'acusado' | 'herdado';
   descricao: string | null;
   cenario: string | null;
+  leitura_a: string | null;
+  leitura_b: string | null;
 };
 
 /**
@@ -220,6 +224,8 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
       trecho_conflito: null,
       descricao: p.texto,
       cenario: p.cenario,
+      leitura_a: null,
+      leitura_b: null,
       chave: `pegadinha||${normalizar(p.trecho)}`,
     });
   }
@@ -244,6 +250,8 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
         trecho_conflito: a.trecho_conflito,
         descricao: null,
         cenario: null,
+        leitura_a: a.leitura_a,
+        leitura_b: a.leitura_b,
         chave: `${menor}||${maior}`,
       });
       continue;
@@ -260,6 +268,8 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
       trecho_conflito: null,
       descricao: null,
       cenario: null,
+      leitura_a: a.leitura_a,
+      leitura_b: a.leitura_b,
       chave: `ambiguidade||${a.tipo ?? ''}||${normalizar(a.trecho)}`,
     });
   }
@@ -342,6 +352,8 @@ export function propagar(
         origem: pr === undefined ? 'herdado' : 'acusado',
         descricao: pr?.descricao ?? null,
         cenario: pr?.cenario ?? null,
+        leitura_a: pr?.leitura_a ?? null,
+        leitura_b: pr?.leitura_b ?? null,
       });
     }
     porMercado.set(k, lista);

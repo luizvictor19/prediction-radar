@@ -20,8 +20,8 @@ Cobertura do roster — o denominador da lista, não o da digestão:
 
 | | |
 | --- | ---: |
-| mercados em `v_radar` | 942 |
-| — sem digestão nenhuma | 20 (2.1%) |
+| mercados em `v_radar` | 941 |
+| — sem digestão nenhuma | 19 (2.0%) |
 | digeridos que já saíram do roster | 111 |
 
 **Conferência da réplica contra `digest_achados_por_mercado`:** 1033 linhas, zero divergência. Se divergisse, este script teria falhado antes de escrever o arquivo.
@@ -199,9 +199,9 @@ ele aparece na tela.
 | variante | antes | depois | corte | invariante quebrado |
 | --- | ---: | ---: | ---: | ---: |
 | igualdade exata | 20357 | 20357 | 0,0% | 0 |
-| **absorção pelo mais longo** (escolhida) | 20357 | 13475 | **33.8%** | **0** |
-| componentes conexas por continência | 20357 | 13135 | 35.5% | 340 |
-| componentes conexas com encavalamento ≥ 3 | 20357 | 13037 | 36.0% | 410 |
+| **absorção pelo mais longo** (escolhida) | 20357 | 11129 | **45.3%** | **0** |
+| componentes conexas por continência | 20357 | 10985 | 46.0% | 129 |
+| componentes conexas com encavalamento ≥ 3 | 20357 | 10920 | 46.4% | 178 |
 
 Igualdade exata corta 0% porque o `achado_id` da view já colapsa trechos
 idênticos normalizados. É o que faz o eixo de mutação "igualdade em vez de
@@ -212,25 +212,24 @@ longo — NÃO contém todo mundo que absorveu.
 
 **Continência não basta: o que quebra o invariante é o fecho transitivo.**
 `A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente, e o
-sobrevivente `A` não contém o `C`. Trocar sobreposição por continência
-derruba o número de 410 para 340, não para zero. Zero só sai de abandonar a
-transitividade: cada achado é absorvido pelo mais longo que o contém, e
-quem não tem container sobrevive sozinho. É o que a coluna prova.
+sobrevivente `A` não contém o `C`.
 
-Absorvidos com mais de um container possível: 2667. Vão para o mais longo, com desempate pelo trecho normalizado — os dois eixos determinísticos.
+Trocar encavalamento por continência derruba o número de 178 para 129, não para zero. Zero só sai de abandonar a transitividade — e custa 0.7 ponto de corte, contra o direito de esconder um achado sem esconder a citação dele.
 
 Distribuição das fusões (variante escolhida):
 
 | itens fundidos em um | ocorrências |
 | ---: | ---: |
-| 2 | 2634 |
-| 3 | 761 |
-| 4 | 358 |
-| 5 | 218 |
-| 7 | 6 |
-| 13 | 62 |
+| 2 | 2635 |
+| 3 | 1138 |
+| 4 | 432 |
+| 5 | 305 |
+| 6 | 45 |
+| 7 | 18 |
+| 8 | 68 |
+| 17 | 62 |
 
-Achados cuja contagem de leituras SOBE pela união: **4026** de 4039 fusões. O eixo de mutação "máximo em vez de união" morde em quase toda fusão.
+Achados cuja contagem de leituras SOBE pela união: **4625** de 4703 fusões. O eixo de mutação "máximo em vez de união" morde em quase toda fusão.
 
 ## M3 — achados por mercado
 
@@ -241,7 +240,7 @@ Mercados: 1033.
 | total | 16 | 39 | 43 | 19.7 |
 | acusados | 5 | 10 | 23 | 6.2 |
 | herdados | 11 | 33 | 37 | 13.5 |
-| total após dedup (absorção pelo mais longo) | 12 | 21 | 28 | 13.0 |
+| total após dedup (absorção pelo mais longo) | 10 | 16 | 25 | 10.8 |
 | armadilhas acusadas (`muda_resultado`/`muda_timing`) | 3 | 6 | 13 | 3.3 |
 
 Mercados com **zero** armadilha acusada: 14 (1.4%) — o estado vazio da seção 7 é raro, e existe.
