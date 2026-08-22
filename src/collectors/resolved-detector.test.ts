@@ -95,3 +95,14 @@ test('sem prefixo configurado não existe trilha da vertical', () => {
     false,
   );
 });
+
+test('a trilha do roster é paginada, não limitada', () => {
+  // `rosterMax` (800) limita quantos mercados uma renovação MARCA, não quantos
+  // ficam marcados: `radar_tracked` acumula, e em 22/08/2026 já eram 1054. Um
+  // teto numa requisição só cortaria o excedente em silêncio — e o PostgREST
+  // corta em 1000 de qualquer jeito.
+  const roster = planTracks({ legs: [], prefixes: [], ...JANELA }).find(t => t.name === 'roster');
+
+  assert.ok(roster && 'pageSize' in roster, 'trilha do roster sem pageSize');
+  assert.equal('limit' in (roster as object), false, 'trilha do roster com teto de requisição');
+});

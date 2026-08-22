@@ -133,18 +133,18 @@ export function planTracks(input: TrackInput): Track[] {
 }
 
 /** Runs one planned track. The only impure half of the pair. */
-function fetchTrack(
+async function fetchTrack(
   track: Track,
-): PromiseLike<{ data: CandidateEvent[] | null; error: { message: string } | null }> {
-  const base = supabase.from('events').select(CANDIDATE_FIELDS);
+): Promise<{ data: CandidateEvent[] | null; error: { message: string } | null }> {
+  const base = () => supabase.from('events').select(CANDIDATE_FIELDS);
 
   switch (track.name) {
     case 'open_leg':
     case 'any_leg':
-      return base.in('id', track.eventIds).in('status', ['active', 'closed_manual']);
+      return base().in('id', track.eventIds).in('status', ['active', 'closed_manual']);
 
     case 'vertical':
-      return base
+      return base()
         .in('status', ['active', 'closed_manual'])
         .gte('end_date', track.from)
         .lte('end_date', track.to)
@@ -152,14 +152,27 @@ function fetchTrack(
         .order('end_date', { ascending: true })
         .limit(track.limit);
 
-    case 'roster':
+    case 'roster': {
       // `radar_tracked` é o índice PARCIAL da 20260813210119, que indexa só as
-      // linhas `true`: a leitura é proporcional ao roster (centenas), não às
-      // 551k linhas de `events`.
-      return base
-        .eq('radar_tracked', true)
-        .in('status', ['active', 'closed_manual'])
-        .limit(track.limit);
+      // linhas `true`: a leitura é proporcional ao roster, não às 551k linhas
+      // de `events`.
+      //
+      // Paginado porque o roster passou de 1000 (1054 em 22/08/2026) e o
+      // PostgREST corta aí sem avisar — a resposta voltaria truncada com cara
+      // de completa.
+      const todos: CandidateEvent[] = [];
+      for (let de = 0; ; de += track.pageSize) {
+        const { data, error } = await base()
+          .eq('radar_tracked', true)
+          .in('status', ['active', 'closed_manual'])
+          .order('id')
+          .range(de, de + track.pageSize - 1);
+        if (error) return { data: null, error };
+        const lote = (data ?? []) as CandidateEvent[];
+        todos.push(...lote);
+        if (lote.length < track.pageSize) return { data: todos, error: null };
+      }
+    }
   }
 }
 
