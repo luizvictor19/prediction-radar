@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { MercadoNaLista } from '../lib/tipos';
 import { dinheiro, prazo, preco, urlPolymarket, variacao, VAZIO } from '../lib/formato';
 import { somaDigest, temDigestao } from '../lib/regras';
+import { ORDENS, type Ordem } from '../lib/ordens';
 import { seloDeCobertura } from '../lib/leituras';
 
 /**
@@ -16,65 +17,6 @@ import { seloDeCobertura } from '../lib/leituras';
  *
  * A ordenação é escolhida num seletor explícito. Nunca "inteligente".
  */
-
-export type Ordem = 'prazo' | 'var24' | 'var7d' | 'contradicao' | 'liquidez';
-
-/**
- * Uma opção do seletor de ordenação.
- *
- * `fato` não é decoração: é a coluna que esta ordem lê, declarada ao lado do
- * extrator para que uma opção nova tenha de dizer por qual FATO ordena. É o que
- * `Hoje.test.ts` verifica, e é a única defesa contra alguém acrescentar
- * "mais promissores" ao seletor sem ninguém reparar.
- */
-export interface OpcaoDeOrdem {
-  chave: Ordem;
-  rotulo: string;
-  /** A coluna lida. Nunca `prob_self`: a nota do dono não ordena a lista. */
-  fato: string;
-  dir: 'asc' | 'desc';
-  valor: (m: MercadoNaLista) => number | null;
-}
-
-export const ORDENS: OpcaoDeOrdem[] = [
-  {
-    chave: 'prazo',
-    rotulo: 'vence em breve',
-    fato: 'dias_restantes',
-    dir: 'asc',
-    valor: m => m.dias_restantes,
-  },
-  {
-    chave: 'var24',
-    rotulo: 'maior variação em 24h',
-    fato: 'var_24h',
-    dir: 'desc',
-    // Módulo: cair 11 pontos é o mesmo tamanho de movimento que subir 11, e a
-    // direção é opinião sobre o que é bom.
-    valor: m => (m.var_24h === null ? null : Math.abs(m.var_24h)),
-  },
-  {
-    chave: 'var7d',
-    rotulo: 'maior variação em 7d',
-    fato: 'var_7d',
-    dir: 'desc',
-    valor: m => (m.var_7d === null ? null : Math.abs(m.var_7d)),
-  },
-  {
-    chave: 'contradicao',
-    rotulo: 'tem contradição interna',
-    fato: 'contradicoes',
-    dir: 'desc',
-    valor: m => somaDigest(m, 'contradicoes'),
-  },
-  {
-    chave: 'liquidez',
-    rotulo: 'maior liquidez',
-    fato: 'liquidez',
-    dir: 'desc',
-    valor: m => m.liquidez,
-  },
-];
 
 type Faixa = 'todos' | '2' | '7' | '30' | 'mais';
 
