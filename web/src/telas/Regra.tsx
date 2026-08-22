@@ -11,6 +11,7 @@ import {
   valores,
 } from '../lib/leituras';
 import { leiturasPorTexto, textosParaLer } from '../lib/regras';
+import { ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
 /**
@@ -132,6 +133,15 @@ export function Regra({
               </p>
             )}
 
+            {/* Primeira dobra: as duas faixas resumem O MERCADO, não uma
+                coluna, e é por isso que atravessam a largura inteira. Quem
+                está varrendo lê as duas e sai; quem veio estudar segue. */}
+            <MancheteVsRegra
+              achados={achados}
+              leituras={leituras.get(linha.description_sha256) ?? []}
+            />
+            <LinhaDeNumeros achados={achados} liquidez={mercado.liquidez} />
+
             {/* 1. Contradições, primeiro. */}
             <section>
               <h2>Contradições</h2>
@@ -161,6 +171,90 @@ export function Regra({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Faixa 1 da primeira dobra: o veredito.
+ *
+ * The one question the whole project exists to answer -- where does the title
+ * lie -- said in the place a reader looks first. It is selection, not writing:
+ * `escolherVeredito` picks the strongest accused `muda_resultado` trap and its
+ * two prose fields already carry the shape.
+ *
+ * The agreement badge travels with it. A 1/5 headline and a 5/5 headline are
+ * both worth showing and are not worth the same, and the badge is what says so.
+ */
+function MancheteVsRegra({
+  achados,
+  leituras,
+}: {
+  achados: Achado[];
+  leituras: LeituraRegra[];
+}) {
+  const veredito = escolherVeredito(achados);
+  const exibida = leituraExibida(leituras);
+  const plural = leituras.length === 1 ? 'leitura' : 'leituras';
+
+  return (
+    <section className="veredito">
+      <h2>Manchete vs regra</h2>
+
+      {veredito === null ? (
+        // "Read and clean" is different information from "not read", and the
+        // section says which one -- it never just fails to render.
+        <p className="nada">
+          {leituras.length === 0
+            ? 'Sem leitura registrada para este texto.'
+            : `${leituras.length} ${plural}, nenhuma armadilha que mude o resultado.`}
+        </p>
+      ) : (
+        <>
+          <p className="descricao">{veredito.descricao}</p>
+          <p className="cenario">
+            <span className="rotulo">cenário</span>
+            {veredito.cenario}
+          </p>
+        </>
+      )}
+
+      {exibida && (
+        <div className="proveniencia">
+          {veredito && <SeloKN achado={veredito} />}
+          <span>
+            {leituras.length} {plural} · {exibida.model}/{exibida.prompt_version}
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Faixa 2 da primeira dobra: a linha de números.
+ *
+ * Counted with `ehArmadilhaDeResultado`, the same predicate the verdict is
+ * chosen with. A second copy would drift, and the band would show a headline
+ * drawn from a trap its own counter does not count.
+ */
+function LinhaDeNumeros({ achados, liquidez }: { achados: Achado[]; liquidez: number | null }) {
+  const armadilhas = achados.filter(ehArmadilhaDeResultado).length;
+  const contradicoes = achados.filter(
+    a => a.classe === 'contradicao' && a.origem === 'acusado',
+  ).length;
+
+  return (
+    <div className="numeros-do-mercado">
+      <span>
+        <strong>{armadilhas}</strong> que mudam o resultado
+      </span>
+      <span>
+        <strong>{contradicoes}</strong> contradições acusadas
+      </span>
+      <span>
+        <strong>{dinheiro(liquidez)}</strong> de liquidez
+      </span>
     </div>
   );
 }

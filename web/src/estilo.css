@@ -185,6 +185,42 @@ button.link {
   font-size: 13px;
 }
 
+/* primeira dobra: as duas faixas resumem o mercado, em largura inteira */
+.veredito {
+  border-left: 3px solid var(--alerta);
+}
+.veredito .descricao {
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.veredito .cenario {
+  margin: 0;
+}
+.veredito .proveniencia {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.numeros-do-mercado {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fraco);
+}
+.numeros-do-mercado strong {
+  color: var(--tinta);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* a regra */
 .regra header {
   display: flex;
