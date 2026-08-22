@@ -94,6 +94,23 @@ export function lerRadar(): Promise<MercadoRadar[]> {
 /**
  * As contagens da digestão, sem o jsonb `achados` — que é o campo pesado e só
  * faz falta quando um mercado é aberto.
+ *
+ * ## A ordenação é o par, e isso é requisito da paginação
+ *
+ * A granularidade da view é (mercado, texto de regra), então `event_id` sozinho
+ * NÃO é ordem total: dois textos do mesmo mercado empatam nele. Paginação por
+ * `range` é OFFSET, e com empate o Postgres não promete ordem estável entre uma
+ * página e a seguinte — na fronteira, uma das linhas empatadas pode vir duas
+ * vezes ou nenhuma. Aí a lista soma a contradição de um texto duas vezes, ou
+ * perde a de outro, e em silêncio.
+ *
+ * Hoje isso não morde: cada mercado tem um texto só (734 linhas para 734
+ * mercados em 22/08/2026), e com um texto por mercado `event_id` é único. Mas é
+ * exatamente o caso que `juntarRadarComDigest` e `textosParaLer` passaram a
+ * suportar, e uma descrição editada na Polymarket cria a segunda linha.
+ *
+ * `(event_id, description_sha256)` é a chave da view — o `group by` dela termina
+ * nesses dois — logo é ordem total, e a paginação volta a ser determinística.
  */
 export function lerContagens(): Promise<ContagemDigest[]> {
   return paginar<ContagemDigest>((de, ate) =>
@@ -101,6 +118,7 @@ export function lerContagens(): Promise<ContagemDigest[]> {
       .from('digest_achados_por_mercado')
       .select(COLUNAS_CONTAGEM)
       .order('event_id')
+      .order('description_sha256')
       .range(de, ate),
   );
 }

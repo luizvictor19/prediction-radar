@@ -36,8 +36,13 @@ export function juntarRadarComDigest(
 /**
  * As contagens agrupadas por mercado, sem perder texto.
  *
- * A ordem dentro do grupo é a de chegada, que é a da view (`order by
- * e.liquidity desc nulls last, pm.event_id`). Não reordena.
+ * Não reordena: a ordem dentro do grupo é a de chegada.
+ *
+ * E a de chegada é a que `lerContagens` PEDE — `event_id, description_sha256` —,
+ * não a da própria view. A view declara `order by e.liquidity desc nulls last,
+ * pm.event_id`, mas o `select` da tela sobrescreve isso para poder paginar por
+ * chave estável. Nada aqui depende da ordem (soma e mínimo não dependem), e o
+ * aviso existe para quem vier acrescentar uma leitura de `digests[]` que dependa.
  */
 export function agruparPorEvento(
   contagens: readonly ContagemDigest[],
