@@ -1,0 +1,530 @@
+/* Legível e nada além disso. Sem tema, sem animação, sem polimento — o que
+   sobrar de tempo vale mais na aba Operar ficar rápida. */
+
+:root {
+  --tinta: #16181d;
+  --fraco: #6b7280;
+  --linha: #d9dce1;
+  --fundo: #fbfbfc;
+  --caixa: #fff;
+  --marca: #1b4d8f;
+  --alerta: #8f2d1b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px 64px;
+}
+
+.aviso {
+  padding: 32px;
+  color: var(--fraco);
+}
+.aviso.erro,
+.erro {
+  color: var(--alerta);
+}
+.abortado {
+  margin: 40px;
+  padding: 24px;
+  border: 2px solid var(--alerta);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--alerta);
+  white-space: pre-wrap;
+  font: 14px/1.6 ui-monospace, monospace;
+}
+
+/* abas */
+.abas {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--linha);
+  margin-bottom: 16px;
+}
+.abas button {
+  padding: 6px 14px;
+  border: 1px solid var(--linha);
+  border-radius: 4px;
+  background: var(--caixa);
+  cursor: pointer;
+  font-size: 15px;
+}
+.abas button.ativa {
+  border-color: var(--marca);
+  color: var(--marca);
+  font-weight: 600;
+}
+.abas button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.abas .selecionado {
+  margin-left: auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fraco);
+  font-size: 13px;
+}
+
+/* controles da lista */
+.controles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  padding: 12px;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+}
+.controles select,
+.controles input {
+  font-size: 14px;
+}
+.contagem {
+  padding: 8px 2px;
+  color: var(--fraco);
+  font-size: 13px;
+}
+.contagem .fora {
+  font-style: italic;
+}
+
+/* cards */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.card {
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.card .cabeca {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.card h2 {
+  font-size: 16px;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.card .tema {
+  color: var(--fraco);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.numeros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  font-size: 13px;
+  color: var(--fraco);
+}
+.numeros strong {
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.base,
+.lado,
+.nota-nulo {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--fraco);
+}
+.achados-resumo {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--fraco);
+}
+.selo {
+  padding: 1px 8px;
+  border: 1px solid var(--alerta);
+  border-radius: 10px;
+  color: var(--alerta);
+  font-size: 12px;
+}
+.sem-digestao {
+  font-style: italic;
+}
+.ja-registrei {
+  margin-left: auto;
+}
+.acoes {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.acoes button,
+.acoes a,
+.principal {
+  padding: 5px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 4px;
+  background: var(--caixa);
+  color: var(--tinta);
+  text-decoration: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+.principal {
+  border-color: var(--marca);
+  background: var(--marca);
+  color: #fff;
+  display: inline-block;
+}
+button.link {
+  border: 0;
+  background: none;
+  color: var(--marca);
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+/* a regra */
+.regra header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.regra h1 {
+  font-size: 19px;
+  margin: 0;
+}
+.regra section {
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.regra h2 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.regra h3 {
+  font-size: 13px;
+  margin: 12px 0 4px;
+  color: var(--fraco);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nada {
+  color: var(--fraco);
+  font-style: italic;
+  margin: 0;
+}
+.proveniencia {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--fraco);
+}
+
+.selos {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.kn {
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.origem {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #eef1f5;
+  color: var(--fraco);
+}
+.origem.acusado {
+  background: #e6efe6;
+  color: #24592b;
+}
+.subtipo {
+  font-size: 11px;
+  color: var(--fraco);
+}
+
+.contradicao {
+  border-top: 1px solid var(--linha);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.contradicao:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+}
+.passagens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 8px 0;
+}
+.passagens blockquote,
+.achado blockquote {
+  margin: 0;
+  padding: 8px 10px;
+  background: #f6f7f9;
+  border-left: 3px solid var(--linha);
+  font-size: 13px;
+}
+.rotulo {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fraco);
+  margin-bottom: 3px;
+}
+.leituras-do-achado {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 13px;
+}
+.leituras-do-achado .herdado-explica,
+.achado .herdado-explica {
+  grid-column: 1 / -1;
+  color: var(--fraco);
+  font-style: italic;
+  margin: 4px 0;
+}
+.alcance {
+  font-size: 12px;
+  color: var(--fraco);
+  margin: 8px 0 0;
+}
+.cenario {
+  font-size: 13px;
+}
+
+.achados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.achado {
+  border-top: 1px solid var(--linha);
+  padding: 10px 0;
+}
+.achado:first-child {
+  border-top: 0;
+}
+.linha-topo {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.classe {
+  font-size: 12px;
+  font-weight: 600;
+}
+.achado p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.campo ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+.nulo-explicado {
+  margin: 0;
+  color: var(--fraco);
+  font-size: 13px;
+}
+.marca-divergencia {
+  color: var(--alerta);
+  border: 1px solid var(--alerta);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.selo-divergencia {
+  border: 1px solid var(--alerta);
+  background: none;
+  color: var(--alerta);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.todas-leituras {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+.todas-leituras table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.todas-leituras th,
+.todas-leituras td {
+  border: 1px solid var(--linha);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.todas-leituras tr.difere th {
+  color: var(--alerta);
+}
+.todas-leituras ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.vazio {
+  color: var(--fraco);
+}
+.texto-original pre {
+  white-space: pre-wrap;
+  font-size: 13px;
+  background: #f6f7f9;
+  padding: 10px;
+  border-radius: 4px;
+}
+.texto-original button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--marca);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.aviso-dois-textos {
+  font-size: 13px;
+  color: var(--alerta);
+}
+
+/* operar */
+.operar h1 {
+  font-size: 19px;
+  margin: 0 0 8px;
+}
+.base-de-mercado {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  padding: 10px 12px;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fraco);
+}
+.base-de-mercado strong {
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.passo {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+}
+.passo label {
+  display: block;
+  margin-bottom: 10px;
+}
+.passo .pergunta {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.passo input {
+  font-size: 20px;
+  padding: 6px 10px;
+  width: 160px;
+  border: 1px solid var(--linha);
+  border-radius: 4px;
+}
+.passo .nota input {
+  font-size: 14px;
+  width: 100%;
+}
+.confirmacao .numero {
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0;
+}
+.confirmacao .contra,
+.nota-resumo {
+  color: var(--fraco);
+  font-size: 14px;
+  margin: 2px 0;
+}
+.salvo h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.cronometro {
+  color: var(--fraco);
+  font-size: 13px;
+}
+.leg {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--linha);
+}
+.leg .explica {
+  font-size: 13px;
+  color: var(--fraco);
+}
+.leg label {
+  display: block;
+  margin: 6px 0;
+  font-size: 14px;
+}
+.leg input {
+  font-size: 15px;
+  width: 140px;
+}
+.ok {
+  color: #24592b;
+}
