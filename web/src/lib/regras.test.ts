@@ -1,8 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { juntarRadarComDigest } from './regras.js';
-import type { ContagemDigest, MercadoRadar } from './tipos.js';
+import { juntarRadarComDigest, leiturasPorTexto, textosParaLer } from './regras.js';
+import type {
+  ContagemDigest,
+  LeituraRegra,
+  LinhaAchados,
+  MercadoRadar,
+} from './tipos.js';
 
 /**
  * FIXTURE SINTÉTICO — não é caso observado.
@@ -117,4 +122,59 @@ test('mercado do radar sem digestão continua na lista, com lista vazia', () => 
 
   assert.equal(linhas.length, 1);
   assert.deepEqual(linhas[0]?.digests, []);
+});
+
+// ---------------------------------------------------------------------------
+// textosParaLer / leiturasPorTexto — a tela de detalhe
+// ---------------------------------------------------------------------------
+
+function linha(eventId: string, sha: string): LinhaAchados {
+  return { ...contagem(eventId, sha), slug: `slug-${eventId}`, title: 't', achados: [] };
+}
+
+function leitura(sha: string, n: number): LeituraRegra {
+  return {
+    id: `${sha}-${n}`,
+    event_id: 'e1',
+    description_sha256: sha,
+    leitura_n: n,
+    resolve_sim: [],
+    resolve_nao: [],
+    fonte: null,
+    prazo: null,
+    anula_se: [],
+    model: 'deepseek-v4-flash',
+    prompt_version: 'v4',
+    created_at: '2026-08-22T00:00:00Z',
+  };
+}
+
+test('mercado com dois textos de regra pede as leituras dos DOIS', () => {
+  // FIXTURE SINTÉTICO — ver o cabeçalho deste arquivo. Com um só hash buscado, o
+  // segundo bloco da tela renderiza a leitura do primeiro texto: uma regra
+  // exibida no lugar de outra.
+  const linhas = [linha('e1', 'sha-antigo'), linha('e1', 'sha-novo')];
+
+  assert.deepEqual(textosParaLer(linhas), ['sha-antigo', 'sha-novo']);
+});
+
+test('mercado sem digestão não pede leitura nenhuma', () => {
+  assert.deepEqual(textosParaLer([]), []);
+});
+
+test('cada texto recebe só as suas leituras', () => {
+  const porTexto = leiturasPorTexto([
+    leitura('sha-antigo', 1),
+    leitura('sha-novo', 1),
+    leitura('sha-antigo', 2),
+  ]);
+
+  assert.deepEqual(
+    porTexto.get('sha-antigo')?.map(l => l.leitura_n),
+    [1, 2],
+  );
+  assert.deepEqual(
+    porTexto.get('sha-novo')?.map(l => l.leitura_n),
+    [1],
+  );
 });

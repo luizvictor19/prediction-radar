@@ -1,4 +1,10 @@
-import type { ContagemDigest, MercadoRadar, MercadoNaLista } from './tipos';
+import type {
+  ContagemDigest,
+  LeituraRegra,
+  LinhaAchados,
+  MercadoRadar,
+  MercadoNaLista,
+} from './tipos';
 
 /**
  * A junção do radar com a digestão — pura, sem React e sem fetch.
@@ -70,4 +76,46 @@ export function somaDigest(
 ): number | null {
   if (m.digests.length === 0) return null;
   return m.digests.reduce((acc, d) => acc + d[campo], 0);
+}
+
+// ---------------------------------------------------------------------------
+// Quais textos de regra a tela de detalhe precisa ler
+// ---------------------------------------------------------------------------
+
+/**
+ * Os hashes de texto a buscar em `market_rule_digests`, para UM mercado.
+ *
+ * `lerLeituras` filtra por `(event_id, description_sha256)`, então cada texto é
+ * uma leitura própria do banco. Quem decide quantas são é esta função.
+ *
+ * TODOS os textos, e não só o primeiro: a tela renderiza um bloco por texto, e
+ * um bloco sem as leituras do seu hash exibiria a regra do outro texto no lugar
+ * da própria — uma regra apresentada como se fosse outra, que é pior do que não
+ * mostrar nada.
+ *
+ * Sem `distinct`: a view agrupa por `(event_id, description_sha256)`, então cada
+ * hash aparece uma vez por mercado por construção.
+ */
+export function textosParaLer(linhas: readonly LinhaAchados[]): string[] {
+  return linhas.map(l => l.description_sha256);
+}
+
+/**
+ * As leituras agrupadas pelo texto a que pertencem.
+ *
+ * Cada bloco da tela é um texto de regra, e tem que receber as leituras DAQUELE
+ * texto. `leituraExibida` e `divergem` operam sobre o grupo, não sobre a mistura
+ * — comparar leituras de textos diferentes acusaria divergência onde há apenas
+ * duas regras diferentes.
+ */
+export function leiturasPorTexto(
+  leituras: readonly LeituraRegra[],
+): Map<string, LeituraRegra[]> {
+  const porTexto = new Map<string, LeituraRegra[]>();
+  for (const l of leituras) {
+    const grupo = porTexto.get(l.description_sha256);
+    if (grupo === undefined) porTexto.set(l.description_sha256, [l]);
+    else grupo.push(l);
+  }
+  return porTexto;
 }

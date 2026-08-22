@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { lerAchados, lerContradicoes, lerLeituras, lerTextoDaRegra } from '../lib/dados';
 import type { Achado, Contradicao, LeituraRegra, LinhaAchados, MercadoNaLista } from '../lib/tipos';
 import { CAMPOS, camposDivergentes, divergem, leituraExibida, valores } from '../lib/leituras';
+import { leiturasPorTexto, textosParaLer } from '../lib/regras';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
 /**
@@ -28,14 +29,15 @@ export function Regra({
   onOperar: () => void;
 }) {
   const [linhas, setLinhas] = useState<LinhaAchados[] | null>(null);
-  const [leituras, setLeituras] = useState<LeituraRegra[]>([]);
+  // Chaveado pelo hash do texto: cada bloco da tela recebe as leituras DELE.
+  const [leituras, setLeituras] = useState<Map<string, LeituraRegra[]>>(new Map());
   const [alcance, setAlcance] = useState<Map<string, Contradicao>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
     setLinhas(null);
-    setLeituras([]);
+    setLeituras(new Map());
     setAlcance(new Map());
     setErro(null);
 
@@ -45,11 +47,11 @@ export function Regra({
         if (!vivo) return;
         setLinhas(ls);
 
-        const primeira = ls[0];
-        if (!primeira) return;
+        const shas = textosParaLer(ls);
+        if (shas.length === 0) return;
 
-        const [leiturasDoTexto, contras] = await Promise.all([
-          lerLeituras(mercado.id, primeira.description_sha256),
+        const [porTexto, contras] = await Promise.all([
+          Promise.all(shas.map(sha => lerLeituras(mercado.id, sha))),
           lerContradicoes(
             ls
               .flatMap(l => l.achados ?? [])
@@ -58,7 +60,7 @@ export function Regra({
           ),
         ]);
         if (!vivo) return;
-        setLeituras(leiturasDoTexto);
+        setLeituras(leiturasPorTexto(porTexto.flat()));
         setAlcance(new Map(contras.map(c => [c.defeito_id, c])));
       } catch (e) {
         if (vivo) setErro(e instanceof Error ? e.message : String(e));
@@ -123,7 +125,7 @@ export function Regra({
             </section>
 
             {/* 2. Os campos da regra. */}
-            <CamposDaRegra leituras={leituras} />
+            <CamposDaRegra leituras={leituras.get(linha.description_sha256) ?? []} />
 
             {/* 3. Pegadinhas e ambiguidades. */}
             <section>
