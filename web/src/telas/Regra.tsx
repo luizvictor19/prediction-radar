@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { lerAchados, lerContradicoes, lerLeituras, lerTextoDaRegra } from '../lib/dados';
 import type { Achado, Contradicao, LeituraRegra, LinhaAchados, MercadoNaLista } from '../lib/tipos';
-import { CAMPOS, camposDivergentes, divergem, leituraExibida, valores } from '../lib/leituras';
+import {
+  CAMPOS,
+  camposDivergentes,
+  divergem,
+  leituraExibida,
+  MINIMO_LEITURAS,
+  seloDeConfirmacao,
+  valores,
+} from '../lib/leituras';
 import { leiturasPorTexto, textosParaLer } from '../lib/regras';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
@@ -149,15 +157,29 @@ export function Regra({
 function Selos({ achado }: { achado: Achado }) {
   return (
     <span className="selos">
-      <span className="kn" title="em quantas leituras deste texto o achado apareceu">
-        {achado.vezes_encontrado}/{achado.leituras_do_texto}
-      </span>
+      <SeloKN achado={achado} />
       <span className={`origem ${achado.origem}`}>{achado.origem}</span>
       {(achado.subtipos ?? []).map(s => (
         <span key={s} className="subtipo">
           {s}
         </span>
       ))}
+    </span>
+  );
+}
+
+function SeloKN({ achado }: { achado: Achado }) {
+  const selo = seloDeConfirmacao(achado.vezes_encontrado, achado.leituras_do_texto);
+  return (
+    <span
+      className={selo.comparavel ? 'kn' : 'kn nao-comparavel'}
+      title={
+        selo.comparavel
+          ? 'em quantas leituras deste texto o achado apareceu'
+          : `o texto tem menos de ${MINIMO_LEITURAS} leituras: nao ha maioria para medir`
+      }
+    >
+      {selo.texto}
     </span>
   );
 }

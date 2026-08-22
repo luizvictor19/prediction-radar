@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { MercadoNaLista } from '../lib/tipos';
 import { dinheiro, prazo, preco, urlPolymarket, variacao, VAZIO } from '../lib/formato';
 import { somaDigest, temDigestao } from '../lib/regras';
+import { seloDeCobertura } from '../lib/leituras';
 
 /**
  * A lista.
@@ -254,6 +255,12 @@ export function Hoje({
                   {(somaDigest(m, 'contradicoes') ?? 0) > 0 && (
                     <span className="selo">contradição na regra</span>
                   )}
+                  {(() => {
+                    const cob = seloDeCobertura(m.digests.map(d => d.leituras_do_texto));
+                    return cob === null ? null : (
+                      <span className="selo nao-comparavel">{cob.texto}</span>
+                    );
+                  })()}
                 </>
               ) : (
                 <span className="sem-digestao">sem digestão</span>

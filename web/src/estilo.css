@@ -528,3 +528,21 @@ button.link {
 .ok {
   color: #24592b;
 }
+
+/*
+ * O que não é comparável não pode parecer comparável.
+ *
+ * `.kn` é tabular e emoldurado — a forma de um número que se compara com o
+ * vizinho. O estado não comparável abandona a moldura e a fonte tabular de
+ * propósito: vira texto corrido, em itálico e apagado, porque a diferença tem
+ * que ser visível ANTES da leitura. Um asterisco no mesmo selo seria lido como
+ * nota de rodapé de um número válido.
+ */
+.kn.nao-comparavel,
+.selo.nao-comparavel {
+  border: none;
+  padding: 0;
+  font-variant-numeric: normal;
+  font-style: italic;
+  color: var(--fraco);
+}

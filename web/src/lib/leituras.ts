@@ -66,3 +66,62 @@ export function divergem(leituras: LeituraRegra[], campo: CampoRegra): boolean {
 export function camposDivergentes(leituras: LeituraRegra[]): CampoRegra[] {
   return CAMPOS.map(c => c.chave).filter(c => divergem(leituras, c));
 }
+
+// ---------------------------------------------------------------------------
+// O selo de confirmação
+// ---------------------------------------------------------------------------
+
+/**
+ * Quantas leituras um texto precisa ter para o selo `k/n` significar alguma
+ * coisa. Mesmo número de `scripts/nivelar-leituras.ts` (`MINIMO_PADRAO`), e pela
+ * mesma razão.
+ */
+export const MINIMO_LEITURAS = 3;
+
+export interface Selo {
+  /** O selo pode ser lido como concordância entre leituras? */
+  comparavel: boolean;
+  texto: string;
+}
+
+/** "1 leitura" / "2 leituras" — o rótulo do que não dá para comparar. */
+function naoComparavel(leituras: number): Selo {
+  const plural = leituras === 1 ? 'leitura' : 'leituras';
+  return { comparavel: false, texto: `${leituras} ${plural} — não comparável` };
+}
+
+/**
+ * O selo de um achado: quantas leituras daquele texto o apontaram.
+ *
+ * Abaixo de `MINIMO_LEITURAS` a fração NÃO é exibida, e a razão é que ela
+ * mentiria pela forma. Com duas leituras, um achado que aparece numa e não na
+ * outra fica 1/2 — empate, sem maioria. Com uma leitura, `1/1` não é
+ * concordância: é não medido, escrito com a mesma tipografia de um `3/3` que foi
+ * medido três vezes.
+ *
+ * O olho compara `1/1` com `2/3` e conclui "o primeiro é mais confirmado". Não
+ * é. Por isso o gate troca a forma inteira em vez de acrescentar um asterisco:
+ * o que não é comparável não pode parecer comparável.
+ */
+export function seloDeConfirmacao(vezesEncontrado: number, leiturasDoTexto: number): Selo {
+  if (leiturasDoTexto < MINIMO_LEITURAS) return naoComparavel(leiturasDoTexto);
+  return { comparavel: true, texto: `${vezesEncontrado}/${leiturasDoTexto}` };
+}
+
+/**
+ * O selo de cobertura de um mercado na lista.
+ *
+ * `null` quando não há o que avisar — mercado sem digestão (que a linha já diz
+ * por outro caminho) ou textos todos no mínimo. Selo em toda linha vira ruído e
+ * para de ser lido.
+ *
+ * Com mais de um texto manda o PIOR: a linha é uma só, e anunciar "3 leituras"
+ * num mercado que tem um texto medido uma vez esconderia justamente o texto
+ * fraco.
+ */
+export function seloDeCobertura(leiturasPorTexto: readonly number[]): Selo | null {
+  if (leiturasPorTexto.length === 0) return null;
+
+  const pior = Math.min(...leiturasPorTexto);
+  return pior < MINIMO_LEITURAS ? naoComparavel(pior) : null;
+}
