@@ -146,101 +146,181 @@ export function Regra({
         </p>
       )}
 
-      {linhas.map(linha => {
-        const achados = linha.achados ?? [];
+      {linhas.map(linha => (
+        <BlocoDeTexto
+          key={linha.description_sha256}
+          linha={linha}
+          varios={linhas.length > 1}
+          leituras={leituras.get(linha.description_sha256) ?? []}
+          alcance={alcance}
+          mercado={mercado}
+          regulamento={regulamento}
+          shaRegulamento={shaRegulamento}
+        />
+      ))}
+    </div>
+  );
+}
 
-        // A origem separa antes de tudo: o que este mercado acusou fica nas
-        // seções, o que ele herdou desce para a dobra. Contradição herdada
-        // desce junto — é decisão do item 5, seção 4, e o motivo é que um
-        // achado sem `leitura_a` nem `leitura_b` é o menos acionável da tela
-        // disfarçado do mais grave.
-        const { acusados, herdados } = separarHerdados(achados);
+/**
+ * Um texto de regra: as duas faixas, as duas colunas.
+ *
+ * É componente próprio porque os dois lados compartilham estado — qual armadilha
+ * está acesa, e quantas estão visíveis. Estado num `map` do pai seria hook
+ * dentro de laço, e o teto de armadilhas precisa ser o MESMO número dos dois
+ * lados: destacar as escondidas atrás do "ver mais" pinta quase todo parágrafo e
+ * o destaque deixa de distinguir coisa nenhuma.
+ */
+function BlocoDeTexto({
+  linha,
+  varios,
+  leituras,
+  alcance,
+  mercado,
+  regulamento,
+  shaRegulamento,
+}: {
+  linha: LinhaAchados;
+  varios: boolean;
+  leituras: LeituraRegra[];
+  alcance: Map<string, Contradicao>;
+  mercado: MercadoNaLista;
+  regulamento: string | null;
+  shaRegulamento: string | null;
+}) {
+  /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
+  const [aceso, setAceso] = useState<string | null>(null);
+  const [todasArmadilhas, setTodasArmadilhas] = useState(false);
 
-        const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
-        const armadilhas = acusados
-          .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
-          .sort(porConcordancia);
-        const contradicoes = acusados.filter(a => a.classe === 'contradicao');
-        const resto = acusados
-          .filter(a => a.classe !== 'contradicao' && !armadilhas.includes(a))
-          .sort(porConcordancia);
+  const achados = linha.achados ?? [];
 
-        return (
-          <div key={linha.description_sha256} className="texto-de-regra">
-            {linhas.length > 1 && (
-              <p className="aviso-dois-textos">
-                Este mercado tem mais de um texto de regra digerido (a descrição foi
-                editada). Bloco do texto <code>{linha.description_sha256.slice(0, 8)}</code>.
-              </p>
+  // A origem separa antes de tudo: o que este mercado acusou fica nas seções, o
+  // que ele herdou desce para a dobra. Contradição herdada desce junto — é
+  // decisão do item 5, seção 4, e o motivo é que um achado sem `leitura_a` nem
+  // `leitura_b` é o menos acionável da tela disfarçado do mais grave.
+  const { acusados, herdados } = separarHerdados(achados);
+
+  const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
+  const armadilhas = acusados
+    .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
+    .sort(porConcordancia);
+  const contradicoes = acusados.filter(a => a.classe === 'contradicao');
+  const resto = acusados
+    .filter(a => a.classe !== 'contradicao' && !armadilhas.includes(a))
+    .sort(porConcordancia);
+
+  const visiveis = todasArmadilhas ? armadilhas : armadilhas.slice(0, TETO_DE_ARMADILHAS);
+
+  // A armadilha que virou veredito não repete a prosa aqui embaixo: a faixa do
+  // topo já a escreveu inteira, palavra por palavra.
+  const veredito = escolherVeredito(achados);
+
+  function irAteOTrecho(id: string) {
+    document.getElementById(`trecho-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  const ligacao = (a: Achado) => ({
+    aceso: aceso === a.achado_id,
+    onAcender: () => setAceso(a.achado_id),
+    onApagar: () => setAceso(null),
+    onIr: () => irAteOTrecho(a.achado_id),
+  });
+
+  return (
+        <div className="texto-de-regra">
+      {varios && (
+        <p className="aviso-dois-textos">
+          Este mercado tem mais de um texto de regra digerido (a descrição foi editada).
+          Bloco do texto <code>{linha.description_sha256.slice(0, 8)}</code>.
+        </p>
+      )}
+
+      {/* Primeira dobra: as duas faixas resumem O MERCADO, não uma coluna, e é
+          por isso que atravessam a largura inteira. Quem está varrendo lê as
+          duas e sai; quem veio estudar segue. */}
+      <MancheteVsRegra achados={achados} leituras={leituras} />
+      <LinhaDeNumeros achados={achados} liquidez={mercado.liquidez} />
+
+      <div className="duas-colunas">
+        {/* ESQUERDA: opera. Ordenada pelo que decide primeiro. */}
+        <div className="coluna-esquerda">
+          <section className="armadilhas">
+            <h2>Armadilhas que mudam o resultado</h2>
+
+            {armadilhas.length === 0 && (
+              // "Lido e limpo" é informação diferente de "não lido". A seção
+              // não some: some ela, e a ausência lê como "ninguém olhou isto".
+              <p className="nada">Nenhuma armadilha acusada que mude o resultado ou o prazo.</p>
             )}
 
-            {/* Primeira dobra: as duas faixas resumem O MERCADO, não uma
-                coluna, e é por isso que atravessam a largura inteira. Quem
-                está varrendo lê as duas e sai; quem veio estudar segue. */}
-            <MancheteVsRegra
-              achados={achados}
-              leituras={leituras.get(linha.description_sha256) ?? []}
-            />
-            <LinhaDeNumeros achados={achados} liquidez={mercado.liquidez} />
+            <ul className="achados">
+              {visiveis.map(a => (
+                <AchadoItem
+                  key={a.achado_id}
+                  achado={a}
+                  jaNoVeredito={a.achado_id === veredito?.achado_id}
+                  {...ligacao(a)}
+                />
+              ))}
+            </ul>
 
-            <div className="duas-colunas">
-              {/* ESQUERDA: opera. Ordenada pelo que decide primeiro. */}
-              <div className="coluna-esquerda">
-                <Armadilhas achados={armadilhas} />
+            {armadilhas.length > visiveis.length && (
+              <button className="link" onClick={() => setTodasArmadilhas(true)}>
+                ver mais {armadilhas.length - visiveis.length}
+              </button>
+            )}
+          </section>
 
-                <section>
-                  <h2>Contradições internas</h2>
-                  {contradicoes.length === 0 && (
-                    <p className="nada">Nenhuma contradição acusada por uma leitura deste texto.</p>
-                  )}
-                  {contradicoes.map(c => (
-                    <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
-                  ))}
-                </section>
+          <section>
+            <h2>Contradições internas</h2>
+            {contradicoes.length === 0 && (
+              <p className="nada">Nenhuma contradição acusada por uma leitura deste texto.</p>
+            )}
+            {contradicoes.map(c => (
+              <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
+            ))}
+          </section>
 
-                <details className="dobra">
-                  <summary>A regra, lida</summary>
-                  <CamposDaRegra leituras={leituras.get(linha.description_sha256) ?? []} />
-                </details>
+          <details className="dobra">
+            <summary>A regra, lida</summary>
+            <CamposDaRegra leituras={leituras} />
+          </details>
 
-                {resto.length > 0 && (
-                  <details className="dobra">
-                    <summary>Outras ambiguidades acusadas ({resto.length})</summary>
-                    <ul className="achados">
-                      {resto.map(a => (
-                        <AchadoItem key={a.achado_id} achado={a} />
-                      ))}
-                    </ul>
-                  </details>
-                )}
+          {resto.length > 0 && (
+            <details className="dobra">
+              <summary>Outras ambiguidades acusadas ({resto.length})</summary>
+              <ul className="achados">
+                {resto.map(a => (
+                  <AchadoItem key={a.achado_id} achado={a} />
+                ))}
+              </ul>
+            </details>
+          )}
 
-                {herdados.length > 0 && (
-                  <details className="dobra">
-                    <summary>
-                      {herdados.length} achados herdados de outros mercados com o mesmo texto
-                      de regra
-                    </summary>
-                    <ul className="achados">
-                      {herdados.map(a => (
-                        <AchadoItem key={a.achado_id} achado={a} />
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </div>
+          {herdados.length > 0 && (
+            <details className="dobra">
+              <summary>
+                {herdados.length} achados herdados de outros mercados com o mesmo texto de regra
+              </summary>
+              <ul className="achados">
+                {herdados.map(a => (
+                  <AchadoItem key={a.achado_id} achado={a} />
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
 
-              {/* DIREITA: prova. A cláusula onde ela vive, não recortada. */}
-              <ColunaDireita
-                regulamento={regulamento}
-                shaRegulamento={shaRegulamento}
-                shaDoBloco={linha.description_sha256}
-                achados={achados}
-                tamanho={mercado.tamanho_regra}
-              />
-            </div>
-          </div>
-        );
-      })}
+        {/* DIREITA: prova. A cláusula onde ela vive, não recortada. */}
+        <ColunaDireita
+          regulamento={regulamento}
+          shaRegulamento={shaRegulamento}
+          shaDoBloco={linha.description_sha256}
+          armadilhas={visiveis}
+          aceso={aceso}
+          tamanho={mercado.tamanho_regra}
+        />
+      </div>
     </div>
   );
 }
@@ -264,41 +344,6 @@ function ehArmadilhaDeTiming(a: Achado): boolean {
  */
 const TETO_DE_ARMADILHAS = 5;
 
-/**
- * Seção 1 da coluna esquerda: o que muda o resultado.
- *
- * Só acusadas: um achado herdado não tem descrição nem cenário, e ocupar o topo
- * da coluna com ele seria dar o lugar mais caro da tela ao item menos acionável.
- */
-function Armadilhas({ achados }: { achados: Achado[] }) {
-  const [tudo, setTudo] = useState(false);
-  const visiveis = tudo ? achados : achados.slice(0, TETO_DE_ARMADILHAS);
-  const escondidos = achados.length - visiveis.length;
-
-  return (
-    <section className="armadilhas">
-      <h2>Armadilhas que mudam o resultado</h2>
-
-      {achados.length === 0 && (
-        // "Lido e limpo" é informação diferente de "não lido". A seção não
-        // some: some ela, e a ausência lê como "o sistema não olhou isto".
-        <p className="nada">Nenhuma armadilha acusada que mude o resultado ou o prazo.</p>
-      )}
-
-      <ul className="achados">
-        {visiveis.map(a => (
-          <AchadoItem key={a.achado_id} achado={a} />
-        ))}
-      </ul>
-
-      {escondidos > 0 && (
-        <button className="link" onClick={() => setTudo(true)}>
-          ver mais {escondidos}
-        </button>
-      )}
-    </section>
-  );
-}
 
 /**
  * Faixa 1 da primeira dobra: o veredito.
@@ -404,13 +449,16 @@ function ColunaDireita({
   regulamento,
   shaRegulamento,
   shaDoBloco,
-  achados,
+  armadilhas,
+  aceso,
   tamanho,
 }: {
   regulamento: string | null;
   shaRegulamento: string | null;
   shaDoBloco: string;
-  achados: Achado[];
+  /** Só as VISÍVEIS na esquerda — ver o comentário em `pedidos`. */
+  armadilhas: Achado[];
+  aceso: string | null;
   tamanho: number | null;
 }) {
   if (regulamento === null) {
@@ -437,16 +485,32 @@ function ColunaDireita({
     );
   }
 
-  // `forte` = muda o resultado ou o prazo. O tom `clara` fica para quando o
-  // gate de boilerplate tiver as consultas de frequência — sem elas, nada é
-  // "comum a quase todo regulamento", e pintar de claro por outro critério
-  // seria rotular errado.
-  const pedidos: PedidoDeDestaque[] = achados
-    .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
-    .map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const }));
+  // Só as armadilhas VISÍVEIS na esquerda. Destacar também as escondidas atrás
+  // do "ver mais" pinta quase todo parágrafo, e um destaque que cobre tudo não
+  // distingue nada — vira fundo. O que a esquerda mostra é o que a direita
+  // acende, e os dois lados sobem juntos quando o "ver mais" abre.
+  //
+  // `forte` = muda o resultado ou o prazo. O tom `clara` fica para quando o gate
+  // de boilerplate tiver as consultas de frequência: sem elas nada é "comum a
+  // quase todo regulamento", e pintar de claro por outro critério seria rotular
+  // errado.
+  const pedidos: PedidoDeDestaque[] = armadilhas.map(a => ({
+    id: a.achado_id,
+    trecho: a.trecho,
+    marca: 'forte' as const,
+  }));
 
   const { segmentos, naoLocalizados } = destacar(regulamento, pedidos);
   const tons = new Set(segmentos.map(s => s.marca).filter(Boolean));
+
+  // A âncora do clique vai no PRIMEIRO segmento de cada achado: um trecho pode
+  // ser repartido em vários segmentos por sobreposição, e rolar até o segundo
+  // pedaço pararia no meio da frase.
+  const primeiro = new Map<string, number>();
+  segmentos.forEach((s, i) => {
+    for (const id of s.ids) if (!primeiro.has(id)) primeiro.set(id, i);
+  });
+  const ancoras = new Map([...primeiro].map(([id, i]) => [i, id]));
 
   return (
     <aside className="coluna-direita">
@@ -460,7 +524,11 @@ function ColunaDireita({
           s.marca === null ? (
             <span key={i}>{s.texto}</span>
           ) : (
-            <mark key={i} className={s.marca}>
+            <mark
+              key={i}
+              id={ancoras.has(i) ? `trecho-${ancoras.get(i)}` : undefined}
+              className={`${s.marca}${aceso !== null && s.ids.includes(aceso) ? ' aceso' : ''}`}
+            >
               {s.texto}
             </mark>
           ),
@@ -574,16 +642,58 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
   );
 }
 
-function AchadoItem({ achado }: { achado: Achado }) {
+/**
+ * Um achado na coluna esquerda: o que ele SIGNIFICA.
+ *
+ * **Sem o trecho citado.** Ele está destacado dentro do regulamento, à direita,
+ * e repeti-lo aqui é exatamente a duplicação que a coluna direita existe para
+ * acabar — o recorte solto era o problema, não a solução. Aqui ficam descrição e
+ * cenário; a evidência mora onde ela vive.
+ *
+ * `aceso`/`onIr` ligam os dois lados. Sete armadilhas à esquerda e sete
+ * destaques à direita, sem ligação, não deixam saber qual é qual: o cursor
+ * acende o trecho, o clique rola até ele.
+ */
+function AchadoItem({
+  achado,
+  jaNoVeredito = false,
+  aceso = false,
+  onAcender,
+  onApagar,
+  onIr,
+}: {
+  achado: Achado;
+  jaNoVeredito?: boolean;
+  aceso?: boolean;
+  onAcender?: () => void;
+  onApagar?: () => void;
+  onIr?: () => void;
+}) {
   const herdado = achado.origem === 'herdado';
+  const ligavel = onIr !== undefined;
+
   return (
-    <li className={`achado ${achado.classe}`}>
+    <li
+      className={`achado ${achado.classe}${aceso ? ' aceso' : ''}${ligavel ? ' ligavel' : ''}`}
+      onMouseEnter={onAcender}
+      onMouseLeave={onApagar}
+      onClick={onIr}
+    >
       <div className="linha-topo">
-        <span className="classe">{achado.classe}</span>
+        {/* `pegadinha` e `muda_resultado` lado a lado dizem a mesma coisa. Fica
+            o subtipo, que é o mais específico dos dois; a classe só aparece
+            quando não há subtipo para falar por ela. */}
+        {(achado.subtipos ?? []).length === 0 && (
+          <span className="classe">{achado.classe}</span>
+        )}
         <Selos achado={achado} />
       </div>
-      {achado.trecho && <blockquote>{achado.trecho}</blockquote>}
-      {herdado ? (
+
+      {jaNoVeredito ? (
+        // A faixa do topo já escreveu esta prosa inteira. Repeti-la aqui é a
+        // mesma armadilha aparecendo duas vezes na mesma tela.
+        <p className="ja-no-veredito">É a armadilha do veredito, no topo desta tela.</p>
+      ) : herdado ? (
         <p className="herdado-explica">
           Herdado de um mercado com o mesmo texto de regra. A descrição e o cenário são
           nulos aqui porque não houve leitura deste mercado.
