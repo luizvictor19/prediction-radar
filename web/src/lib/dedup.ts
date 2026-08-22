@@ -77,9 +77,7 @@ type Prosa = {
 const SEM_PROSA: Prosa = { descricao: null, cenario: null, leitura_a: null, leitura_b: null };
 
 function temProsa(a: Prosa): boolean {
-  return (
-    a.descricao !== null || a.cenario !== null || a.leitura_a !== null || a.leitura_b !== null
-  );
+  return a.descricao !== null || a.cenario !== null || a.leitura_a !== null || a.leitura_b !== null;
 }
 
 /**
@@ -88,7 +86,7 @@ function temProsa(a: Prosa): boolean {
  * dois recortes de propósito, e removê-la aqui faria a fusão engolir trechos
  * que o sobrevivente não contém literalmente.
  */
-function normalizar(s: string): string {
+export function normalizarTrecho(s: string): string {
   return s.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
@@ -110,8 +108,8 @@ function bordaDePalavra(s: string, i: number): boolean {
  * fragmento curto absorveria frases que não têm nada a ver com ele.
  */
 export function contemTrecho(maior: string, menor: string): boolean {
-  const m = normalizar(maior);
-  const n = normalizar(menor);
+  const m = normalizarTrecho(maior);
+  const n = normalizarTrecho(menor);
   if (n === '' || n.length > m.length) return false;
   for (let i = m.indexOf(n); i !== -1; i = m.indexOf(n, i + 1)) {
     if (bordaDePalavra(m, i - 1) && bordaDePalavra(m, i + n.length)) return true;
@@ -146,7 +144,7 @@ function grupoDe(a: AchadoFundivel): string {
 function maisLongoPrimeiro(a: AchadoFundivel, b: AchadoFundivel): number {
   const ta = a.trecho ?? '';
   const tb = b.trecho ?? '';
-  return tb.length - ta.length || normalizar(ta).localeCompare(normalizar(tb));
+  return tb.length - ta.length || normalizarTrecho(ta).localeCompare(normalizarTrecho(tb));
 }
 
 /**
@@ -259,7 +257,7 @@ function fundir<T extends AchadoFundivel>(sobrevivente: T, absorvidos: readonly 
   return {
     ...sobrevivente,
     ...prosa,
-    origem: todos.some(a => a.origem === 'acusado') ? 'acusado' : 'herdado',
+    origem: todos.some((a) => a.origem === 'acusado') ? 'acusado' : 'herdado',
     subtipos: [...subtipos].sort(),
     leituras: [...leituras],
   } as T;
