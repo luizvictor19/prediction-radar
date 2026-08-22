@@ -92,7 +92,15 @@ export function normalizarTrecho(s: string): string {
 
 const PALAVRA = /[\p{L}\p{N}]/u;
 
-function bordaDePalavra(s: string, i: number): boolean {
+/**
+ * A posição `i` de `s` é borda de palavra — fora da string conta como borda.
+ *
+ * Exportada para `destaque.ts`, que precisa das POSIÇÕES e não do booleano de
+ * `contemTrecho`. Uma segunda cópia deste predicado derivaria da primeira, e
+ * duas definições de "borda" fariam a dedup e o destaque discordarem sobre o
+ * mesmo trecho: escondido numa, pintado na outra.
+ */
+export function bordaDePalavra(s: string, i: number): boolean {
   if (i < 0 || i >= s.length) return true;
   return !PALAVRA.test(s[i] as string);
 }

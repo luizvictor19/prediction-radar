@@ -126,3 +126,24 @@ export function leiturasPorTexto(
   }
   return porTexto;
 }
+
+/**
+ * O sha256 de um texto de regra, na MESMA conta que a digestão faz.
+ *
+ * `hashDescription` do backend é `sha256(description)` sobre a descrição já
+ * passada por `trim()` em `readMarketsToDigest` — e é por isso que o `trim`
+ * está aqui também. Um `trim` a menos e o hash não bate em texto nenhum que
+ * comece com espaço.
+ *
+ * Serve para uma pergunta só, e ela importa: **este regulamento é o texto que
+ * produziu estes achados?** `market_rule_digests` guarda o HASH, nunca o texto;
+ * o texto mora em `events.description`, que é a descrição ATUAL. Se a descrição
+ * foi editada depois da digestão, os dois deixam de ser a mesma coisa, e
+ * destacar os trechos de um sobre o outro atribuiria citação a um texto que não
+ * a contém — que é P1 quebrado no lugar mais caro.
+ */
+export async function sha256Hex(texto: string): Promise<string> {
+  const bytes = new TextEncoder().encode(texto.trim());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}

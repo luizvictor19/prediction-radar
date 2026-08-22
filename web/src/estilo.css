@@ -221,6 +221,94 @@ button.link {
   font-variant-numeric: tabular-nums;
 }
 
+/* as duas colunas: esquerda opera, direita prova */
+.duas-colunas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.coluna-direita {
+  /* Rolar as armadilhas não pode tirar o regulamento da vista: é o contexto
+     contra o qual cada uma delas se lê. */
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.coluna-direita h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.regulamento {
+  /* Citação em monoespaçada, interpretação em sans: a diferença tem que
+     aparecer antes da leitura, sem legenda. */
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.65 ui-monospace, monospace;
+  color: var(--tinta);
+}
+.regulamento mark {
+  background: none;
+  color: inherit;
+  border-radius: 2px;
+  padding: 1px 0;
+}
+.regulamento mark.forte {
+  background: color-mix(in srgb, var(--alerta) 26%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 45%, transparent);
+}
+.regulamento mark.clara {
+  background: color-mix(in srgb, var(--alerta) 9%, transparent);
+}
+.legenda,
+.nao-localizado {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--fraco);
+}
+.nao-localizado {
+  border-left: 2px solid var(--alerta);
+  padding-left: 8px;
+}
+.aviso-versao {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fraco);
+  border-left: 2px solid var(--alerta);
+  padding-left: 8px;
+}
+.dobra {
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.dobra > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dobra > summary::marker {
+  color: var(--fraco);
+}
+.dobra > *:not(summary) {
+  padding: 0 14px 12px;
+}
+.dobra section {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+}
+
 /* a regra */
 .regra header {
   display: flex;

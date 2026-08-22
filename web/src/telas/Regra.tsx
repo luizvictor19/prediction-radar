@@ -10,8 +10,10 @@ import {
   seloDeConfirmacao,
   valores,
 } from '../lib/leituras';
-import { leiturasPorTexto, textosParaLer } from '../lib/regras';
+import { leiturasPorTexto, sha256Hex, textosParaLer } from '../lib/regras';
 import { ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
+import { separarHerdados } from '../lib/herdados';
+import { destacar, type PedidoDeDestaque } from '../lib/destaque';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
 /**
@@ -45,15 +47,42 @@ export function Regra({
   const [alcance, setAlcance] = useState<Map<string, Contradicao>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
 
+  /**
+   * O regulamento e o hash DELE, calculado aqui.
+   *
+   * O hash é a única ligação entre um texto e os achados que saíram dele:
+   * `market_rule_digests` guarda `description_sha256` e nunca o texto. Sem
+   * conferir, a coluna direita destacaria os trechos de uma versão da regra
+   * sobre outra sempre que a descrição tivesse sido editada depois da digestão.
+   */
+  const [regulamento, setRegulamento] = useState<string | null>(null);
+  const [shaRegulamento, setShaRegulamento] = useState<string | null>(null);
+
   useEffect(() => {
     let vivo = true;
     setLinhas(null);
     setLeituras(new Map());
     setAlcance(new Map());
+    setRegulamento(null);
+    setShaRegulamento(null);
     setErro(null);
 
     (async () => {
       try {
+        // O regulamento sai junto com os achados: ele deixou de ser uma dobra
+        // que se abre sob demanda e virou a coluna direita, que abre com a tela.
+        lerTextoDaRegra(mercado.id)
+          .then(async texto => {
+            if (!vivo || texto === null) return;
+            const sha = await sha256Hex(texto);
+            if (!vivo) return;
+            setRegulamento(texto);
+            setShaRegulamento(sha);
+          })
+          .catch(e => {
+            if (vivo) setErro(e instanceof Error ? e.message : String(e));
+          });
+
         const ls = await lerAchados(mercado.id);
         if (!vivo) return;
         setLinhas(ls);
@@ -119,10 +148,22 @@ export function Regra({
 
       {linhas.map(linha => {
         const achados = linha.achados ?? [];
-        const contradicoes = achados.filter(a => a.classe === 'contradicao');
-        const resto = achados
-          .filter(a => a.classe !== 'contradicao')
-          .sort((a, b) => b.vezes_encontrado - a.vezes_encontrado);
+
+        // A origem separa antes de tudo: o que este mercado acusou fica nas
+        // seções, o que ele herdou desce para a dobra. Contradição herdada
+        // desce junto — é decisão do item 5, seção 4, e o motivo é que um
+        // achado sem `leitura_a` nem `leitura_b` é o menos acionável da tela
+        // disfarçado do mais grave.
+        const { acusados, herdados } = separarHerdados(achados);
+
+        const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
+        const armadilhas = acusados
+          .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
+          .sort(porConcordancia);
+        const contradicoes = acusados.filter(a => a.classe === 'contradicao');
+        const resto = acusados
+          .filter(a => a.classe !== 'contradicao' && !armadilhas.includes(a))
+          .sort(porConcordancia);
 
         return (
           <div key={linha.description_sha256} className="texto-de-regra">
@@ -142,36 +183,120 @@ export function Regra({
             />
             <LinhaDeNumeros achados={achados} liquidez={mercado.liquidez} />
 
-            {/* 1. Contradições, primeiro. */}
-            <section>
-              <h2>Contradições</h2>
-              {contradicoes.length === 0 && (
-                <p className="nada">Nenhuma contradição apontada neste texto.</p>
-              )}
-              {contradicoes.map(c => (
-                <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
-              ))}
-            </section>
+            <div className="duas-colunas">
+              {/* ESQUERDA: opera. Ordenada pelo que decide primeiro. */}
+              <div className="coluna-esquerda">
+                <Armadilhas achados={armadilhas} />
 
-            {/* 2. Os campos da regra. */}
-            <CamposDaRegra leituras={leituras.get(linha.description_sha256) ?? []} />
+                <section>
+                  <h2>Contradições internas</h2>
+                  {contradicoes.length === 0 && (
+                    <p className="nada">Nenhuma contradição acusada por uma leitura deste texto.</p>
+                  )}
+                  {contradicoes.map(c => (
+                    <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
+                  ))}
+                </section>
 
-            {/* 3. Pegadinhas e ambiguidades. */}
-            <section>
-              <h2>Pegadinhas e ambiguidades</h2>
-              {resto.length === 0 && <p className="nada">Nada apontado.</p>}
-              <ul className="achados">
-                {resto.map(a => (
-                  <AchadoItem key={a.achado_id} achado={a} />
-                ))}
-              </ul>
-            </section>
+                <details className="dobra">
+                  <summary>A regra, lida</summary>
+                  <CamposDaRegra leituras={leituras.get(linha.description_sha256) ?? []} />
+                </details>
 
-            <TextoOriginal eventId={mercado.id} tamanho={mercado.tamanho_regra} />
+                {resto.length > 0 && (
+                  <details className="dobra">
+                    <summary>Outras ambiguidades acusadas ({resto.length})</summary>
+                    <ul className="achados">
+                      {resto.map(a => (
+                        <AchadoItem key={a.achado_id} achado={a} />
+                      ))}
+                    </ul>
+                  </details>
+                )}
+
+                {herdados.length > 0 && (
+                  <details className="dobra">
+                    <summary>
+                      {herdados.length} achados herdados de outros mercados com o mesmo texto
+                      de regra
+                    </summary>
+                    <ul className="achados">
+                      {herdados.map(a => (
+                        <AchadoItem key={a.achado_id} achado={a} />
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+
+              {/* DIREITA: prova. A cláusula onde ela vive, não recortada. */}
+              <ColunaDireita
+                regulamento={regulamento}
+                shaRegulamento={shaRegulamento}
+                shaDoBloco={linha.description_sha256}
+                achados={achados}
+                tamanho={mercado.tamanho_regra}
+              />
+            </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** A armadilha que muda QUANDO, irmã da que muda quem ganha. */
+function ehArmadilhaDeTiming(a: Achado): boolean {
+  return (
+    a.classe === 'pegadinha' &&
+    a.origem === 'acusado' &&
+    (a.subtipos ?? []).includes('muda_timing')
+  );
+}
+
+/**
+ * O teto de itens visíveis na seção de armadilhas.
+ *
+ * Cinco, calibrado e não chutado: M3 mediu, em 22/08/2026 por
+ * `npm run medir:tela-regra`, mediana 3 e p90 6 de armadilhas acusadas por
+ * mercado. O "ver mais N" aparece em 109 dos 1033 mercados (10,6%) — raro o
+ * bastante para não virar ruído, comum o bastante para valer existir.
+ */
+const TETO_DE_ARMADILHAS = 5;
+
+/**
+ * Seção 1 da coluna esquerda: o que muda o resultado.
+ *
+ * Só acusadas: um achado herdado não tem descrição nem cenário, e ocupar o topo
+ * da coluna com ele seria dar o lugar mais caro da tela ao item menos acionável.
+ */
+function Armadilhas({ achados }: { achados: Achado[] }) {
+  const [tudo, setTudo] = useState(false);
+  const visiveis = tudo ? achados : achados.slice(0, TETO_DE_ARMADILHAS);
+  const escondidos = achados.length - visiveis.length;
+
+  return (
+    <section className="armadilhas">
+      <h2>Armadilhas que mudam o resultado</h2>
+
+      {achados.length === 0 && (
+        // "Lido e limpo" é informação diferente de "não lido". A seção não
+        // some: some ela, e a ausência lê como "o sistema não olhou isto".
+        <p className="nada">Nenhuma armadilha acusada que mude o resultado ou o prazo.</p>
+      )}
+
+      <ul className="achados">
+        {visiveis.map(a => (
+          <AchadoItem key={a.achado_id} achado={a} />
+        ))}
+      </ul>
+
+      {escondidos > 0 && (
+        <button className="link" onClick={() => setTudo(true)}>
+          ver mais {escondidos}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -256,6 +381,109 @@ function LinhaDeNumeros({ achados, liquidez }: { achados: Achado[]; liquidez: nu
         <strong>{dinheiro(liquidez)}</strong> de liquidez
       </span>
     </div>
+  );
+}
+
+/**
+ * A coluna direita: o regulamento inteiro, com cada trecho marcado DENTRO dele.
+ *
+ * É o ponto do desenho. Recorte fora de contexto é exatamente como a manchete
+ * engana, e mostrar a cláusula onde ela vive é o antídoto — por isso a coluna é
+ * `sticky`: rolar as armadilhas não pode tirar o regulamento da vista.
+ *
+ * ## O hash é conferido, não presumido
+ *
+ * `market_rule_digests` guarda o hash do texto digerido, nunca o texto. O texto
+ * mora em `events.description`, que é a descrição ATUAL. Quando a descrição foi
+ * editada depois da digestão os dois deixam de ser a mesma coisa, e destacar os
+ * trechos de uma versão sobre a outra atribuiria citação a um texto que não a
+ * contém. Nesse caso a coluna não destaca nada e DIZ por quê — a versão antiga
+ * não é recuperável, porque ninguém a guardou.
+ */
+function ColunaDireita({
+  regulamento,
+  shaRegulamento,
+  shaDoBloco,
+  achados,
+  tamanho,
+}: {
+  regulamento: string | null;
+  shaRegulamento: string | null;
+  shaDoBloco: string;
+  achados: Achado[];
+  tamanho: number | null;
+}) {
+  if (regulamento === null) {
+    return (
+      <aside className="coluna-direita">
+        <p className="aviso">lendo o regulamento…</p>
+      </aside>
+    );
+  }
+
+  // O texto na tela é o de OUTRA versão da regra: não destaca.
+  if (shaRegulamento !== null && shaRegulamento !== shaDoBloco) {
+    return (
+      <aside className="coluna-direita">
+        <p className="aviso-versao">
+          Os achados desta seção saíram de outra versão da regra (
+          <code>{shaDoBloco.slice(0, 8)}</code>), e esse texto não está guardado — o
+          banco registra o hash, não o texto. Abaixo está a descrição atual do
+          mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão
+          sobre a outra apontaria citação para um texto que não a contém.
+        </p>
+        <pre className="regulamento">{regulamento}</pre>
+      </aside>
+    );
+  }
+
+  // `forte` = muda o resultado ou o prazo. O tom `clara` fica para quando o
+  // gate de boilerplate tiver as consultas de frequência — sem elas, nada é
+  // "comum a quase todo regulamento", e pintar de claro por outro critério
+  // seria rotular errado.
+  const pedidos: PedidoDeDestaque[] = achados
+    .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
+    .map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const }));
+
+  const { segmentos, naoLocalizados } = destacar(regulamento, pedidos);
+  const tons = new Set(segmentos.map(s => s.marca).filter(Boolean));
+
+  return (
+    <aside className="coluna-direita">
+      <h2>
+        O regulamento
+        {tamanho !== null && <span className="proveniencia">{tamanho} caracteres</span>}
+      </h2>
+
+      <pre className="regulamento">
+        {segmentos.map((s, i) =>
+          s.marca === null ? (
+            <span key={i}>{s.texto}</span>
+          ) : (
+            <mark key={i} className={s.marca}>
+              {s.texto}
+            </mark>
+          ),
+        )}
+      </pre>
+
+      {naoLocalizados.length > 0 && (
+        // A razão de `destacar` devolver duas coisas. Sem isto a coluna
+        // mostraria menos destaques do que a esquerda mostra achados, e
+        // ninguém contaria os dois lados para perceber.
+        <p className="nao-localizado">
+          {naoLocalizados.length}{' '}
+          {naoLocalizados.length === 1 ? 'trecho não localizado' : 'trechos não localizados'} no
+          texto acima. O achado continua na coluna da esquerda; o que falhou foi a âncora dele.
+        </p>
+      )}
+
+      {tons.size > 0 && (
+        <p className="legenda">
+          <mark className="forte">tom forte</mark> muda o resultado ou o prazo
+        </p>
+      )}
+    </aside>
   );
 }
 
@@ -481,30 +709,3 @@ function CamposDaRegra({ leituras }: { leituras: LeituraRegra[] }) {
   );
 }
 
-/** O regulamento cru. Lookup por PK, e só quando pedido. */
-function TextoOriginal({ eventId, tamanho }: { eventId: string; tamanho: number | null }) {
-  const [texto, setTexto] = useState<string | null>(null);
-  const [aberto, setAberto] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function abrir() {
-    setAberto(v => !v);
-    if (texto === null && !erro) {
-      try {
-        setTexto(await lerTextoDaRegra(eventId));
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : String(e));
-      }
-    }
-  }
-
-  return (
-    <section className="texto-original">
-      <button onClick={abrir}>
-        {aberto ? '▲' : '▼'} ver o texto original
-        {tamanho !== null && <span className="proveniencia">{tamanho} caracteres</span>}
-      </button>
-      {aberto && (erro ? <p className="erro">{erro}</p> : <pre>{texto ?? 'lendo…'}</pre>)}
-    </section>
-  );
-}
