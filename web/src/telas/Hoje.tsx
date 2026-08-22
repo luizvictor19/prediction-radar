@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { MercadoNaLista } from '../lib/tipos';
 import { dinheiro, prazo, preco, urlPolymarket, variacao, VAZIO } from '../lib/formato';
+import { somaDigest, temDigestao } from '../lib/regras';
 
 /**
  * A lista.
@@ -93,7 +94,7 @@ export function Hoje({
     }
     if (soContradicao) {
       const antes = atual.length;
-      atual = atual.filter(m => (m.digest?.contradicoes ?? 0) > 0);
+      atual = atual.filter(m => (somaDigest(m, 'contradicoes') ?? 0) > 0);
       conta(antes, 'contradição');
     }
 
@@ -105,7 +106,7 @@ export function Hoje({
           : ordem === 'var7d'
             ? ordenar(atual, m => (m.var_7d === null ? null : Math.abs(m.var_7d)), 'desc')
             : ordem === 'contradicao'
-              ? ordenar(atual, m => m.digest?.contradicoes ?? null, 'desc')
+              ? ordenar(atual, m => somaDigest(m, 'contradicoes'), 'desc')
               : ordenar(atual, m => m.liquidez, 'desc');
 
     return { lista: ordenada, derrubados };
@@ -200,13 +201,14 @@ export function Hoje({
             </div>
 
             <div className="achados-resumo">
-              {m.digest ? (
+              {temDigestao(m) ? (
                 <>
                   <span>
-                    {m.digest.achados_total} achados ({m.digest.achados_acusados} acusados,{' '}
-                    {m.digest.achados_herdados} herdados)
+                    {somaDigest(m, 'achados_total')} achados (
+                    {somaDigest(m, 'achados_acusados')} acusados,{' '}
+                    {somaDigest(m, 'achados_herdados')} herdados)
                   </span>
-                  {m.digest.contradicoes > 0 && (
+                  {(somaDigest(m, 'contradicoes') ?? 0) > 0 && (
                     <span className="selo">contradição na regra</span>
                   )}
                 </>

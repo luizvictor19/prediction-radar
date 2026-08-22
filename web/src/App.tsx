@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { lerContagens, lerRadar } from './lib/dados';
+import { juntarRadarComDigest } from './lib/regras';
 import type { MercadoNaLista } from './lib/tipos';
 import { Hoje } from './telas/Hoje';
 import { Regra } from './telas/Regra';
@@ -26,9 +27,7 @@ export function App() {
         // Em paralelo: são duas views independentes.
         const [radar, contagens] = await Promise.all([lerRadar(), lerContagens()]);
         if (!vivo) return;
-        const porEvento = new Map(contagens.map(c => [c.event_id, c]));
-        // LEFT join: mercado do radar sem digestão existe e tem que aparecer.
-        setMercados(radar.map(m => ({ ...m, digest: porEvento.get(m.id) ?? null })));
+        setMercados(juntarRadarComDigest(radar, contagens));
       } catch (e) {
         if (vivo) setErro(e instanceof Error ? e.message : String(e));
       }

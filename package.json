@@ -21,7 +21,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "test": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"web/src/**/*.test.ts\"",
     "bot": "tsx src/bot/index.ts",
     "eval:analyst": "tsx scripts/eval-analyst.ts",
     "eval:market": "tsx scripts/eval-market-calibration.ts",

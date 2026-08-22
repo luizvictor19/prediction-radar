@@ -108,7 +108,17 @@ export type Contradicao = {
   trecho_conflito: string;
 };
 
-/** O que a tela mostra numa linha da lista: o radar + a digestão, se houver. */
+/**
+ * O que a tela mostra numa linha da lista: o radar + a digestão, se houver.
+ *
+ * `digests` é LISTA porque a granularidade de `digest_achados_por_mercado` é
+ * (mercado, texto de regra) — o `group by` da view inclui `description_sha256`
+ * (`20260817040920_...sql:432`). Um mercado cuja descrição foi editada tem duas
+ * linhas, e um campo singular faria a segunda apagar a primeira em silêncio.
+ *
+ * Lista VAZIA é "não digerido", e é o caso comum: 320 dos 1054 mercados do
+ * roster em 22/08/2026.
+ */
 export type MercadoNaLista = MercadoRadar & {
-  digest: ContagemDigest | null;
+  digests: ContagemDigest[];
 };
