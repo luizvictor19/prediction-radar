@@ -222,7 +222,41 @@ Está escrito no comentário de `mascararParaGate` e travado por teste. O motivo
 - Herdados entram **recolhidos por padrão**, num bloco: *"N achados herdados de outros mercados com o mesmo texto de regra"*.
 - Herdado nunca aparece acima de acusado na ordenação. Um achado sem descrição e sem cenário é o menos acionável da tela.
 
+**A chave é `origem`, e NUNCA "ausência de prosa".** A frase acima — *um achado sem descrição e sem cenário é o menos acionável da tela* — é a JUSTIFICATIVA do recolhimento, e é justamente por isso que ela faz "não tem prosa" parecer a chave certa. Não é. Prosa ausente é proxy; `origem` é fato: é o que a view registra, e é o que o cabeçalho do bloco afirma ao dizer *"herdados de outros mercados com o mesmo texto de regra"*. Um acusado sucinto foi lido NESTE mercado, e recolhê-lo por ser sucinto tornaria o cabeçalho falso sobre ele.
+
+Pelo mesmo motivo só `herdado` recolhe, e qualquer outro valor de `origem` fica visível. `tipos.ts` é escrito à mão, então um valor novo no banco chega até aqui sem quebrar a compilação — recolhê-lo afirmaria uma procedência que ninguém verificou. É o caminho que `separarBoilerplate` já toma quando não tem frequência: na dúvida, o achado aparece.
+
+**O N do cabeçalho é o do bloco, nunca `ContagemDigest.achados_herdados`.** Aquele contador é de linhas da view, anterior à dedup da seção 4: quatro linhas herdadas que a absorção funde em duas anunciariam 4 e abririam em 2. É a mesma divergência que o `caa73b9` foi consertar.
+
 **O que continua valendo e não muda:** `leitura_a` e `leitura_b` seguem nulos no herdado. Copiar a leitura do vizinho faria propagação parecer detecção — isso é decisão de projeto e não está em discussão.
+
+**Onde mora.** ✅ `web/src/lib/herdados.ts`, função pura e genérica sobre o tipo de quem chama, testada sem banco em `web/src/lib/herdados.test.ts`. Ela lê UM campo — `origem` — e devolve os dois grupos. A ordem dentro de cada um é a da entrada, porque quem ordena é a seção 7: ordenar aqui reporia a ordenação que o item existe para tirar.
+
+**O que o teste cobre.**
+
+- **O herdado forte abaixo do acusado fraco.** 11/30 herdado contra 2/30 acusado — a forma que a ordenação por concordância inverte, e que é o que a tela faz hoje em `Regra.tsx:113`.
+- **Soma.** Os dois grupos somam a entrada, sempre. Recolher não é apagar (seção 11).
+- **Um acusado sem prosa continua no grupo principal**, e uma `origem` que o tipo não previu fica visível.
+- **Composição com a seção 4, e não mock dela.** Quatro linhas herdadas que a absorção funde em duas dão N = 2; e nada que chega ao bloco carrega prosa, que é a justificativa inteira de recolhê-lo.
+
+**Verificado por mutação, nos três eixos** (11 testes; cada mutação foi aplicada ao arquivo real e os testes rodados):
+
+| eixo | testes derrubados | os que morderam |
+| --- | ---: | --- |
+| não separar — o estado de hoje | 6 | `o herdado mais confirmado fica abaixo do acusado menos confirmado` |
+| descartar em vez de recolher | 7 | `nada é apagado: os dois grupos somam a entrada` |
+| separar por prosa ausente em vez de por origem | 4 | `um acusado sem prosa continua no grupo principal`, `origem que o tipo não previu fica VISÍVEL` |
+
+O terceiro eixo é o que importa aqui, e é o único cuja mutação alguém escreveria de boa-fé — lendo a justificativa do recolhimento como se fosse a regra dele.
+
+**O componente não entrou.** O bloco recolhido, o selo curto por item e o parágrafo único no cabeçalho são componente, e caem no item 5 junto com a hierarquia, porque é ali que o desenho se decide. O critério 4 da seção 12 segue aberto: `Regra.tsx` ainda repete o parágrafo uma vez por item.
+
+**Pendência aberta, para o item 5: contradições herdadas.** Elas carregam uma SEGUNDA cópia do parágrafo de mecanismo, em `Contradicao_`, e hoje vivem na seção de Contradições — não na lista que esta separação alimenta. Dois desfechos, e os dois custam:
+
+- elas descem para o bloco recolhido, e aí o estado vazio de Contradições precisa parar de dizer *"nenhuma contradição apontada neste texto"* enquanto algumas estão recolhidas logo abaixo; ou
+- aquela seção ganha cabeçalho próprio, e a explicação passa a aparecer duas vezes na tela — que é o que o critério 4 proíbe em letra.
+
+É decisão de desenho, e fica para o item 5.
 
 ---
 
@@ -318,7 +352,7 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 1. Os quatro números de M1–M4 estão reportados **antes** do primeiro commit de implementação. ✅ 22/08/2026, `probes/digest/medicoes-tela-regra.md`.
 2. ✅ A regra de dedup é função pura, com teste que morde, verificado por mutação em três eixos: igualdade em vez de continência (10 testes), máximo em vez de união (3), componentes conexas em vez de absorção (5).
 3. ✅ O limiar de boilerplate está escrito no código com o número medido, a data da medição, o comando que a refaz e o motivo do corte — o vale de 9,7% a 31,8%.
-4. O parágrafo explicativo do herdado aparece exatamente uma vez na tela.
+4. O parágrafo explicativo do herdado aparece exatamente uma vez na tela. **Aberto** — a separação existe (`separarHerdados`), o componente não. Ver a pendência das contradições herdadas na seção 6.
 5. A tela distingue visualmente citação de interpretação, e um leitor consegue dizer qual é qual sem legenda.
 6. O dicionário de idioma cobre 100% do cromo. Nenhum rótulo fixo em português sobrou no JSX.
 7. Um mercado lido sem armadilhas mostra "lido e limpo", não uma seção ausente.
@@ -333,7 +367,7 @@ Um commit por item, árvore limpa entre eles, mensagem de commit escrita para o 
 1. ✅ Medições M1–M4, reportadas em 22/08/2026. O script virou `scripts/medicoes/tela-regra.ts` e o relatório `probes/digest/medicoes-tela-regra.md`: medição que não se repete vale metade.
 2. ✅ Dedup por absorção (seção 4) — `web/src/lib/dedup.ts`.
 3. ✅ Gate de boilerplate (seção 5) — `web/src/lib/boilerplate.ts`.
-4. Herdados recolhidos + explicação única (seção 6).
+4. ✅ Herdados recolhidos (seção 6) — `web/src/lib/herdados.ts`. A separação é a função, e é ela que garante que herdado não ordena acima de acusado. O bloco recolhido, o selo curto e a explicação única são componente, e vão junto com o item 5.
 5. Reordenação das seções + estados vazios (seção 7).
 6. Manchete vs regra (seção 8).
 7. Dicionário de idioma, só cromo (seção 9).
