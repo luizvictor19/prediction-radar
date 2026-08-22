@@ -11,9 +11,12 @@ Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
   - Proibido: `INSERT`, `UPDATE`, `DELETE`, DDL e `supabase db push`.
   - Query NOVA sobre tabela grande: mostrar antes de rodar (ver abaixo).
 - Nunca ler .env.
-- Idioma: inglês em nome de branch, mensagem de commit, título e descrição de PR,
-  e comentário de código. Documentos internos — specs, relatórios, este arquivo —
-  seguem em português.
+- Idioma: inglês em nome de branch, mensagem de commit, título e corpo de PR e
+  de issue, e comentário de código. Documentos internos — specs, relatórios,
+  este arquivo — seguem em português.
+  A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
+  encostar: comentário novo em inglês, o resto do arquivo fica como está.
+  Normalizar arquivo inteiro é chore separado, nunca carona num fix.
 
 ### Leitura pesada não é inofensiva só por ser leitura
 Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
