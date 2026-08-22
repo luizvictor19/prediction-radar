@@ -11,12 +11,43 @@ Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
   - Proibido: `INSERT`, `UPDATE`, `DELETE`, DDL e `supabase db push`.
   - Query NOVA sobre tabela grande: mostrar antes de rodar (ver abaixo).
 - Nunca ler .env.
-- Idioma: inglês em nome de branch, mensagem de commit, título e corpo de PR e
-  de issue, e comentário de código. Documentos internos — specs, relatórios,
-  este arquivo — seguem em português.
-  A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
-  encostar: comentário novo em inglês, o resto do arquivo fica como está.
-  Normalizar arquivo inteiro é chore separado, nunca carona num fix.
+- Idioma: ver a seção abaixo. O eixo é o público, não a pasta.
+
+### Idioma: o eixo é o público, não a pasta
+O que sai do repositório é inglês. O que fica dentro fala a língua da spec que
+implementa.
+
+- **Inglês, sempre** — nome de branch, mensagem de commit, título e corpo de PR
+  e de issue, e comentário de código. É o que um leitor externo alcança.
+- **`src/`** — coletores, detectores, jobs: inglês, nomes inclusive.
+- **`web/` e `scripts/`** — português. Eles implementam specs escritas em
+  português e compartilham o vocabulário delas: `veredito`, `armadilha`,
+  `trecho`, `origem`, `leitura`. O nome no código é a mesma palavra da spec e a
+  mesma coluna do banco, e essa cadeia é o que se perde ao traduzir um dos elos.
+- **Jargão de stack sem tradução** — `dedup`, `boilerplate`, `sha256`,
+  `supabase`, `polymarket`: fica como está, nas duas camadas.
+- **Documento interno** — specs, relatórios, este arquivo: português.
+
+A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
+encostar: comentário novo em inglês, o resto do arquivo fica como está. Arquivo
+NOVO nasce em inglês. Normalizar arquivo inteiro é chore separado, nunca carona
+num fix.
+
+**Isto descreve o código que já existe, e o número é medido.** Em 22/08/2026,
+por `npm run medir:idioma`: `src/` tem 61 de 723 nomes em português (**8,4%**),
+`scripts/` 33 de 115 (**28,7%**) e `web/` 65 de 88 (**73,9%**). As frações vêm
+com denominador porque sem ele são opinião, e o comando as refaz quando o código
+andar.
+
+**A alternativa foi avaliada e descartada com número.** A regra candidata era
+"nome que espelha o banco mantém a grafia do banco, o resto é inglês". Medida
+sobre `web/` e `scripts/`, ela tocaria **75 dos 107** nomes em português — só 26
+espelham de fato uma tabela, coluna ou valor. E **57% dos 75 são verbos**
+(`lerAchados`, `separarHerdados`, `montarLinhas`), então o conteúdo real da
+regra não era "espelhar o banco": era "verbo vira inglês", que é outra decisão e
+teria que se justificar sozinha. Reescrever três quartos dos nomes da camada do
+operador cortaria o código do vocabulário das specs que ele existe para
+implementar.
 
 ### Leitura pesada não é inofensiva só por ser leitura
 Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
