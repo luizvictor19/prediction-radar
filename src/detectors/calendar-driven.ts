@@ -235,15 +235,20 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       autoDismissedDuplicates += olderIds.length;
     }
 
-    // Verificar se há bet aberta no evento
-    const { data: openBets, error: openBetsErr } = await supabase
-      .from('my_bets')
+    // Verificar se há posição aberta no evento. A pergunta é às LEGS, não a
+    // `my_bets`: uma linha de `my_bets` sem leg é probabilidade registrada sem
+    // operação (a tela do radar grava assim), e ela nunca recebe `closed_at`,
+    // porque o `resolved-detector` só alcança bets que apareceram via leg.
+    // Perguntar ao bet faria "declarei minha probabilidade" virar "já operei" e
+    // silenciaria o alerta deste mercado para sempre.
+    const { data: openLegs, error: openLegsErr } = await supabase
+      .from('my_bet_legs')
       .select('id')
       .eq('event_id', event.id)
       .is('closed_at', null)
       .limit(1);
 
-    const hasOpenBet = !openBetsErr && (openBets ?? []).length > 0;
+    const hasOpenBet = !openLegsErr && (openLegs ?? []).length > 0;
 
     if (existing) {
       dedupedCount++;
