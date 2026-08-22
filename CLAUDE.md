@@ -9,7 +9,11 @@ Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
 - Banco: **leitura pode, escrita não.**
   - Permitido: `SELECT` para diagnóstico e medição.
   - Proibido: `INSERT`, `UPDATE`, `DELETE`, DDL e `supabase db push`.
+  - Query NOVA sobre tabela grande: mostrar antes de rodar (ver abaixo).
 - Nunca ler .env.
+- Idioma: inglês em nome de branch, mensagem de commit, título e descrição de PR,
+  e comentário de código. Documentos internos — specs, relatórios, este arquivo —
+  seguem em português.
 
 ### Leitura pesada não é inofensiva só por ser leitura
 Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
