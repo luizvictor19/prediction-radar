@@ -20,3 +20,8 @@ probes/digest/degrau-3-v4.json
 
 # artefato do nivelamento (passo 2b): grande, e o dado que importa vai para o banco
 probes/digest/nivelamento-v4.json
+
+# a tela (web/) — redundante com os padrões acima, explícito porque a
+# consequência de errar aqui é vazar a service key e com ela o banco inteiro
+web/node_modules/
+web/.env.local

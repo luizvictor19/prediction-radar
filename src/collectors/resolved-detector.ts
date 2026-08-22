@@ -23,6 +23,159 @@ interface CandidateEvent {
 // testes deste componente já usavam.
 export { safeSlugPrefixes };
 
+// ---------------------------------------------------------------------------
+// Which slices of `events` get checked for resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * One track of resolution candidates: the slice of `events` it asks for.
+ *
+ * Kept as data, and planned by a pure function, for the same reason
+ * `radar-selection.ts` is separate from the collector that fetches: which
+ * markets get checked at all is a rule, and a rule that only exists inside an
+ * `await` chain cannot be tested without a database.
+ *
+ * A track that would select nothing is not planned. That is why the id-based
+ * tracks carry their ids: an empty `in()` is a query that reads the table for
+ * no rows.
+ */
+export type Track =
+  | { name: 'open_leg'; priority: true; eventIds: string[] }
+  | { name: 'any_leg'; priority: false; eventIds: string[] }
+  | {
+      name: 'vertical';
+      priority: false;
+      prefixes: string[];
+      from: string;
+      to: string;
+      limit: number;
+    }
+  | { name: 'roster'; priority: false; pageSize: number };
+
+export interface TrackInput {
+  /** Every row of `my_bet_legs`, read once and split here. */
+  legs: { event_id: string | null; closed_at: string | null }[];
+  /** Already through `safeSlugPrefixes`. */
+  prefixes: string[];
+  /** `end_date` window for the vertical track, as ISO strings. */
+  from: string;
+  to: string;
+}
+
+/** The vertical track is capped on purpose: it is a window, not a whole set. */
+const VERTICAL_LIMIT = 500;
+
+/**
+ * The roster track is PAGED, not capped.
+ *
+ * `rosterMax` (800) bounds how many markets one renewal marks, not how many
+ * stay marked: `radar_tracked` accumulates, and measured on 2026-08-22 the set
+ * is already 1054. A cap here would drop the overflow silently, and PostgREST
+ * truncates at 1000 rows per response either way, so any single-request ceiling
+ * is a cut waiting to happen. Same pagination reason as `web/src/lib/dados.ts`.
+ */
+const ROSTER_PAGE = 500;
+
+function distinctEventIds(legs: TrackInput['legs'], openOnly: boolean): string[] {
+  return [
+    ...new Set(
+      legs
+        .filter(l => (openOnly ? l.closed_at === null : true))
+        .map(l => l.event_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+}
+
+/**
+ * Which tracks to run this cycle.
+ *
+ * Pure: no network, no database, no clock. The caller supplies the leg rows,
+ * the prefixes and the window, and gets back the list of slices to fetch.
+ */
+export function planTracks(input: TrackInput): Track[] {
+  const tracks: Track[] = [];
+
+  const openLegIds = distinctEventIds(input.legs, true);
+  if (openLegIds.length > 0) {
+    tracks.push({ name: 'open_leg', priority: true, eventIds: openLegIds });
+  }
+
+  if (input.prefixes.length > 0) {
+    tracks.push({
+      name: 'vertical',
+      priority: false,
+      prefixes: input.prefixes,
+      from: input.from,
+      to: input.to,
+      limit: VERTICAL_LIMIT,
+    });
+  }
+
+  const anyLegIds = distinctEventIds(input.legs, false);
+  if (anyLegIds.length > 0) {
+    tracks.push({ name: 'any_leg', priority: false, eventIds: anyLegIds });
+  }
+
+  // The roster, unconditionally. A radar market leaves the screen only when
+  // `events.status` stops being 'active', and nothing else ever writes that:
+  // `triar` rejects a closed market before the upsert, so the radar collector
+  // never rewrites the row once Polymarket closes it. Without this track a
+  // resolved market with no bet on it stays 'active' forever, and `v_radar`
+  // keeps serving it.
+  //
+  // Not priority: priority is what enables the extreme-price fallback, which
+  // writes a resolution inferred from snapshots. That is for markets with money
+  // in them, not for the whole roster.
+  tracks.push({ name: 'roster', priority: false, pageSize: ROSTER_PAGE });
+
+  return tracks;
+}
+
+/** Runs one planned track. The only impure half of the pair. */
+async function fetchTrack(
+  track: Track,
+): Promise<{ data: CandidateEvent[] | null; error: { message: string } | null }> {
+  const base = () => supabase.from('events').select(CANDIDATE_FIELDS);
+
+  switch (track.name) {
+    case 'open_leg':
+    case 'any_leg':
+      return base().in('id', track.eventIds).in('status', ['active', 'closed_manual']);
+
+    case 'vertical':
+      return base()
+        .in('status', ['active', 'closed_manual'])
+        .gte('end_date', track.from)
+        .lte('end_date', track.to)
+        .or(slugPrefixFilter(track.prefixes))
+        .order('end_date', { ascending: true })
+        .limit(track.limit);
+
+    case 'roster': {
+      // `radar_tracked` é o índice PARCIAL da 20260813210119, que indexa só as
+      // linhas `true`: a leitura é proporcional ao roster, não às 551k linhas
+      // de `events`.
+      //
+      // Paginado porque o roster passou de 1000 (1054 em 22/08/2026) e o
+      // PostgREST corta aí sem avisar — a resposta voltaria truncada com cara
+      // de completa.
+      const todos: CandidateEvent[] = [];
+      for (let de = 0; ; de += track.pageSize) {
+        const { data, error } = await base()
+          .eq('radar_tracked', true)
+          .in('status', ['active', 'closed_manual'])
+          .order('id')
+          .range(de, de + track.pageSize - 1);
+        if (error) return { data: null, error };
+        const lote = (data ?? []) as CandidateEvent[];
+        todos.push(...lote);
+        if (lote.length < track.pageSize) return { data: todos, error: null };
+      }
+    }
+  }
+}
+
 type ResolutionResult =
   | { kind: 'win'; winnerOutcome: string }
   | { kind: 'void' }
@@ -316,85 +469,58 @@ async function _detectResolvedMarkets(): Promise<void> {
 
   if (legsErr) candidateErrors.push(`my_bet_legs: ${legsErr.message}`);
 
-  const openLegEventIds = [
-    ...new Set(
-      (legRows ?? [])
-        .filter(l => l.closed_at === null)
-        .map(l => l.event_id as string | null)
-        .filter(Boolean) as string[],
-    ),
-  ];
-
-  const anyLegEventIds = [
-    ...new Set((legRows ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[]),
-  ];
-
-  // Etapa 1: events com leg aberta (prioritários — sempre incluir, sem filtro de end_date)
-  // Justificativa: se temos posição aberta, sempre vale checar resolução.
-  // Polymarket pode retornar end_date errado (visto em market groups com
-  // múltiplas sub-resoluções) e filtrar por isso esconde events que precisam
-  // ser checados.
-  const { data: priorityCandidates, error: prioErr } = openLegEventIds.length > 0
-    ? await supabase
-        .from('events')
-        .select(CANDIDATE_FIELDS)
-        .in('id', openLegEventIds)
-        .in('status', ['active', 'closed_manual'])
-    : { data: [] as CandidateEvent[], error: null };
-
-  if (prioErr) candidateErrors.push(`priority: ${prioErr.message}`);
-
-  const priorityIds = new Set((priorityCandidates ?? []).map(p => p.id));
-
-  // Etapa 2: trilha normal.
+  // Etapa 1: quais recortes de `events` este ciclo pede. A regra é pura e mora
+  // em `planTracks`; aqui só se executa o que ela planejou.
   //
-  // Antes era "todo event ativo com end_date na janela", limit 500 — que na
-  // prática varria 430k mercados de crypto/weather antigos que nunca tiveram
-  // aposta e nunca vão interessar. Agora são dois recortes com dono:
-  // mercado da vertical ativa, ou mercado em que houve dinheiro.
+  // Antes a trilha normal era "todo event ativo com end_date na janela", limit
+  // 500 — que na prática varria 430k mercados de crypto/weather antigos que
+  // nunca tiveram aposta e nunca vão interessar. Cada trilha de hoje tem dono:
+  // posição aberta, mercado da vertical ativa, mercado em que houve dinheiro.
   const prefixes = safeSlugPrefixes(
     (await getSystemConfig()).discovery_slug_prefixes ?? [],
     'resolved_detector',
   );
 
-  const { data: esportsCandidates, error: esportsErr } = prefixes.length > 0
-    ? await supabase
-        .from('events')
-        .select(CANDIDATE_FIELDS)
-        .in('status', ['active', 'closed_manual'])
-        .gte('end_date', cutoff90d)
-        .lte('end_date', cutoffFuture30d)
-        .or(slugPrefixFilter(prefixes))
-        .order('end_date', { ascending: true })
-        .limit(500)
-    : { data: [] as CandidateEvent[], error: null };
+  const tracks = planTracks({
+    legs: (legRows ?? []) as { event_id: string | null; closed_at: string | null }[],
+    prefixes,
+    from: cutoff90d,
+    to: cutoffFuture30d,
+  });
 
-  if (esportsErr) candidateErrors.push(`esports: ${esportsErr.message}`);
+  // Etapa 2: buscar cada trilha.
+  //
+  // A prioritária não filtra por `end_date`: se há posição aberta, sempre vale
+  // checar resolução, e a Polymarket devolve `end_date` errado em market groups
+  // com múltiplas sub-resoluções — filtrar por ele esconderia justamente o que
+  // precisa ser checado. Pelo mesmo motivo a trilha `any_leg` também não filtra.
+  const rowsByTrack = new Map<Track['name'], CandidateEvent[]>();
 
-  // Sem janela de end_date, mesma justificativa da trilha prioritária: onde
-  // houve aposta, o end_date da Polymarket não é confiável o bastante para
-  // decidir que não vale mais checar.
-  const { data: betCandidates, error: betErr } = anyLegEventIds.length > 0
-    ? await supabase
-        .from('events')
-        .select(CANDIDATE_FIELDS)
-        .in('id', anyLegEventIds)
-        .in('status', ['active', 'closed_manual'])
-    : { data: [] as CandidateEvent[], error: null };
+  for (const track of tracks) {
+    const { data, error } = await fetchTrack(track);
+    if (error) candidateErrors.push(`${track.name}: ${error.message}`);
+    rowsByTrack.set(track.name, data ?? []);
+  }
 
-  if (betErr) candidateErrors.push(`bet: ${betErr.message}`);
+  const priorityIds = new Set(
+    tracks
+      .filter(t => t.priority)
+      .flatMap(t => rowsByTrack.get(t.name) ?? [])
+      .map(e => e.id),
+  );
 
   // Merge sem duplicar; o prioritário manda, porque é ele que habilita o
-  // fallback por preço extremo.
+  // fallback por preço extremo — por isso entra por último.
   const byId = new Map<string, CandidateEvent>();
-  for (const group of [esportsCandidates ?? [], betCandidates ?? [], priorityCandidates ?? []]) {
-    for (const event of group) byId.set(event.id, event);
+  for (const track of [...tracks.filter(t => !t.priority), ...tracks.filter(t => t.priority)]) {
+    for (const event of rowsByTrack.get(track.name) ?? []) byId.set(event.id, event);
   }
 
   const candidates = [...byId.values()];
   const priorityEventIds = priorityIds;
-  const esportsCount = (esportsCandidates ?? []).length;
-  const betCount = (betCandidates ?? []).length;
+  const esportsCount = (rowsByTrack.get('vertical') ?? []).length;
+  const betCount = (rowsByTrack.get('any_leg') ?? []).length;
+  const rosterCount = (rowsByTrack.get('roster') ?? []).length;
 
   if (candidateErrors.length > 0) {
     await logEvent({
@@ -601,7 +727,8 @@ async function _detectResolvedMarkets(): Promise<void> {
     status,
     message:
       `checked ${idsToCheck.length} candidates ` +
-      `(${priorityEventIds.size} priority, ${esportsCount} esports, ${betCount} com aposta): ` +
+      `(${priorityEventIds.size} priority, ${esportsCount} esports, ${betCount} com aposta, ` +
+      `${rosterCount} no radar): ` +
       `${resolvedCount} resolved, ${voidCount} void, ${unresolvedCount} pending UMA, ` +
       `${stillOpenCount} still open, ${unknownIds.length} sem resposta dos dois lotes, ` +
       `${lookupFailedIds.size} em lote que falhou. ` +
@@ -612,6 +739,7 @@ async function _detectResolvedMarkets(): Promise<void> {
       priority: priorityEventIds.size,
       candidates_esports: esportsCount,
       candidates_with_bet: betCount,
+      candidates_roster: rosterCount,
       slug_prefixes: prefixes,
       candidate_errors: candidateErrors.length > 0 ? candidateErrors : null,
       ids_sent_open: idsToCheck.length,

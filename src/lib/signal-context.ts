@@ -53,7 +53,10 @@ export async function buildSignalContext(signalId: string): Promise<SignalContex
   const { data: openPositions } = polymarketCategory
     ? await supabase
         .from('my_bets')
-        .select('id, polymarket_category, thesis, placed_at, my_bet_legs(outcome, stake_usd, entry_price, shares)')
+        // `!inner`: sem ele, um `my_bets` sem leg entra aqui com `my_bet_legs: []`
+        // e vira "posição aberta na categoria" para o modelo — exposição que não
+        // existe. Bet sem leg é probabilidade registrada sem operação.
+        .select('id, polymarket_category, thesis, placed_at, my_bet_legs!inner(outcome, stake_usd, entry_price, shares)')
         .eq('polymarket_category', polymarketCategory)
         .is('closed_at', null)
         .limit(10)
