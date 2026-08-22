@@ -20,9 +20,9 @@ Cobertura do roster — o denominador da lista, não o da digestão:
 
 | | |
 | --- | ---: |
-| mercados em `v_radar` | 941 |
-| — sem digestão nenhuma | 19 (2.0%) |
-| digeridos que já saíram do roster | 111 |
+| mercados em `v_radar` | 955 |
+| — sem digestão nenhuma | 44 (4.6%) |
+| digeridos que já saíram do roster | 122 |
 
 **Conferência da réplica contra `digest_achados_por_mercado`:** 1033 linhas, zero divergência. Se divergisse, este script teria falhado antes de escrever o arquivo.
 
@@ -92,7 +92,7 @@ também opera sobre o literal.
 
 ### chave literal (trecho normalizado)
 
-Pares distintos: 2197. Denominador: 267 textos.
+Pares distintos: 2159. Denominador: 267 textos.
 
 | fração | textos | tipo | trecho |
 | ---: | ---: | --- | --- |
@@ -101,25 +101,26 @@ Pares distintos: 2197. Denominador: 267 textos.
 | 11.6% | 31 | `fuso_ausente` | December 31, 2026, 11:59 PM ET |
 | 9.4% | 25 | `criterio_discricionario` | If there is ambiguity |
 | 8.2% | 22 | `fuso_ausente` | June 30, 2027, 11:59 PM ET |
+| 7.1% | 19 | `muda_resultado+muda_timing` | This market will resolve based on the result of the election, as indicated by a… |
 | 6.4% | 17 | `muda_resultado` | Prices from other exchanges, different trading pairs, or spot markets will not … |
 | 6.4% | 17 | `fonte_vaga` | as indicated by a consensus of credible reporting |
 | 6.4% | 17 | `fonte_vaga` | The resolution source for this market will be a consensus of credible reporting. |
 | 4.9% | 13 | `muda_resultado` | If the result of this election isn't known by June 30, 2027, 11:59 PM ET, the m… |
 | 4.9% | 13 | `fonte_vaga` | The resolution source will be a consensus of credible reporting. |
+| 4.9% | 13 | `muda_resultado` | Temporary, interim, or placeholder governors appointed by any means before the … |
 | 4.9% | 13 | `fuso_ausente` | by December 31, 2026, 11:59 PM ET |
 | 4.5% | 12 | `fonte_vaga` | consensus of credible reporting |
-| 4.1% | 11 | `precedencia_de_fonte` | both in the chart and through downloadable files |
-| 4.1% | 11 | `criterio_discricionario` | If there is ambiguity, this market will resolve based solely on the official re… |
-| 3.7% | 10 | `criterio_discricionario` | the market may remain open until the end of the third calendar day (ET) after t… |
+| 4.1% | 11 | `muda_resultado+muda_timing` | with a runoff on October 25, 2026, if no candidate receives a majority of the v… |
 
 Histograma — resolução de 1 ponto acima de 5%, que é onde o corte mora:
 
 | faixa | pares |
 | --- | ---: |
-| 0% – 1% | 2024 |
-| >1% – 3% | 156 |
-| >3% – 5% | 9 |
+| 0% – 1% | 1987 |
+| >1% – 3% | 150 |
+| >3% – 5% | 13 |
 | >6% – 7% | 3 |
+| >7% – 8% | 1 |
 | >8% – 9% | 1 |
 | >9% – 10% | 1 |
 | >11% – 12% | 1 |
@@ -131,7 +132,7 @@ Histograma — resolução de 1 ponto acima de 5%, que é onde o corte mora:
 
 ### chave mascarada (data e número mascarados)
 
-Pares distintos: 2127. Denominador: 267 textos.
+Pares distintos: 2085. Denominador: 267 textos.
 
 | fração | textos | tipo | trecho |
 | ---: | ---: | --- | --- |
@@ -140,26 +141,27 @@ Pares distintos: 2127. Denominador: 267 textos.
 | 31.8% | 85 | `fuso_ausente` | June 30, 2027, 11:59 PM ET |
 | 9.7% | 26 | `fuso_ausente` | by December 31, 2026, 11:59 PM ET |
 | 9.4% | 25 | `criterio_discricionario` | If there is ambiguity |
+| 7.1% | 19 | `muda_resultado+muda_timing` | This market will resolve based on the result of the election, as indicated by a… |
 | 6.4% | 17 | `muda_resultado` | Prices from other exchanges, different trading pairs, or spot markets will not … |
 | 6.4% | 17 | `fonte_vaga` | as indicated by a consensus of credible reporting |
 | 6.4% | 17 | `fonte_vaga` | The resolution source for this market will be a consensus of credible reporting. |
 | 5.2% | 14 | `muda_resultado` | If the result of this election isn't known by June 30, 2027, 11:59 PM ET, the m… |
 | 4.9% | 13 | `fonte_vaga` | The resolution source will be a consensus of credible reporting. |
+| 4.9% | 13 | `muda_resultado` | Temporary, interim, or placeholder governors appointed by any means before the … |
 | 4.5% | 12 | `fonte_vaga` | consensus of credible reporting |
+| 4.1% | 11 | `muda_resultado+muda_timing` | with a runoff on October 25, 2026, if no candidate receives a majority of the v… |
 | 4.1% | 11 | `precedencia_de_fonte` | both in the chart and through downloadable files |
-| 4.1% | 11 | `criterio_discricionario` | If there is ambiguity, this market will resolve based solely on the official re… |
-| 3.7% | 10 | `muda_resultado` | between market creation and August 31, 2026, 11:59 PM ET |
-| 3.7% | 10 | `criterio_discricionario` | the market may remain open until the end of the third calendar day (ET) after t… |
 
 Histograma — resolução de 1 ponto acima de 5%, que é onde o corte mora:
 
 | faixa | pares |
 | --- | ---: |
-| 0% – 1% | 1948 |
-| >1% – 3% | 163 |
-| >3% – 5% | 7 |
+| 0% – 1% | 1906 |
+| >1% – 3% | 158 |
+| >3% – 5% | 11 |
 | >5% – 6% | 1 |
 | >6% – 7% | 3 |
+| >7% – 8% | 1 |
 | >9% – 10% | 2 |
 | >31% – 32% | 1 |
 | >42% – 43% | 1 |

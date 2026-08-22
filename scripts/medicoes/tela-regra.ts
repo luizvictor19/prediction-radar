@@ -1,16 +1,22 @@
 import 'dotenv/config';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { contemTrecho, fundirPorAbsorcao, type AchadoFundivel } from '../../web/src/lib/dedup.js';
+import {
+  contemTrecho,
+  fundirPorAbsorcao,
+  normalizarTrecho,
+  type AchadoFundivel,
+} from '../../web/src/lib/dedup.js';
+import { LIMIAR_BOILERPLATE, chaveDoGate } from '../../web/src/lib/boilerplate.js';
 import {
   agruparPorTexto,
   conferirContraView,
   lerDigestao,
-  mascararParaGate,
   montarLinhas,
-  normalizar,
   propagar,
+  type AchadoTexto,
   type AchadoNoMercado,
+  type Classe,
 } from './lib/digestao.js';
 
 /**
@@ -426,11 +432,11 @@ async function main(): Promise<void> {
   // --- M1b -----------------------------------------------------------------
   type Par = { chave: string; tipo: string; trecho: string; textos: Set<string> };
 
-  function paresPor(chaveTrecho: (s: string) => string): Map<string, Par> {
+  function paresPor(chave: (at: AchadoTexto) => string): Map<string, Par> {
     const pares = new Map<string, Par>();
     for (const at of porTexto.values()) {
       const tipo = at.subtipos.length > 0 ? at.subtipos.join('+') : at.classe;
-      const k = `${tipo}|${chaveTrecho(at.trecho)}`;
+      const k = chave(at);
       let par = pares.get(k);
       if (par === undefined) {
         par = { chave: k, tipo, trecho: at.trecho, textos: new Set() };
@@ -441,9 +447,24 @@ async function main(): Promise<void> {
     return pares;
   }
 
+  // A chave mascarada é a REAL: `chaveDoGate` de `web/src/lib/boilerplate.ts`,
+  // a mesma que a tela usa. A literal existe só para o relatório poder mostrar
+  // o que a máscara compra.
+  const categoria = (at: { classe: string; subtipos: string[] }): string =>
+    at.classe === 'pegadinha' ? 'pegadinha' : `${at.classe}|${[...at.subtipos].sort().join(',')}`;
   const variantes = [
-    { nome: 'chave literal', rotulo: 'trecho normalizado', fn: normalizar },
-    { nome: 'chave mascarada', rotulo: 'data e número mascarados', fn: mascararParaGate },
+    {
+      nome: 'chave literal',
+      rotulo: 'trecho normalizado',
+      chave: (at: { classe: string; subtipos: string[]; trecho: string }) =>
+        `${categoria(at)}||${normalizarTrecho(at.trecho)}`,
+    },
+    {
+      nome: 'chave mascarada',
+      rotulo: 'data e número mascarados',
+      chave: (at: { classe: Classe; subtipos: string[]; trecho: string }) =>
+        chaveDoGate(at.classe, at.subtipos, at.trecho),
+    },
   ] as const;
 
   p();
@@ -458,7 +479,7 @@ async function main(): Promise<void> {
   const valePorVariante = new Map<string, Vale | null>();
 
   for (const v of variantes) {
-    const pares = [...paresPor(v.fn).values()].sort((a, b) => b.textos.size - a.textos.size);
+    const pares = [...paresPor(v.chave).values()].sort((a, b) => b.textos.size - a.textos.size);
     const freqs = pares.map((x) => (100 * x.textos.size) / nTextos);
 
     p();
@@ -515,8 +536,8 @@ async function main(): Promise<void> {
   p('| chave | limiar | pares | achados recolhidos | de | fração | mercados atingidos |');
   p('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const v of variantes) {
-    const pares = paresPor(v.fn);
-    for (const limiar of [80, 50, 45, 40, 35, 30, 20, 12, 10]) {
+    const pares = paresPor(v.chave);
+    for (const limiar of [80, 50, 45, 40, 35, 30, 100 * LIMIAR_BOILERPLATE, 12, 10]) {
       const boiler = new Set(
         [...pares.values()]
           .filter((x) => (100 * x.textos.size) / nTextos >= limiar)
@@ -528,8 +549,7 @@ async function main(): Promise<void> {
       for (const at of porTexto.values()) {
         const n = (mercadosDoTexto.get(at.sha) as Set<string>).size;
         total += n;
-        const tipo = at.subtipos.length > 0 ? at.subtipos.join('+') : at.classe;
-        if (boiler.has(`${tipo}|${v.fn(at.trecho)}`)) {
+        if (boiler.has(v.chave(at))) {
           recolhidos += n;
           for (const m of mercadosDoTexto.get(at.sha) as Set<string>) atingidos.add(m);
         }

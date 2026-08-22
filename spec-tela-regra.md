@@ -64,7 +64,9 @@ Duas chaves de agrupamento, porque o boilerplate da plataforma é o mesmo texto 
 
 > **Resultado, chave literal:** 2.197 pares distintos, e o mais frequente é `fuso_ausente` sobre `11:59 PM ET` em 44,9%. Nenhum par chega a 50%.
 >
-> **Resultado, chave com data e número mascarados:** 2.127 pares. `11:59 PM ET` 47,2%, `a consensus of credible reporting` 42,3%, `<mes> #, #, ##:## PM ET` 31,8%, e o quarto colocado despenca para 9,7%.
+> **Resultado, chave com data e número mascarados:** 2.085 pares. `11:59 PM ET` 47,2%, `a consensus of credible reporting` 42,3%, a data com fuso `ET` 31,8%, e o quarto colocado despenca para 9,7%.
+>
+> A chave é a de `chaveDoGate` em `web/src/lib/boilerplate.ts` — a mesma que a tela usa, com a severidade FORA da categoria da pegadinha, como na dedup. O relatório e a tela não podem divergir porque não há duas implementações.
 
 **M2 — Quantos achados são eliminados pela regra de dedup da seção 4.**
 
@@ -167,7 +169,7 @@ O terceiro eixo é o que impede alguém trocar isto por union-find daqui a seis 
 
 Ela **não** vale para o trecho na tela, que é sempre o literal (P1), nem para a dedup da seção 4, que também opera sobre o literal — mascarar ali fundiria dois prazos DIFERENTES do mesmo regulamento num achado só, que é falsificar a regra em vez de limpá-la.
 
-**O limiar é 20%, e o número saiu do vale medido.** A intuição de 80% escrita aqui antes estava errada por uma ordem de grandeza: **nenhum par chega a 50%**, e um limiar de 80% recolheria zero itens — o gate não faria nada.
+**O limiar é 20%, e o número saiu do vale medido.** ✅ `LIMIAR_BOILERPLATE` em `web/src/lib/boilerplate.ts`, com o motivo, a data e o comando que refaz a conta. A intuição de 80% escrita aqui antes estava errada por uma ordem de grandeza: **nenhum par chega a 50%**, e um limiar de 80% recolheria zero itens — o gate não faria nada.
 
 O que a distribuição da chave mascarada mostra, em 267 textos:
 
@@ -189,7 +191,23 @@ Efeito medido a 20%: 3 pares recolhidos, 1.505 dos 20.357 achados em tela (7,4%)
 
 **O que o grupo recolhido mostra quando aberto:** o achado, o trecho literal, e a frequência. Essa frequência é informação real e transforma ruído em contexto: quem opera passa a saber que aquilo é padrão da casa, não peculiaridade do mercado.
 
+**Limite conhecido, documentado e não corrigido: a máscara normaliza o miolo, não o recorte.** Ela troca número e mês, e nada mais. Duas leituras que citam a MESMA omissão com recortes diferentes ficam em pares diferentes, porque a palavra a mais entra na chave.
+
+Medido: `by December 31, 2026, 11:59 PM ET` parou em **9,7%** e ficou de fora do gate, enquanto as outras variantes de data colapsaram em 31,8% e entraram. A diferença é o `by`.
+
+Está escrito no comentário de `mascararParaGate` e travado por teste. O motivo de travar em vez de consertar: sem isso, alguém olha aquele 9,7% no relatório daqui a seis meses e acha que descobriu um tipo novo de defeito. Consertar exigiria ancorar o trecho por posição no regulamento — outra decisão, outro custo.
+
 **O que este gate NÃO faz.** Não apaga nada, não altera contagem, não muda o banco. É apresentação.
+
+**Verificado por mutação em cinco eixos** (17 testes):
+
+| eixo | testes derrubados |
+| --- | ---: |
+| denominador = só os textos com achado | 5 |
+| contar linhas em vez de textos distintos | 1 |
+| máscara desligada na chave | 3 |
+| máscara vazando para o trecho exibido | 2 |
+| limiar de volta aos 80% chutados | 2 |
 
 ---
 
@@ -299,7 +317,7 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 
 1. Os quatro números de M1–M4 estão reportados **antes** do primeiro commit de implementação. ✅ 22/08/2026, `probes/digest/medicoes-tela-regra.md`.
 2. ✅ A regra de dedup é função pura, com teste que morde, verificado por mutação em três eixos: igualdade em vez de continência (10 testes), máximo em vez de união (3), componentes conexas em vez de absorção (5).
-3. O limiar de boilerplate está escrito no código com o número medido, a data da medição, o comando que a refaz e o motivo do corte — o vale de 9,7% a 31,8%.
+3. ✅ O limiar de boilerplate está escrito no código com o número medido, a data da medição, o comando que a refaz e o motivo do corte — o vale de 9,7% a 31,8%.
 4. O parágrafo explicativo do herdado aparece exatamente uma vez na tela.
 5. A tela distingue visualmente citação de interpretação, e um leitor consegue dizer qual é qual sem legenda.
 6. O dicionário de idioma cobre 100% do cromo. Nenhum rótulo fixo em português sobrou no JSX.
@@ -314,7 +332,7 @@ Um commit por item, árvore limpa entre eles, mensagem de commit escrita para o 
 
 1. ✅ Medições M1–M4, reportadas em 22/08/2026. O script virou `scripts/medicoes/tela-regra.ts` e o relatório `probes/digest/medicoes-tela-regra.md`: medição que não se repete vale metade.
 2. ✅ Dedup por absorção (seção 4) — `web/src/lib/dedup.ts`.
-3. Gate de boilerplate (seção 5).
+3. ✅ Gate de boilerplate (seção 5) — `web/src/lib/boilerplate.ts`.
 4. Herdados recolhidos + explicação única (seção 6).
 5. Reordenação das seções + estados vazios (seção 7).
 6. Manchete vs regra (seção 8).

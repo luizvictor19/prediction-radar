@@ -1,3 +1,4 @@
+import { normalizarTrecho } from '../../../web/src/lib/dedup.js';
 import { supabase } from '../../../src/lib/supabase.js';
 
 /**
@@ -119,34 +120,13 @@ export async function lerDigestao(): Promise<Digestao> {
 // ---------------------------------------------------------------------------
 
 /**
- * A mesma normalização do `achado_id` da view: btrim, colapso de espaço, lower.
+ * A normalização é a de `web/src/lib/dedup.ts`, importada e não copiada.
  *
- * É o que decide identidade de achado. Mexer aqui muda o que o banco e a tela
- * consideram o mesmo trecho.
+ * Ela decide identidade de achado, e uma cópia que divergisse faria a medição
+ * medir um agrupamento que a tela não usa. A máscara do gate mora lá pelo mesmo
+ * motivo.
  */
-export function normalizar(s: string): string {
-  return s.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-const MESES =
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/g;
-
-/**
- * Data e número virando marca, PARA AGRUPAR O GATE DE BOILERPLATE E MAIS NADA.
- *
- * O boilerplate da Polymarket é o mesmo texto com a data trocada:
- * `December 31, 2026, 11:59 PM ET` e `June 30, 2027, 11:59 PM ET` são a mesma
- * omissão de fuso e apareceriam como dois achados raros se a chave fosse o
- * trecho literal.
- *
- * **Nunca sai daqui para a tela.** O trecho exibido é o literal (P1 da spec:
- * citação não se traduz nem se reescreve), e a dedup da seção 4 opera sobre o
- * literal — mascarar ali fundiria dois prazos DIFERENTES do mesmo regulamento
- * num achado só, que é falsificar a regra em vez de limpá-la.
- */
-export function mascararParaGate(s: string): string {
-  return normalizar(s).replace(MESES, '<mes>').replace(/\d+/g, '#');
-}
+export { normalizarTrecho };
 
 function temTexto(s: string | null): s is string {
   return s !== null && s.trim() !== '';
@@ -226,7 +206,7 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
       cenario: p.cenario,
       leitura_a: null,
       leitura_b: null,
-      chave: `pegadinha||${normalizar(p.trecho)}`,
+      chave: `pegadinha||${normalizarTrecho(p.trecho)}`,
     });
   }
 
@@ -236,8 +216,8 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
 
     if (a.tipo === 'contradicao_interna') {
       if (!temTexto(a.trecho_conflito)) continue;
-      const x = normalizar(a.trecho);
-      const y = normalizar(a.trecho_conflito);
+      const x = normalizarTrecho(a.trecho);
+      const y = normalizarTrecho(a.trecho_conflito);
       const [menor, maior] = x <= y ? [x, y] : [y, x];
       linhas.push({
         digest_id: dig.id,
@@ -270,7 +250,7 @@ export function montarLinhas(d: Digestao): LinhaAchado[] {
       cenario: null,
       leitura_a: a.leitura_a,
       leitura_b: a.leitura_b,
-      chave: `ambiguidade||${a.tipo ?? ''}||${normalizar(a.trecho)}`,
+      chave: `ambiguidade||${a.tipo ?? ''}||${normalizarTrecho(a.trecho)}`,
     });
   }
 
@@ -295,7 +275,7 @@ export function agruparPorTexto(linhas: readonly LinhaAchado[]): Map<string, Ach
         classe: l.classe,
         subtipos: [],
         trecho: l.trecho,
-        trechoNorm: normalizar(l.trecho),
+        trechoNorm: normalizarTrecho(l.trecho),
         leituras: new Set(),
       };
       porChave.set(k, at);
