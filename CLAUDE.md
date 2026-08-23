@@ -27,6 +27,21 @@ implementa.
 - **Jargão de stack sem tradução** — `dedup`, `boilerplate`, `sha256`,
   `supabase`, `polymarket`: fica como está, nas duas camadas.
 - **Documento interno** — specs, relatórios, este arquivo: português.
+- **Texto que o dono lê operando** — mensagem de falha de asserção, saída de
+  comando, relatório de medição: português, nas duas camadas. Não é comentário
+  (ninguém lê rodando) nem nome (não é identificador): é interface de operação, e
+  segue o idioma dos NOMES DE TESTE, que é a linha impressa colada nela.
+
+**A quarta categoria também tem número.** Medido em 23/08/2026 sobre a saída da
+própria suíte: dos **882** nomes de teste de primeiro nível, **692** trazem marca
+inequívoca de português e **8** de inglês — os 180 restantes são curtos demais
+para marcar (`usd / qtd`). E o desequilíbrio não é acidente de pasta: **722**
+desses nomes estão em `src/`, cuja regra de nomes é inglês, e ainda assim são
+escritos em português, porque título de teste é frase e não identificador.
+
+Por isso a mensagem de falha segue o nome do teste, e não a pasta: as duas saem
+juntas no mesmo vermelho, e um par com metade em cada idioma é pior que qualquer
+lado puro.
 
 A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
 encostar: comentário novo em inglês, o resto do arquivo fica como está.
