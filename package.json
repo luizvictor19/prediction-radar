@@ -22,6 +22,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"web/src/**/*.test.ts\"",
+    "test:db": "supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,realtime,storage-api && RADAR_TEST_DB=required npm test",
+    "test:db:stop": "supabase stop --no-backup",
     "bot": "tsx src/bot/index.ts",
     "eval:analyst": "tsx scripts/eval-analyst.ts",
     "eval:market": "tsx scripts/eval-market-calibration.ts",
