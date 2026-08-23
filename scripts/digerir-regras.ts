@@ -882,6 +882,13 @@ function renderRelatorio(
     '',
     degrau.descricao,
     '',
+    // The stamp comes first because it is what makes every number below
+    // comparable to the next run's. The 6.6% of null digests sat in
+    // `spec-tela-regra.md` §10 for a week with no date, and dating it
+    // afterwards cost an mtime and a bracket of two commits -- a rate with no
+    // date cannot be checked against a later one, which is how a rate doubles
+    // without anyone seeing it.
+    `- **rodou em:** ${new Date().toISOString()}`,
     `- **mercados:** ${amostra.length}`,
     `- **modelos:** ${degrau.models.map(m => `\`${m}\``).join(', ')}`,
     `- **prompt:** \`${promptVersion}\``,
