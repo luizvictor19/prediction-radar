@@ -270,18 +270,24 @@ button.link {
   font: 13px/1.65 ui-monospace, monospace;
   color: var(--tinta);
 }
-.regulamento mark {
+/* Os tons valem em QUALQUER `mark`, e não só dentro de `.regulamento`: a
+   amostra da legenda é um `mark` fora dele, e escopada assim ela caía no
+   amarelo padrão do navegador — uma legenda mostrando uma cor que o texto
+   nunca usa é pior que legenda nenhuma. */
+mark.forte,
+mark.clara {
   background: none;
   color: inherit;
   border-radius: 2px;
   padding: 1px 0;
 }
-.regulamento mark.forte {
+mark.forte {
   background: color-mix(in srgb, var(--alerta) 26%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 45%, transparent);
 }
-.regulamento mark.clara {
+mark.clara {
   background: color-mix(in srgb, var(--alerta) 9%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 18%, transparent);
 }
 /* a ligação entre os dois lados: o cursor acende, o clique rola */
 .achado.ligavel {
@@ -291,7 +297,7 @@ button.link {
   background: color-mix(in srgb, var(--alerta) 8%, transparent);
   box-shadow: inset 2px 0 0 var(--alerta);
 }
-.regulamento mark.aceso {
+mark.aceso {
   background: color-mix(in srgb, var(--alerta) 45%, transparent);
   box-shadow: 0 0 0 2px var(--alerta);
 }

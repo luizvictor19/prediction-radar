@@ -18,6 +18,7 @@ import {
   divergem,
   leituraExibida,
   MINIMO_LEITURAS,
+  procedencia,
   seloDeConfirmacao,
   valores,
 } from '../lib/leituras';
@@ -326,7 +327,22 @@ function BlocoDeTexto({
   const { segmentos, naoLocalizados } = destacar(
     mesmoTexto && regulamento.fase === 'lido' ? regulamento.texto : '',
     mesmoTexto
-      ? visiveis.map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const }))
+      ? [
+          // `forte` = muda o resultado ou o prazo, e só as VISÍVEIS na
+          // esquerda: destacar as escondidas atrás do "ver mais" pinta quase
+          // todo parágrafo, e destaque que cobre tudo não distingue nada.
+          ...visiveis.map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const })),
+          // `clara` = comum a quase todo regulamento. O gate agora tem as
+          // frequências, então este tom finalmente tem fonte — antes dele
+          // nada era claro, e a legenda documentava uma cor que não existia.
+          // São passagens curtas e poucas (3 pares recolhidos em 22/08/2026),
+          // não um segundo paredão.
+          ...comuns.map(({ achado }) => ({
+            id: achado.achado_id,
+            trecho: achado.trecho,
+            marca: 'clara' as const,
+          })),
+        ]
       : [],
   );
   const destacados = new Set(segmentos.flatMap(s => s.ids));
@@ -373,7 +389,11 @@ function BlocoDeTexto({
         </p>
       )}
 
-      <MancheteVsRegra achados={achados} leituras={leituras} />
+      <MancheteVsRegra
+        achados={achados}
+        leituras={leituras}
+        leiturasDoTexto={linha.leituras_do_texto}
+      />
       <LinhaDeNumeros achados={achados} recolhidos={recolhidos} liquidez={mercado.liquidez} />
 
       <div className="duas-colunas">
@@ -601,9 +621,12 @@ const TETO_DE_ARMADILHAS = 5;
 function MancheteVsRegra({
   achados,
   leituras,
+  leiturasDoTexto,
 }: {
   achados: Achado[];
   leituras: LeituraRegra[];
+  /** Quantas leituras o TEXTO teve, somando os mercados que o compartilham. */
+  leiturasDoTexto: number;
 }) {
   const veredito = escolherVeredito(achados);
   const exibida = leituraExibida(leituras);
@@ -634,8 +657,12 @@ function MancheteVsRegra({
       {exibida && (
         <div className="proveniencia">
           {veredito && <SeloKN achado={veredito} />}
+          {/* Cada número com o seu escopo: o selo conta leituras do TEXTO, e a
+              linha contava as DESTE mercado. Lado a lado e sem rótulo, os dois
+              liam como contradição. */}
           <span>
-            {leituras.length} {plural} · {exibida.model}/{exibida.prompt_version}
+            {procedencia(leituras.length, leiturasDoTexto)} ·{' '}
+            {exibida.model}/{exibida.prompt_version}
           </span>
         </div>
       )}
@@ -826,9 +853,17 @@ function ColunaDireita({
         </p>
       )}
 
-      {tons.size > 0 && (
+      {/* Cada entrada só aparece se aquele tom estiver REALMENTE na tela.
+          Legenda de cor ausente descreve algo que o leitor procura e não
+          acha. */}
+      {tons.has('forte') && (
         <p className="legenda">
           <mark className="forte">tom forte</mark> muda o resultado ou o prazo
+        </p>
+      )}
+      {tons.has('clara') && (
+        <p className="legenda">
+          <mark className="clara">tom claro</mark> comum a quase todo regulamento
         </p>
       )}
       </details>
