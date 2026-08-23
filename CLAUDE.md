@@ -132,6 +132,32 @@ Os três entraram por merge commit, que é o que faz a mensagem de cada commit
 chegar à main inteira. Trocar a estratégia de merge mexe justamente no texto
 que o GitHub lê, então é conferir de novo, não supor.
 
+## Paralelizar tem teto em quem revisa, não em quantos agentes cabem
+Uma worktree por frente (`claude --worktree <nome>`), nunca duas sessões no
+mesmo diretório. Cada worktree quer o próprio `npm install` — dois, na verdade:
+a raiz e `web/`, que tem `package.json` e `node_modules` separados.
+
+**Três frentes é o teto.** O gargalo não são os agentes, é quem lê cada
+mensagem de commit e roda cada comando. Acima de três, a atenção que faz a
+revisão valer vira despacho.
+
+Só paraleliza o que não disputa o mesmo trecho. Em 23/08/2026 as três frentes
+foram investigação de relatório (#15), infraestrutura de teste (#16) e banco
+(#17), e o único conflito do dia foi um import em `web/src/lib/dados.ts` —
+linha vizinha, posicional e não semântico.
+
+**"Não compartilha arquivo" é forte demais, e a medição do dia diz isso.** Das
+três frentes, quatro arquivos foram tocados por mais de uma: `package.json`
+pelas três, `CLAUDE.md`, `scripts/digerir-regras.ts` e `web/src/lib/dados.ts`
+por duas. Nenhum desses quatro conflitou. O que não colidiu foram as REGIÕES —
+os três acréscimos ao `package.json` caíram em três blocos de script
+diferentes. O corte é por trecho e por comportamento, não por caminho: duas
+issues que mexem no mesmo comportamento são uma branch, não duas.
+
+E antes de trocar de branch ou puxar a main, conferir que a árvore está limpa.
+Um `git checkout main` com trabalho não commitado leva as modificações junto
+para a branch errada — aconteceu em 23/08/2026.
+
 ## Onde está o quê
 - Schema atual: `supabase/migrations/20260804054445_remote_schema.sql` (baseline).
   As migrations 001-004 são anteriores e já aplicadas.
