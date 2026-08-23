@@ -289,17 +289,104 @@ mark.clara {
   background: color-mix(in srgb, var(--alerta) 9%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 18%, transparent);
 }
-/* a ligação entre os dois lados: o cursor acende, o clique rola */
+/* =========================================================================
+   A ligação entre os dois lados: o cursor acende, o clique fixa.
+
+   REGRA DE CANAL: `--alerta` é o canal do SIGNIFICADO — forte diz "muda o
+   resultado", claro diz "padrão da casa". Nem o hover nem a seleção podem
+   mexer no PREENCHIMENTO de um `mark`, ou o leitor deixa de saber se o
+   trecho está tingido por ser grave ou por estar apontado. Os dois usam
+   contorno, barra e relevo; o peso separa o transitório do fixo.
+   ========================================================================= */
 .achado.ligavel {
   cursor: pointer;
 }
+
+/* Hover: uma dica, e nada mais. Some ao sair do item. */
 .achado.aceso {
-  background: color-mix(in srgb, var(--alerta) 8%, transparent);
-  box-shadow: inset 2px 0 0 var(--alerta);
+  background: color-mix(in srgb, var(--tinta) 4%, transparent);
 }
 mark.aceso {
-  background: color-mix(in srgb, var(--alerta) 45%, transparent);
-  box-shadow: 0 0 0 2px var(--alerta);
+  /* Contorno fino, SEM tocar no fundo. */
+  box-shadow: 0 0 0 1px var(--fraco);
+}
+
+/* =========================================================================
+   AS TRÊS VARIANTES, E A ESCOLHIDA — decidido em 23/08/2026
+
+   ATIVA: `sel-escolhida`, e ela é uma MISTURA, não uma das três.
+   Barra azul (`--marca`) à esquerda, contorno escuro (`--tinta`) à direita.
+
+   O motivo do escuro à direita: o contorno cai SOBRE o destaque rosado do
+   trecho, e azul sobre rosa fica barulhento — duas cores saturadas
+   disputando o mesmo par de centímetros. Tinta sobre rosa apenas delimita.
+   À esquerda não há destaque por baixo, então o azul aparece limpo e diz o
+   que `--marca` diz no resto da tela: isto responde ao seu clique.
+
+   As outras três ficam abaixo por serem REGISTRO DE DECISÃO, não código
+   morto: comparar de novo é trocar uma string em `VARIANTE_DE_SELECAO`, e
+   sem elas a próxima pessoa refaz o experimento inteiro para chegar às
+   mesmas três. Mesmo princípio da spec, que guarda a alternativa rejeitada
+   com o motivo em vez de apagá-la.
+   ========================================================================= */
+
+/* A ESCOLHIDA. */
+.sel-escolhida .achado.selecionado {
+  background: color-mix(in srgb, var(--marca) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--marca);
+}
+.sel-escolhida mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 1 — neutra: barra e contorno em tinta.
+   A mais sóbria: nenhuma cor nova entra na tela, a seleção é só peso.
+   ------------------------------------------------------------------------- */
+.sel-v1 .achado.selecionado {
+  background: color-mix(in srgb, var(--tinta) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--tinta);
+}
+.sel-v1 mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 2 — marca: barra e contorno em `--marca`.
+   Separa os canais por SIGNIFICADO: `--alerta` é gravidade, `--marca` é
+   interação (é a cor do link e do botão primário). Quem já leu a tela sabe
+   que azul quer dizer "isto responde ao seu clique".
+   ------------------------------------------------------------------------- */
+.sel-v2 .achado.selecionado {
+  background: color-mix(in srgb, var(--marca) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--marca);
+}
+.sel-v2 mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 3 — relevo: o item selecionado sai do plano.
+   Sem cor nenhuma: a barra é da linha, o item ganha sombra e desloca alguns
+   pixels; à direita o contorno é afastado do trecho por `outline-offset`,
+   que cerca sem encostar. A leitura é física, não cromática.
+   ------------------------------------------------------------------------- */
+.sel-v3 .achado.selecionado {
+  background: var(--caixa);
+  box-shadow: inset 3px 0 0 var(--fraco), 0 2px 8px rgb(0 0 0 / 12%);
+  transform: translateX(3px);
+}
+.sel-v3 mark.selecionado {
+  outline: 2px solid var(--tinta);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Selecionado vence o hover nos três: o fixo não pisca quando o cursor passa. */
+.achado.selecionado,
+mark.selecionado {
+  position: relative;
+  z-index: 1;
 }
 /* o mecanismo, uma vez, no cabeçalho da dobra — nunca por item */
 .mecanismo {
@@ -502,7 +589,11 @@ mark.aceso {
 }
 .achado {
   border-top: 1px solid var(--linha);
-  padding: 10px 0;
+  /* O recuo à esquerda vale para TODO item, selecionado ou não. A barra da
+     seleção é `inset box-shadow` e ocupa esse recuo em vez de empurrar o
+     conteúdo — com o padding só no selecionado, o texto pularia a cada
+     clique. */
+  padding: 10px 0 10px 10px;
 }
 .achado:first-child {
   border-top: 0;

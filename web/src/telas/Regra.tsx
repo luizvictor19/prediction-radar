@@ -46,6 +46,23 @@ import { dinheiro, urlPolymarket } from '../lib/formato';
  */
 
 /**
+ * Qual tratamento visual de SELEÇÃO está ativo.
+ *
+ * `sel-escolhida` em 23/08/2026, e as três candidatas — `sel-v1`, `sel-v2`,
+ * `sel-v3` — continuam em `estilo.css` como registro da decisão. Trocar esta
+ * string troca o tratamento inteiro; é a única linha a mexer para comparar de
+ * novo, e o cabeçalho da seção lá diz por que a mistura venceu.
+ *
+ * A restrição que gerou as três: **cor já carrega significado nesta tela.**
+ * `--alerta` forte diz "muda o resultado" e claro diz "padrão da casa". Se a
+ * seleção usasse esses tons de fundo, dois significados disputariam o mesmo
+ * canal e ninguém saberia se o item está tingido por ser grave ou por estar
+ * selecionado. Então a seleção usa OUTROS canais — barra, contorno, relevo — e
+ * o mesmo dos dois lados, para o vínculo ser óbvio.
+ */
+const VARIANTE_DE_SELECAO = 'sel-v2';
+
+/**
  * O regulamento tem QUATRO estados, e conflatá-los foi o defeito.
  *
  * `string | null` dizia "lendo" e "não existe" com o mesmo valor, então um
@@ -160,7 +177,7 @@ export function Regra({
   const url = urlPolymarket(mercado.slug);
 
   return (
-    <div className="regra">
+    <div className={`regra ${VARIANTE_DE_SELECAO}`}>
       <button className="voltar" onClick={onVoltar}>
         ← Hoje
       </button>
@@ -232,6 +249,12 @@ function BlocoDeTexto({
 }) {
   /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
   const [aceso, setAceso] = useState<string | null>(null);
+  /**
+   * A armadilha FIXADA pelo clique. Hover é transitório e some ao sair; o
+   * clique fica. Clicar na mesma desmarca, e só uma vive por vez — duas
+   * selecionadas fariam o vínculo com a direita deixar de ser um-para-um.
+   */
+  const [fixado, setFixado] = useState<string | null>(null);
   const [todasArmadilhas, setTodasArmadilhas] = useState(false);
 
   const brutos = linha.achados ?? [];
@@ -359,9 +382,15 @@ function BlocoDeTexto({
 
   const ligacao = (a: Achado) => ({
     aceso: aceso === a.achado_id,
+    selecionado: fixado === a.achado_id,
     onAcender: () => setAceso(a.achado_id),
     onApagar: () => setAceso(null),
-    onIr: () => irAteOTrecho(a.achado_id),
+    onIr: () => {
+      const mesmo = fixado === a.achado_id;
+      setFixado(mesmo ? null : a.achado_id);
+      // Desmarcar não rola: o leitor já está olhando o trecho.
+      if (!mesmo) irAteOTrecho(a.achado_id);
+    },
   });
 
   return (
@@ -529,6 +558,7 @@ function BlocoDeTexto({
           segmentos={segmentos}
           naoLocalizados={naoLocalizados.length}
           aceso={aceso}
+          selecionado={fixado}
           tamanho={mercado.tamanho_regra}
         />
       </div>
@@ -736,6 +766,7 @@ function ColunaDireita({
   segmentos,
   naoLocalizados,
   aceso,
+  selecionado,
   tamanho,
 }: {
   regulamento: EstadoDoRegulamento;
@@ -746,6 +777,7 @@ function ColunaDireita({
   segmentos: Segmento[];
   naoLocalizados: number;
   aceso: string | null;
+  selecionado: string | null;
   tamanho: number | null;
 }) {
   /**
@@ -833,7 +865,13 @@ function ColunaDireita({
             <mark
               key={i}
               data-trecho={ancoras.get(i)?.join(' ')}
-              className={`${s.marca}${aceso !== null && s.ids.includes(aceso) ? ' aceso' : ''}`}
+              className={[
+                s.marca,
+                aceso !== null && s.ids.includes(aceso) ? 'aceso' : '',
+                selecionado !== null && s.ids.includes(selecionado) ? 'selecionado' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               {s.texto}
             </mark>
@@ -977,6 +1015,7 @@ function AchadoItem({
   jaNoVeredito = false,
   frequencia,
   aceso = false,
+  selecionado = false,
   onAcender,
   onApagar,
   onIr,
@@ -987,6 +1026,7 @@ function AchadoItem({
   jaNoVeredito?: boolean;
   frequencia?: Frequencia;
   aceso?: boolean;
+  selecionado?: boolean;
   onAcender?: () => void;
   onApagar?: () => void;
   onIr?: () => void;
@@ -996,7 +1036,16 @@ function AchadoItem({
 
   return (
     <li
-      className={`achado ${achado.classe}${aceso ? ' aceso' : ''}${ligavel ? ' ligavel' : ''}`}
+      className={[
+        'achado',
+        achado.classe,
+        aceso ? 'aceso' : '',
+        selecionado ? 'selecionado' : '',
+        ligavel ? 'ligavel' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      aria-current={selecionado ? 'true' : undefined}
       onMouseEnter={onAcender}
       onMouseLeave={onApagar}
       onClick={onIr}
