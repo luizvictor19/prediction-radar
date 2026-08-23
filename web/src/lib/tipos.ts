@@ -116,8 +116,8 @@ export type Contradicao = {
  * (`20260817040920_...sql:432`). Um mercado cuja descrição foi editada tem duas
  * linhas, e um campo singular faria a segunda apagar a primeira em silêncio.
  *
- * Lista VAZIA é "não digerido", e é o caso comum: 320 dos 1054 mercados do
- * roster em 22/08/2026.
+ * Lista VAZIA é "não digerido": 20 dos 942 mercados do roster, medido em
+ * 22/08/2026 por `npm run medir:tela-regra`.
  */
 export type MercadoNaLista = MercadoRadar & {
   digests: ContagemDigest[];

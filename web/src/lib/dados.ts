@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
+import { chaveDaLinha } from './concordancia';
 import type {
   Achado,
   Contradicao,
@@ -104,8 +106,9 @@ export function lerRadar(): Promise<MercadoRadar[]> {
  * vezes ou nenhuma. Aí a lista soma a contradição de um texto duas vezes, ou
  * perde a de outro, e em silêncio.
  *
- * Hoje isso não morde: cada mercado tem um texto só (734 linhas para 734
- * mercados em 22/08/2026), e com um texto por mercado `event_id` é único. Mas é
+ * Hoje isso não morde: cada mercado tem um texto só — 1033 linhas para 1033
+ * mercados, medido em 22/08/2026 por `npm run medir:tela-regra` —, e com um
+ * texto por mercado `event_id` é único. Mas é
  * exatamente o caso que `juntarRadarComDigest` e `textosParaLer` passaram a
  * suportar, e uma descrição editada na Polymarket cria a segunda linha.
  *
@@ -152,6 +155,137 @@ export async function lerLeituras(eventId: string, sha: string): Promise<Leitura
     .order('leitura_n');
   if (error) throw new Error(error.message);
   return (data ?? []) as LeituraRegra[];
+}
+
+/**
+ * O índice de frequência do gate de boilerplate — item 5, seção 7.
+ *
+ * Três leituras sobre o corpus INTEIRO, porque a pergunta que o gate responde é
+ * sobre o corpus: em que fração dos regulamentos lidos esta passagem aparece.
+ * Uma consulta por mercado não conseguiria responder isso.
+ *
+ * ## Por que no cliente, e não numa view
+ *
+ * A chave de contagem é `chaveDoGate`, e ela chama `mascararParaGate` — troca de
+ * mês e número que existe só para juntar `December 31, 2026, 11:59 PM ET` com
+ * `June 30, 2027, 11:59 PM ET` na mesma contagem. Fazer isso em SQL criaria uma
+ * SEGUNDA implementação da máscara, e as duas divergiriam: o relatório de
+ * medição e a tela passariam a discordar sobre o que é padrão da casa, em
+ * silêncio. É o mesmo defeito que a réplica da view e a `normalizarTrecho`
+ * duplicada já custaram.
+ *
+ * O custo medido em 23/08/2026 não compra esse risco de volta: 1264 linhas em
+ * `market_rule_digests`, 3980 em `digest_pegadinhas`, 3252 em
+ * `digest_ambiguidades` — cerca de 8,5 mil linhas, ~10 idas ao servidor pela
+ * paginação de 500. Uma vez por sessão.
+ *
+ * ## Uma promessa em voo, reaproveitada
+ *
+ * O cache é de MÓDULO e guarda a promessa, não o resultado: duas telas abertas
+ * ao mesmo tempo compartilham a mesma requisição em vez de disparar seis. Em
+ * erro a promessa é descartada, para a próxima tela poder tentar de novo em vez
+ * de herdar a falha para sempre.
+ */
+let indiceEmVoo: Promise<CorpusDigerido> | null = null;
+
+/**
+ * As duas coisas que a MESMA leitura do corpus produz.
+ *
+ * O gate agrupa pela chave MASCARADA — data e número viram marca, para juntar
+ * as variantes do mesmo boilerplate. A fusão agrupa pela chave LITERAL, porque
+ * mascarar ali fundiria dois prazos diferentes do mesmo regulamento. Chaves
+ * diferentes, mesmas linhas: ler duas vezes seria pagar dobrado pelo mesmo
+ * tráfego.
+ */
+export type CorpusDigerido = {
+  indice: IndiceDeBoilerplate;
+  /** Chave de identidade → os `digest_id` que apontaram aquele achado. */
+  leiturasPorChave: Map<string, Set<string>>;
+};
+
+export function lerCorpusDigerido(): Promise<CorpusDigerido> {
+  if (indiceEmVoo === null) {
+    indiceEmVoo = carregarIndice().catch(e => {
+      indiceEmVoo = null;
+      throw e;
+    });
+  }
+  return indiceEmVoo;
+}
+
+async function carregarIndice(): Promise<CorpusDigerido> {
+  type LinhaDigest = { id: string; description_sha256: string };
+  type LinhaFilha = {
+    digest_id: string;
+    tipo: string | null;
+    trecho: string | null;
+    trecho_conflito?: string | null;
+  };
+
+  const [digests, pegadinhas, ambiguidades] = await Promise.all([
+    paginar<LinhaDigest>((de, ate) =>
+      supabase.from('market_rule_digests').select('id, description_sha256').order('id').range(de, ate),
+    ),
+    paginar<LinhaFilha>((de, ate) =>
+      supabase
+        .from('digest_pegadinhas')
+        // `severidade` vira `tipo`: é o campo que `montarIndice` lê, e na
+        // pegadinha a severidade é o subtipo.
+        .select('digest_id, tipo:severidade, trecho')
+        .order('id')
+        .range(de, ate),
+    ),
+    paginar<LinhaFilha>((de, ate) =>
+      supabase
+        .from('digest_ambiguidades')
+        // `trecho_conflito` entra por causa da contradição interna: a chave dela
+        // são as DUAS passagens.
+        .select('digest_id, tipo, trecho, trecho_conflito')
+        .order('id')
+        .range(de, ate),
+    ),
+  ]);
+
+  const shaPorDigest = new Map(digests.map(d => [d.id, d.description_sha256]));
+
+  const linhas: LinhaDeTrecho[] = [];
+  const leiturasPorChave = new Map<string, Set<string>>();
+
+  for (const [tabela, filhas] of [
+    ['pegadinha', pegadinhas],
+    ['ambiguidade', ambiguidades],
+  ] as const) {
+    for (const f of filhas) {
+      const sha = shaPorDigest.get(f.digest_id);
+      // Filha sem digest é impossível pela FK; se aparecer, sumir em silêncio
+      // encolheria o denominador e inflaria toda fração.
+      if (sha === undefined) continue;
+
+      // A contradição interna mora em `digest_ambiguidades`, marcada no `tipo`.
+      // `digest_contradicoes` é outra coisa: o defeito agregado por TEXTO, que
+      // a tela lê à parte para mostrar o alcance.
+      const classe = f.tipo === 'contradicao_interna' ? 'contradicao' : tabela;
+
+      linhas.push({ sha, classe, tipo: f.tipo, trecho: f.trecho });
+
+      // A chave da FUSÃO é a literal, e o `sha` é o primeiro argumento dela:
+      // fundir através de textos diferentes juntaria passagens de dois
+      // regulamentos.
+      const k = chaveDaLinha(sha, classe, f.tipo, f.trecho, f.trecho_conflito ?? null);
+      if (k === null) continue;
+      let set = leiturasPorChave.get(k);
+      if (set === undefined) {
+        set = new Set();
+        leiturasPorChave.set(k, set);
+      }
+      set.add(f.digest_id);
+    }
+  }
+
+  // O denominador é TODO texto lido, inclusive o que não produziu achado
+  // nenhum: um texto lido e limpo é uma chance que a passagem teve de aparecer
+  // e não apareceu.
+  return { indice: montarIndice(linhas, [...shaPorDigest.values()]), leiturasPorChave };
 }
 
 /**

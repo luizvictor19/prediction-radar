@@ -28,10 +28,12 @@ type Estado =
 export function Operar({
   mercado,
   inicioMs,
+  onVoltarParaRegra,
   onVoltar,
 }: {
   mercado: MercadoNaLista;
   inicioMs: number | null;
+  onVoltarParaRegra: () => void;
   onVoltar: () => void;
 }) {
   const [bruto, setBruto] = useState('');
@@ -80,6 +82,13 @@ export function Operar({
 
   return (
     <div className="operar">
+      {/* The way back up the flow. The tab bar used to be it, and removing the
+          tabs without this would strand a half-filled form with no exit until
+          the insert went through. */}
+      <button className="voltar" onClick={onVoltarParaRegra}>
+        ← A regra
+      </button>
+
       <h1>{mercado.pergunta}</h1>
 
       <div className="base-de-mercado">

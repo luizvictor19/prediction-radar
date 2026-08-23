@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MINIMO_LEITURAS, seloDeConfirmacao, seloDeCobertura } from './leituras.js';
+import { MINIMO_LEITURAS, seloDeConfirmacao, seloDeCobertura,
+  procedencia,
+} from './leituras.js';
 
 /**
  * O gate de exibição do selo de confirmação.
@@ -72,11 +74,37 @@ test('mercado sem digestão não ganha marca de leitura', () => {
 });
 
 test('com dois textos manda o PIOR deles', () => {
-  // FIXTURE SINTÉTICO: nenhum mercado tem dois textos hoje (734 linhas para 734
-  // mercados em 22/08/2026). O pior manda porque a linha é uma só — dizer "3
+  // FIXTURE SINTÉTICO: nenhum mercado tem dois textos hoje — 1033 linhas para
+  // 1033 mercados, medido em 22/08/2026 por `npm run medir:tela-regra`.
+  // O pior manda porque a linha é uma só — dizer "3
   // leituras" com um texto medido uma vez esconde o texto fraco.
   const selo = seloDeCobertura([3, 1]);
 
   assert.equal(selo?.comparavel, false);
   assert.equal(selo?.texto, '1 leitura — não comparável');
+});
+
+// ---------------------------------------------------------------------------
+// A procedência: cada número com o seu escopo
+// ---------------------------------------------------------------------------
+
+test('quando os números diferem, cada um diz de que é', () => {
+  // O caso real: o selo mostra 12/12 (do texto) e este mercado foi lido uma
+  // vez. Sem os escopos, os dois lidos juntos parecem se contradizer.
+  assert.equal(procedencia(1, 12), '1 leitura deste mercado, 12 do texto');
+  assert.equal(procedencia(3, 12), '3 leituras deste mercado, 12 do texto');
+});
+
+test('quando coincidem, diz um número só', () => {
+  // Texto lido só por este mercado. `1 deste mercado, 1 do texto` sugeriria uma
+  // distinção que não existe naquele caso.
+  assert.equal(procedencia(1, 1), '1 leitura do texto');
+  assert.equal(procedencia(4, 4), '4 leituras do texto');
+});
+
+test('o denominador do texto nunca vira o do mercado', () => {
+  // O selo `k/n` usa `leituras_do_texto` como n. A frase tem que citar o MESMO
+  // n, ou volta a haver dois denominadores concorrentes na mesma faixa.
+  assert.ok(procedencia(1, 12).endsWith('12 do texto'));
+  assert.ok(!procedencia(1, 12).includes('1 do texto'));
 });

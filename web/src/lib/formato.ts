@@ -26,9 +26,10 @@ export function variacao(v: number | null): string {
 
 export function dinheiro(v: number | null): string {
   if (v === null) return VAZIO;
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}k`;
-  return `$${v.toFixed(0)}`;
+  // `US$` e não `$`: a tela é lida em português, onde `$` sozinho lê como real.
+  if (v >= 1_000_000) return `US$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `US$ ${(v / 1_000).toFixed(0)}k`;
+  return `US$ ${v.toFixed(0)}`;
 }
 
 export function prazo(dias: number | null): string {

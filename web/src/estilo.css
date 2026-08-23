@@ -47,40 +47,15 @@ body {
   font: 14px/1.6 ui-monospace, monospace;
 }
 
-/* abas */
-.abas {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--linha);
-  margin-bottom: 16px;
-}
-.abas button {
-  padding: 6px 14px;
-  border: 1px solid var(--linha);
-  border-radius: 4px;
-  background: var(--caixa);
-  cursor: pointer;
-  font-size: 15px;
-}
-.abas button.ativa {
-  border-color: var(--marca);
+/* navegação: um passo atrás, sempre no mesmo canto */
+.voltar {
+  display: inline-block;
+  border: 0;
+  background: none;
   color: var(--marca);
-  font-weight: 600;
-}
-.abas button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.abas .selecionado {
-  margin-left: auto;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fraco);
-  font-size: 13px;
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 14px;
 }
 
 /* controles da lista */
@@ -208,6 +183,274 @@ button.link {
   cursor: pointer;
   padding: 4px 0;
   font-size: 13px;
+}
+
+/* primeira dobra: as duas faixas resumem o mercado, em largura inteira */
+.veredito {
+  border-left: 3px solid var(--alerta);
+}
+.veredito .descricao {
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.veredito .cenario {
+  margin: 0;
+}
+.veredito .proveniencia {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.numeros-do-mercado {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fraco);
+}
+.numeros-do-mercado strong {
+  color: var(--tinta);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* as duas colunas: esquerda opera, direita prova */
+.duas-colunas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.coluna-direita {
+  /* Rolar as armadilhas não pode tirar o regulamento da vista: é o contexto
+     contra o qual cada uma delas se lê. */
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.coluna-direita > details > summary {
+  cursor: pointer;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Abaixo de ~900px as colunas viram uma, e o regulamento vai para baixo
+   RECOLHIDO — o mesmo limiar da constante `ESTREITO` em `Regra.tsx`. Empilhado
+   e aberto, o paredão de texto em inglês fica logo abaixo do veredito e enterra
+   as armadilhas, que são o que a tela mostra primeiro. */
+@media (max-width: 900px) {
+  .duas-colunas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .coluna-direita {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+.regulamento {
+  /* Citação em monoespaçada, interpretação em sans: a diferença tem que
+     aparecer antes da leitura, sem legenda. */
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.65 ui-monospace, monospace;
+  color: var(--tinta);
+}
+/* Os tons valem em QUALQUER `mark`, e não só dentro de `.regulamento`: a
+   amostra da legenda é um `mark` fora dele, e escopada assim ela caía no
+   amarelo padrão do navegador — uma legenda mostrando uma cor que o texto
+   nunca usa é pior que legenda nenhuma. */
+mark.forte,
+mark.clara {
+  background: none;
+  color: inherit;
+  border-radius: 2px;
+  padding: 1px 0;
+}
+mark.forte {
+  background: color-mix(in srgb, var(--alerta) 26%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 45%, transparent);
+}
+mark.clara {
+  background: color-mix(in srgb, var(--alerta) 9%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--alerta) 18%, transparent);
+}
+/* =========================================================================
+   A ligação entre os dois lados: o cursor acende, o clique fixa.
+
+   REGRA DE CANAL: `--alerta` é o canal do SIGNIFICADO — forte diz "muda o
+   resultado", claro diz "padrão da casa". Nem o hover nem a seleção podem
+   mexer no PREENCHIMENTO de um `mark`, ou o leitor deixa de saber se o
+   trecho está tingido por ser grave ou por estar apontado. Os dois usam
+   contorno, barra e relevo; o peso separa o transitório do fixo.
+   ========================================================================= */
+.achado.ligavel {
+  cursor: pointer;
+}
+
+/* Hover: uma dica, e nada mais. Some ao sair do item. */
+.achado.aceso {
+  background: color-mix(in srgb, var(--tinta) 4%, transparent);
+}
+mark.aceso {
+  /* Contorno fino, SEM tocar no fundo. */
+  box-shadow: 0 0 0 1px var(--fraco);
+}
+
+/* =========================================================================
+   AS TRÊS VARIANTES, E A ESCOLHIDA — decidido em 23/08/2026
+
+   ATIVA: `sel-escolhida`, e ela é uma MISTURA, não uma das três.
+   Barra azul (`--marca`) à esquerda, contorno escuro (`--tinta`) à direita.
+
+   O motivo do escuro à direita: o contorno cai SOBRE o destaque rosado do
+   trecho, e azul sobre rosa fica barulhento — duas cores saturadas
+   disputando o mesmo par de centímetros. Tinta sobre rosa apenas delimita.
+   À esquerda não há destaque por baixo, então o azul aparece limpo e diz o
+   que `--marca` diz no resto da tela: isto responde ao seu clique.
+
+   As outras três ficam abaixo por serem REGISTRO DE DECISÃO, não código
+   morto: comparar de novo é trocar uma string em `VARIANTE_DE_SELECAO`, e
+   sem elas a próxima pessoa refaz o experimento inteiro para chegar às
+   mesmas três. Mesmo princípio da spec, que guarda a alternativa rejeitada
+   com o motivo em vez de apagá-la.
+   ========================================================================= */
+
+/* A ESCOLHIDA. */
+.sel-escolhida .achado.selecionado {
+  background: color-mix(in srgb, var(--marca) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--marca);
+}
+.sel-escolhida mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 1 — neutra: barra e contorno em tinta.
+   A mais sóbria: nenhuma cor nova entra na tela, a seleção é só peso.
+   ------------------------------------------------------------------------- */
+.sel-v1 .achado.selecionado {
+  background: color-mix(in srgb, var(--tinta) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--tinta);
+}
+.sel-v1 mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 2 — marca: barra e contorno em `--marca`.
+   Separa os canais por SIGNIFICADO: `--alerta` é gravidade, `--marca` é
+   interação (é a cor do link e do botão primário). Quem já leu a tela sabe
+   que azul quer dizer "isto responde ao seu clique".
+   ------------------------------------------------------------------------- */
+.sel-v2 .achado.selecionado {
+  background: color-mix(in srgb, var(--marca) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--marca);
+}
+.sel-v2 mark.selecionado {
+  box-shadow: 0 0 0 2px var(--tinta);
+}
+
+/* -------------------------------------------------------------------------
+   VARIANTE 3 — relevo: o item selecionado sai do plano.
+   Sem cor nenhuma: a barra é da linha, o item ganha sombra e desloca alguns
+   pixels; à direita o contorno é afastado do trecho por `outline-offset`,
+   que cerca sem encostar. A leitura é física, não cromática.
+   ------------------------------------------------------------------------- */
+.sel-v3 .achado.selecionado {
+  background: var(--caixa);
+  box-shadow: inset 3px 0 0 var(--fraco), 0 2px 8px rgb(0 0 0 / 12%);
+  transform: translateX(3px);
+}
+.sel-v3 mark.selecionado {
+  outline: 2px solid var(--tinta);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Selecionado vence o hover nos três: o fixo não pisca quando o cursor passa. */
+.achado.selecionado,
+mark.selecionado {
+  position: relative;
+  z-index: 1;
+}
+/* o mecanismo, uma vez, no cabeçalho da dobra — nunca por item */
+.mecanismo {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fraco);
+  border-left: 2px solid var(--linha);
+  padding-left: 10px;
+}
+.frequencia {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}
+.ja-no-veredito {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--fraco);
+}
+
+.legenda,
+.nao-localizado {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--fraco);
+}
+.nao-localizado {
+  border-left: 2px solid var(--alerta);
+  padding-left: 8px;
+}
+.aviso-versao {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fraco);
+  border-left: 2px solid var(--alerta);
+  padding-left: 8px;
+}
+.dobra {
+  background: var(--caixa);
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.dobra > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dobra > summary::marker {
+  color: var(--fraco);
+}
+.dobra > *:not(summary) {
+  padding: 0 14px 12px;
+}
+.dobra section {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
 }
 
 /* a regra */
@@ -346,7 +589,11 @@ button.link {
 }
 .achado {
   border-top: 1px solid var(--linha);
-  padding: 10px 0;
+  /* O recuo à esquerda vale para TODO item, selecionado ou não. A barra da
+     seleção é `inset box-shadow` e ocupa esse recuo em vez de empurrar o
+     conteúdo — com o padding só no selecionado, o texto pularia a cada
+     clique. */
+  padding: 10px 0 10px 10px;
 }
 .achado:first-child {
   border-top: 0;
@@ -545,4 +792,21 @@ button.link {
   font-variant-numeric: normal;
   font-style: italic;
   color: var(--fraco);
+}
+
+/* junção incompleta: número errado anunciado, nunca calado */
+.aviso-juncao {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--alerta);
+  background: var(--caixa);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--fraco);
+}
+
+/* a leitura A/B da ambiguidade: a prosa dela são as duas leituras */
+.achado .leitura {
+  margin: 4px 0 0;
+  font-size: 13px;
 }

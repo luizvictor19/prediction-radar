@@ -19,9 +19,10 @@ import type {
  * linha de um mercado com dois textos sobrescrever a primeira em silêncio — as
  * contagens de um dos textos somem da tela sem aviso. Por isso o campo é lista.
  *
- * Nenhum mercado tem dois textos hoje (734 linhas para 734 mercados em
- * 22/08/2026), então isto é defeito latente e não sintoma. `dados.ts` já
- * registra a mesma expectativa, evitando `.single()` no `lerAchados`.
+ * Nenhum mercado tem dois textos hoje — 1033 linhas para 1033 mercados, medido
+ * em 22/08/2026 por `npm run medir:tela-regra` —, então isto é defeito latente
+ * e não sintoma. `dados.ts` já registra a mesma expectativa, evitando
+ * `.single()` no `lerAchados`.
  */
 export function juntarRadarComDigest(
   radar: readonly MercadoRadar[],
@@ -59,8 +60,9 @@ export function agruparPorEvento(
 /**
  * O mercado foi digerido?
  *
- * Lista vazia é "não digerido", que é fato sobre o dado e não defeito: medido em
- * 22/08/2026, 320 dos 1054 mercados do roster (30,4%) não têm digestão nenhuma.
+ * Lista vazia é "não digerido", que é fato sobre o dado e não defeito: 20 dos
+ * 942 mercados do roster (2,1%) não têm digestão nenhuma, medido em 22/08/2026
+ * por `npm run medir:tela-regra`.
  */
 export function temDigestao(m: Pick<MercadoNaLista, 'digests'>): boolean {
   return m.digests.length > 0;
@@ -123,4 +125,25 @@ export function leiturasPorTexto(
     else grupo.push(l);
   }
   return porTexto;
+}
+
+/**
+ * O sha256 de um texto de regra, na MESMA conta que a digestão faz.
+ *
+ * `hashDescription` do backend é `sha256(description)` sobre a descrição já
+ * passada por `trim()` em `readMarketsToDigest` — e é por isso que o `trim`
+ * está aqui também. Um `trim` a menos e o hash não bate em texto nenhum que
+ * comece com espaço.
+ *
+ * Serve para uma pergunta só, e ela importa: **este regulamento é o texto que
+ * produziu estes achados?** `market_rule_digests` guarda o HASH, nunca o texto;
+ * o texto mora em `events.description`, que é a descrição ATUAL. Se a descrição
+ * foi editada depois da digestão, os dois deixam de ser a mesma coisa, e
+ * destacar os trechos de um sobre o outro atribuiria citação a um texto que não
+ * a contém — que é P1 quebrado no lugar mais caro.
+ */
+export async function sha256Hex(texto: string): Promise<string> {
+  const bytes = new TextEncoder().encode(texto.trim());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }

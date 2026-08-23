@@ -125,3 +125,28 @@ export function seloDeCobertura(leiturasPorTexto: readonly number[]): Selo | nul
   const pior = Math.min(...leiturasPorTexto);
   return pior < MINIMO_LEITURAS ? naoComparavel(pior) : null;
 }
+
+/**
+ * A procedência da leitura exibida, com o escopo de CADA número dito em voz
+ * alta.
+ *
+ * A faixa do veredito mostrava `12/12` ao lado de `1 leitura`, e os dois
+ * denominadores são de coisas diferentes: o selo conta leituras do TEXTO — que
+ * é onde a concordância existe, porque o mesmo regulamento é lido por vários
+ * mercados — e a linha contava leituras DESTE mercado. Lado a lado e sem
+ * rótulo, isso lê como contradição, e o leitor não tem como saber qual dos dois
+ * números confiar.
+ *
+ * Os dois ficam, porque medem coisas que importam separadamente: a
+ * concordância é do texto, e a assinatura do modelo é da leitura que preencheu
+ * os campos desta tela. Unificar o denominador perderia um dos dois.
+ *
+ * Quando o texto só foi lido por este mercado, os números coincidem e a frase
+ * diz um só — repetir `1 deste mercado, 1 do texto` é ruído que sugere
+ * distinção onde não há.
+ */
+export function procedencia(doMercado: number, doTexto: number): string {
+  const plural = (n: number) => (n === 1 ? 'leitura' : 'leituras');
+  if (doMercado === doTexto) return `${doTexto} ${plural(doTexto)} do texto`;
+  return `${doMercado} ${plural(doMercado)} deste mercado, ${doTexto} do texto`;
+}
