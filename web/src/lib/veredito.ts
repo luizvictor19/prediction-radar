@@ -44,6 +44,26 @@ export type Veredicavel = {
  * out because the model never read this market -- its prose is null by
  * construction, so a propagated finding could never be the headline anyway.
  */
+/**
+ * Uma armadilha — muda o resultado ou muda o prazo — SEM olhar a origem.
+ *
+ * Existe separada porque nem toda pergunta sobre armadilha é sobre armadilha
+ * ACUSADA. "Quantas armadilhas herdadas este mercado tem?" é a pergunta que o
+ * estado vazio da seção precisa fazer, e fazê-la com um predicado que exige
+ * `acusado` devolve zero sempre — não porque não existam, mas porque a pergunta
+ * se contradiz.
+ *
+ * A origem é do CHAMADOR. Quem quer só as acusadas filtra por origem ao lado,
+ * onde a intenção fica visível na linha, em vez de escondida dentro de um
+ * predicado cujo nome não a menciona.
+ */
+export function ehArmadilha(a: Veredicavel): boolean {
+  return (
+    a.classe === 'pegadinha' &&
+    (a.subtipos ?? []).some(s => s === 'muda_resultado' || s === 'muda_timing')
+  );
+}
+
 export function ehArmadilhaDeResultado(a: Veredicavel): boolean {
   return (
     a.classe === 'pegadinha' &&

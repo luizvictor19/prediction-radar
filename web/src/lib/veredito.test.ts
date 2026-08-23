@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ehArmadilhaDeResultado, escolherVeredito, type Veredicavel } from './veredito.js';
+import {
+  ehArmadilha,
+  ehArmadilhaDeResultado,
+  escolherVeredito,
+  type Veredicavel,
+} from './veredito.js';
 
 /**
  * The headline verdict -- step 2 of item 5, section 8 of the rule-screen spec.
@@ -50,6 +55,23 @@ test('só pegadinha muda_resultado acusada vira veredito', () => {
   assert.equal(ehArmadilhaDeResultado(achado({ origem: 'herdado' })), false);
   assert.equal(ehArmadilhaDeResultado(achado({ classe: 'ambiguidade' })), false);
   assert.equal(ehArmadilhaDeResultado(achado({ subtipos: null })), false);
+});
+
+test('ehArmadilha NÃO olha a origem, e é isso que ele serve para responder', () => {
+  // O predicado que exige `acusado` responde zero à pergunta "quantas
+  // armadilhas HERDADAS existem?" — e zero por contradição, não por medição.
+  // Foi assim que o estado vazio da seção passou a afirmar "nenhuma armadilha"
+  // com armadilhas herdadas na dobra logo abaixo.
+  const herdada = achado({ origem: 'herdado' });
+
+  assert.equal(ehArmadilha(herdada), true);
+  assert.equal(ehArmadilhaDeResultado(herdada), false);
+});
+
+test('ehArmadilha cobre muda_timing, e não só muda_resultado', () => {
+  assert.equal(ehArmadilha(achado({ subtipos: ['muda_timing'] })), true);
+  assert.equal(ehArmadilha(achado({ subtipos: ['detalhe'] })), false);
+  assert.equal(ehArmadilha(achado({ classe: 'ambiguidade' })), false);
 });
 
 test('uma pegadinha de detalhe não vira manchete, mesmo sendo a única', () => {

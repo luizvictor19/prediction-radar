@@ -22,7 +22,7 @@ import {
   valores,
 } from '../lib/leituras';
 import { leiturasPorTexto, sha256Hex, textosParaLer } from '../lib/regras';
-import { ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
+import { ehArmadilha, ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
 import { separarHerdados } from '../lib/herdados';
 import { destacar, type PedidoDeDestaque } from '../lib/destaque';
 import { dinheiro, urlPolymarket } from '../lib/formato';
@@ -272,7 +272,7 @@ function BlocoDeTexto({
 
   const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
   const armadilhas = acusadosVisiveis
-    .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
+    .filter(ehArmadilha)
     .sort(porConcordancia);
   const contradicoes = acusadosVisiveis.filter(a => a.classe === 'contradicao');
   const resto = acusadosVisiveis
@@ -285,7 +285,9 @@ function BlocoDeTexto({
   const vazioArmadilhas = estadoVazio({
     leituras: leituras.length,
     acusados: armadilhas.length,
-    herdados: herdados.filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a)).length,
+    // `ehArmadilha` e não `ehArmadilhaDeResultado`: a pergunta aqui é sobre as
+    // HERDADAS, e um predicado que exige `acusado` responderia zero sempre.
+    herdados: herdados.filter(ehArmadilha).length,
   });
   const vazioContradicoes = estadoVazio({
     leituras: leituras.length,
@@ -517,14 +519,6 @@ function Vazio({ estado, o }: { estado: EstadoVazio | null; o: string }) {
   );
 }
 
-/** A armadilha que muda QUANDO, irmã da que muda quem ganha. */
-function ehArmadilhaDeTiming(a: Achado): boolean {
-  return (
-    a.classe === 'pegadinha' &&
-    a.origem === 'acusado' &&
-    (a.subtipos ?? []).includes('muda_timing')
-  );
-}
 
 /**
  * O teto de itens visíveis na seção de armadilhas.
