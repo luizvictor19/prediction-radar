@@ -696,3 +696,14 @@ button.link {
   font-style: italic;
   color: var(--fraco);
 }
+
+/* junção incompleta: número errado anunciado, nunca calado */
+.aviso-juncao {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--alerta);
+  background: var(--caixa);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--fraco);
+}

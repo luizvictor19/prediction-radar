@@ -2,15 +2,14 @@ import { useEffect, useState } from 'react';
 import {
   lerAchados,
   lerContradicoes,
-  lerIndiceDeBoilerplate,
+  lerCorpusDigerido,
   lerLeituras,
   lerTextoDaRegra,
 } from '../lib/dados';
-import {
-  separarBoilerplate,
-  type Frequencia,
-  type IndiceDeBoilerplate,
-} from '../lib/boilerplate';
+import { separarBoilerplate, type Frequencia } from '../lib/boilerplate';
+import { anexarLeituras } from '../lib/concordancia';
+import { fundirPorAbsorcao } from '../lib/dedup';
+import type { CorpusDigerido } from '../lib/dados';
 import { estadoVazio, type EstadoVazio } from '../lib/vazios';
 import type { Achado, Contradicao, LeituraRegra, LinhaAchados, MercadoNaLista } from '../lib/tipos';
 import {
@@ -76,7 +75,7 @@ export function Regra({
    * nada recolhe. O achado se mostra de qualquer jeito — só ainda não sabe se é
    * padrão da casa. Por isso nenhum spinner segura os achados.
    */
-  const [indice, setIndice] = useState<IndiceDeBoilerplate | null>(null);
+  const [corpus, setCorpus] = useState<CorpusDigerido | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -106,9 +105,9 @@ export function Regra({
         // Em paralelo, e sem travar nada: o índice é do corpus inteiro e chega
         // quando chegar. Falha dele não é erro de tela — é só o gate não
         // recolhendo, que é o estado seguro.
-        lerIndiceDeBoilerplate()
-          .then(i => {
-            if (vivo) setIndice(i);
+        lerCorpusDigerido()
+          .then(c => {
+            if (vivo) setCorpus(c);
           })
           .catch(() => {});
 
@@ -185,7 +184,7 @@ export function Regra({
           mercado={mercado}
           regulamento={regulamento}
           shaRegulamento={shaRegulamento}
-          indice={indice}
+          corpus={corpus}
         />
       ))}
     </div>
@@ -209,7 +208,7 @@ function BlocoDeTexto({
   mercado,
   regulamento,
   shaRegulamento,
-  indice,
+  corpus,
 }: {
   linha: LinhaAchados;
   varios: boolean;
@@ -218,13 +217,46 @@ function BlocoDeTexto({
   mercado: MercadoNaLista;
   regulamento: string | null;
   shaRegulamento: string | null;
-  indice: IndiceDeBoilerplate | null;
+  corpus: CorpusDigerido | null;
 }) {
   /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
   const [aceso, setAceso] = useState<string | null>(null);
   const [todasArmadilhas, setTodasArmadilhas] = useState(false);
 
-  const achados = linha.achados ?? [];
+  const brutos = linha.achados ?? [];
+
+  /**
+   * A fusão por absorção — item 2, seção 4 — finalmente no caminho de render.
+   *
+   * Ela precisa do CONJUNTO de `digest_id` por achado, e a view entrega só a
+   * contagem. `anexarLeituras` faz a junção com as linhas-filhas que a mesma
+   * leitura do corpus já trouxe para o gate; o que não casar sai em
+   * `semLeituras` e a tela avisa, porque um conjunto vazio silencioso viraria
+   * concordância `0/n` num achado que a view diz ter sido encontrado.
+   *
+   * Sem o corpus, nada funde: os achados aparecem como a view os entrega. É o
+   * mesmo estado válido do índice nulo — a tela mostra tudo e só ainda não
+   * agrupou.
+   */
+  const { achados, naoAnexados } = (() => {
+    if (corpus === null) return { achados: brutos, naoAnexados: 0 };
+
+    const { comLeituras, semLeituras } = anexarLeituras(
+      linha.description_sha256,
+      brutos,
+      corpus.leiturasPorChave,
+    );
+
+    const fundidos = fundirPorAbsorcao(comLeituras);
+    // A concordância exibida passa a ser o tamanho da UNIÃO, não o número da
+    // view: é o ponto inteiro da fusão.
+    const comContagem = fundidos.map(a => ({ ...a, vezes_encontrado: a.leituras.length }));
+
+    return {
+      achados: [...comContagem, ...semLeituras] as Achado[],
+      naoAnexados: semLeituras.length,
+    };
+  })();
 
   // A origem separa antes de tudo: o que este mercado acusou fica nas seções, o
   // que ele herdou desce para a dobra. Contradição herdada desce junto — é
@@ -236,7 +268,7 @@ function BlocoDeTexto({
   // herdado já está recolhido, e recolhê-lo de novo por ser padrão da casa o
   // faria aparecer em dois blocos ou em nenhum. Índice nulo devolve tudo em
   // `visiveis`, que é o estado enquanto as três consultas não voltaram.
-  const { visiveis: acusadosVisiveis, comuns } = separarBoilerplate(acusados, indice);
+  const { visiveis: acusadosVisiveis, comuns } = separarBoilerplate(acusados, corpus?.indice ?? null);
 
   const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
   const armadilhas = acusadosVisiveis
@@ -290,6 +322,19 @@ function BlocoDeTexto({
       {/* Primeira dobra: as duas faixas resumem O MERCADO, não uma coluna, e é
           por isso que atravessam a largura inteira. Quem está varrendo lê as
           duas e sai; quem veio estudar segue. */}
+      {naoAnexados > 0 && (
+        // Taxa de anexação abaixo de 100% é defeito de junção, não
+        // característica dos dados: estes achados existem na view e não
+        // encontraram as linhas que os produziram, então a concordância deles é
+        // a da view e não a união. Aparece porque um número errado calado é
+        // pior que um número errado anunciado.
+        <p className="aviso-juncao">
+          <strong>{naoAnexados}</strong> achado{naoAnexados === 1 ? '' : 's'} sem as leituras
+          de origem: a concordância deles é a da view, sem fusão. É falha de junção — o
+          esperado é zero.
+        </p>
+      )}
+
       <MancheteVsRegra achados={achados} leituras={leituras} />
       <LinhaDeNumeros achados={achados} recolhidos={recolhidos} liquidez={mercado.liquidez} />
 

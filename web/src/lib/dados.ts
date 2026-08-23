@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
+import { chaveDaLinha } from './concordancia';
 import type {
   Achado,
   Contradicao,
@@ -185,9 +186,24 @@ export async function lerLeituras(eventId: string, sha: string): Promise<Leitura
  * erro a promessa é descartada, para a próxima tela poder tentar de novo em vez
  * de herdar a falha para sempre.
  */
-let indiceEmVoo: Promise<IndiceDeBoilerplate> | null = null;
+let indiceEmVoo: Promise<CorpusDigerido> | null = null;
 
-export function lerIndiceDeBoilerplate(): Promise<IndiceDeBoilerplate> {
+/**
+ * As duas coisas que a MESMA leitura do corpus produz.
+ *
+ * O gate agrupa pela chave MASCARADA — data e número viram marca, para juntar
+ * as variantes do mesmo boilerplate. A fusão agrupa pela chave LITERAL, porque
+ * mascarar ali fundiria dois prazos diferentes do mesmo regulamento. Chaves
+ * diferentes, mesmas linhas: ler duas vezes seria pagar dobrado pelo mesmo
+ * tráfego.
+ */
+export type CorpusDigerido = {
+  indice: IndiceDeBoilerplate;
+  /** Chave de identidade → os `digest_id` que apontaram aquele achado. */
+  leiturasPorChave: Map<string, Set<string>>;
+};
+
+export function lerCorpusDigerido(): Promise<CorpusDigerido> {
   if (indiceEmVoo === null) {
     indiceEmVoo = carregarIndice().catch(e => {
       indiceEmVoo = null;
@@ -197,9 +213,14 @@ export function lerIndiceDeBoilerplate(): Promise<IndiceDeBoilerplate> {
   return indiceEmVoo;
 }
 
-async function carregarIndice(): Promise<IndiceDeBoilerplate> {
+async function carregarIndice(): Promise<CorpusDigerido> {
   type LinhaDigest = { id: string; description_sha256: string };
-  type LinhaFilha = { digest_id: string; tipo: string | null; trecho: string | null };
+  type LinhaFilha = {
+    digest_id: string;
+    tipo: string | null;
+    trecho: string | null;
+    trecho_conflito?: string | null;
+  };
 
   const [digests, pegadinhas, ambiguidades] = await Promise.all([
     paginar<LinhaDigest>((de, ate) =>
@@ -215,14 +236,22 @@ async function carregarIndice(): Promise<IndiceDeBoilerplate> {
         .range(de, ate),
     ),
     paginar<LinhaFilha>((de, ate) =>
-      supabase.from('digest_ambiguidades').select('digest_id, tipo, trecho').order('id').range(de, ate),
+      supabase
+        .from('digest_ambiguidades')
+        // `trecho_conflito` entra por causa da contradição interna: a chave dela
+        // são as DUAS passagens.
+        .select('digest_id, tipo, trecho, trecho_conflito')
+        .order('id')
+        .range(de, ate),
     ),
   ]);
 
   const shaPorDigest = new Map(digests.map(d => [d.id, d.description_sha256]));
 
   const linhas: LinhaDeTrecho[] = [];
-  for (const [classe, filhas] of [
+  const leiturasPorChave = new Map<string, Set<string>>();
+
+  for (const [tabela, filhas] of [
     ['pegadinha', pegadinhas],
     ['ambiguidade', ambiguidades],
   ] as const) {
@@ -231,14 +260,32 @@ async function carregarIndice(): Promise<IndiceDeBoilerplate> {
       // Filha sem digest é impossível pela FK; se aparecer, sumir em silêncio
       // encolheria o denominador e inflaria toda fração.
       if (sha === undefined) continue;
+
+      // A contradição interna mora em `digest_ambiguidades`, marcada no `tipo`.
+      // `digest_contradicoes` é outra coisa: o defeito agregado por TEXTO, que
+      // a tela lê à parte para mostrar o alcance.
+      const classe = f.tipo === 'contradicao_interna' ? 'contradicao' : tabela;
+
       linhas.push({ sha, classe, tipo: f.tipo, trecho: f.trecho });
+
+      // A chave da FUSÃO é a literal, e o `sha` é o primeiro argumento dela:
+      // fundir através de textos diferentes juntaria passagens de dois
+      // regulamentos.
+      const k = chaveDaLinha(sha, classe, f.tipo, f.trecho, f.trecho_conflito ?? null);
+      if (k === null) continue;
+      let set = leiturasPorChave.get(k);
+      if (set === undefined) {
+        set = new Set();
+        leiturasPorChave.set(k, set);
+      }
+      set.add(f.digest_id);
     }
   }
 
   // O denominador é TODO texto lido, inclusive o que não produziu achado
   // nenhum: um texto lido e limpo é uma chance que a passagem teve de aparecer
   // e não apareceu.
-  return montarIndice(linhas, [...shaPorDigest.values()]);
+  return { indice: montarIndice(linhas, [...shaPorDigest.values()]), leiturasPorChave };
 }
 
 /**
