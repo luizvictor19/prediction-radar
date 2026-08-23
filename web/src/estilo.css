@@ -278,6 +278,21 @@ button.link {
   background: color-mix(in srgb, var(--alerta) 45%, transparent);
   box-shadow: 0 0 0 2px var(--alerta);
 }
+/* o mecanismo, uma vez, no cabeçalho da dobra — nunca por item */
+.mecanismo {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fraco);
+  border-left: 2px solid var(--linha);
+  padding-left: 10px;
+}
+.frequencia {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--fraco);
+  font-variant-numeric: tabular-nums;
+}
 .ja-no-veredito {
   margin: 4px 0 0;
   font-size: 12px;

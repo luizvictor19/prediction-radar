@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { lerAchados, lerContradicoes, lerLeituras, lerTextoDaRegra } from '../lib/dados';
+import {
+  lerAchados,
+  lerContradicoes,
+  lerIndiceDeBoilerplate,
+  lerLeituras,
+  lerTextoDaRegra,
+} from '../lib/dados';
+import {
+  separarBoilerplate,
+  type Frequencia,
+  type IndiceDeBoilerplate,
+} from '../lib/boilerplate';
+import { estadoVazio, type EstadoVazio } from '../lib/vazios';
 import type { Achado, Contradicao, LeituraRegra, LinhaAchados, MercadoNaLista } from '../lib/tipos';
 import {
   CAMPOS,
@@ -58,6 +70,14 @@ export function Regra({
   const [regulamento, setRegulamento] = useState<string | null>(null);
   const [shaRegulamento, setShaRegulamento] = useState<string | null>(null);
 
+  /**
+   * `null` enquanto as três consultas de frequência não voltam, e `null` também
+   * se elas falharem. É estado legítimo, não erro: sem índice tudo aparece e
+   * nada recolhe. O achado se mostra de qualquer jeito — só ainda não sabe se é
+   * padrão da casa. Por isso nenhum spinner segura os achados.
+   */
+  const [indice, setIndice] = useState<IndiceDeBoilerplate | null>(null);
+
   useEffect(() => {
     let vivo = true;
     setLinhas(null);
@@ -82,6 +102,15 @@ export function Regra({
           .catch(e => {
             if (vivo) setErro(e instanceof Error ? e.message : String(e));
           });
+
+        // Em paralelo, e sem travar nada: o índice é do corpus inteiro e chega
+        // quando chegar. Falha dele não é erro de tela — é só o gate não
+        // recolhendo, que é o estado seguro.
+        lerIndiceDeBoilerplate()
+          .then(i => {
+            if (vivo) setIndice(i);
+          })
+          .catch(() => {});
 
         const ls = await lerAchados(mercado.id);
         if (!vivo) return;
@@ -156,6 +185,7 @@ export function Regra({
           mercado={mercado}
           regulamento={regulamento}
           shaRegulamento={shaRegulamento}
+          indice={indice}
         />
       ))}
     </div>
@@ -179,6 +209,7 @@ function BlocoDeTexto({
   mercado,
   regulamento,
   shaRegulamento,
+  indice,
 }: {
   linha: LinhaAchados;
   varios: boolean;
@@ -187,6 +218,7 @@ function BlocoDeTexto({
   mercado: MercadoNaLista;
   regulamento: string | null;
   shaRegulamento: string | null;
+  indice: IndiceDeBoilerplate | null;
 }) {
   /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
   const [aceso, setAceso] = useState<string | null>(null);
@@ -200,14 +232,34 @@ function BlocoDeTexto({
   // `leitura_b` é o menos acionável da tela disfarçado do mais grave.
   const { acusados, herdados } = separarHerdados(achados);
 
+  // O gate roda DEPOIS da separação por origem e SÓ sobre os acusados: um
+  // herdado já está recolhido, e recolhê-lo de novo por ser padrão da casa o
+  // faria aparecer em dois blocos ou em nenhum. Índice nulo devolve tudo em
+  // `visiveis`, que é o estado enquanto as três consultas não voltaram.
+  const { visiveis: acusadosVisiveis, comuns } = separarBoilerplate(acusados, indice);
+
   const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
-  const armadilhas = acusados
+  const armadilhas = acusadosVisiveis
     .filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a))
     .sort(porConcordancia);
-  const contradicoes = acusados.filter(a => a.classe === 'contradicao');
-  const resto = acusados
+  const contradicoes = acusadosVisiveis.filter(a => a.classe === 'contradicao');
+  const resto = acusadosVisiveis
     .filter(a => a.classe !== 'contradicao' && !armadilhas.includes(a))
     .sort(porConcordancia);
+
+  // O que saiu da vista principal, e é o número do azulejo "recolhidos".
+  const recolhidos = comuns.length + herdados.length;
+
+  const vazioArmadilhas = estadoVazio({
+    leituras: leituras.length,
+    acusados: armadilhas.length,
+    herdados: herdados.filter(a => ehArmadilhaDeResultado(a) || ehArmadilhaDeTiming(a)).length,
+  });
+  const vazioContradicoes = estadoVazio({
+    leituras: leituras.length,
+    acusados: contradicoes.length,
+    herdados: herdados.filter(a => a.classe === 'contradicao').length,
+  });
 
   const visiveis = todasArmadilhas ? armadilhas : armadilhas.slice(0, TETO_DE_ARMADILHAS);
 
@@ -239,7 +291,7 @@ function BlocoDeTexto({
           por isso que atravessam a largura inteira. Quem está varrendo lê as
           duas e sai; quem veio estudar segue. */}
       <MancheteVsRegra achados={achados} leituras={leituras} />
-      <LinhaDeNumeros achados={achados} liquidez={mercado.liquidez} />
+      <LinhaDeNumeros achados={achados} recolhidos={recolhidos} liquidez={mercado.liquidez} />
 
       <div className="duas-colunas">
         {/* ESQUERDA: opera. Ordenada pelo que decide primeiro. */}
@@ -247,11 +299,7 @@ function BlocoDeTexto({
           <section className="armadilhas">
             <h2>Armadilhas que mudam o resultado</h2>
 
-            {armadilhas.length === 0 && (
-              // "Lido e limpo" é informação diferente de "não lido". A seção
-              // não some: some ela, e a ausência lê como "ninguém olhou isto".
-              <p className="nada">Nenhuma armadilha acusada que mude o resultado ou o prazo.</p>
-            )}
+            <Vazio estado={vazioArmadilhas} o="armadilha que mude o resultado" />
 
             <ul className="achados">
               {visiveis.map(a => (
@@ -273,9 +321,7 @@ function BlocoDeTexto({
 
           <section>
             <h2>Contradições internas</h2>
-            {contradicoes.length === 0 && (
-              <p className="nada">Nenhuma contradição acusada por uma leitura deste texto.</p>
-            )}
+            <Vazio estado={vazioContradicoes} o="contradição interna" />
             {contradicoes.map(c => (
               <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
             ))}
@@ -297,15 +343,57 @@ function BlocoDeTexto({
             </details>
           )}
 
+          {comuns.length > 0 && (
+            <details className="dobra">
+              <summary>
+                {comuns.length} comuns a quase todos os regulamentos
+              </summary>
+              {/* P3 de novo: o mecanismo se explica UMA vez, no cabeçalho. */}
+              <p className="mecanismo">
+                Passagens que aparecem em quase todo regulamento da Polymarket. São texto
+                padrão da plataforma, não característica deste mercado — e a frequência ao
+                lado de cada uma é o que transforma ruído em contexto.
+              </p>
+              <ul className="achados">
+                {comuns.map(({ achado, frequencia }) => (
+                  <AchadoItem
+                    key={achado.achado_id}
+                    achado={achado}
+                    frequencia={frequencia}
+                  />
+                ))}
+              </ul>
+            </details>
+          )}
+
           {herdados.length > 0 && (
             <details className="dobra">
               <summary>
                 {herdados.length} achados herdados de outros mercados com o mesmo texto de regra
               </summary>
+              {/* O parágrafo do mecanismo, UMA vez (P3). Antes ele vinha
+                  colado em cada item — dez vezes na mesma tela no mercado do
+                  Bolsonaro. É o critério 4 da spec, e é aqui que ele fecha. */}
+              <p className="mecanismo">
+                O modelo nunca leu <em>este</em> mercado: estes achados vieram de mercados
+                irmãos com o mesmo texto de regra. Por isso a descrição, o cenário e as duas
+                leituras são nulos aqui — preenchê-los com os do vizinho faria propagação
+                parecer detecção.
+              </p>
               <ul className="achados">
-                {herdados.map(a => (
-                  <AchadoItem key={a.achado_id} achado={a} />
-                ))}
+                {herdados.map(a =>
+                  // A contradição herdada mantém as DUAS passagens: elas não
+                  // estão destacadas na coluna direita, então aqui é o único
+                  // lugar onde a evidência dela existe. Tirá-las deixaria o
+                  // item com um selo e nada mais.
+                  a.classe === 'contradicao' ? (
+                    <li key={a.achado_id} className="achado contradicao">
+                      <Contradicao_ achado={a} alcance={alcance.get(a.achado_id)} />
+                    </li>
+                  ) : (
+                    <AchadoItem key={a.achado_id} achado={a} />
+                  ),
+                )}
               </ul>
             </details>
           )}
@@ -322,6 +410,37 @@ function BlocoDeTexto({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * O estado vazio de uma seção, e nunca a ausência dela.
+ *
+ * As quatro frases da seção 5 do item 5. `estadoVazio` decide qual; aqui só se
+ * escreve. Cada uma diz uma coisa diferente, e a que mais importa é a terceira:
+ * anunciar "nenhuma" enquanto existem herdadas logo abaixo faria a tela mentir
+ * sobre o que ela própria está exibindo.
+ */
+function Vazio({ estado, o }: { estado: EstadoVazio | null; o: string }) {
+  if (estado === null) return null;
+
+  if (estado.tipo === 'sem-leitura')
+    return <p className="nada">Sem leitura registrada para este texto.</p>;
+
+  if (estado.tipo === 'so-herdados')
+    return (
+      <p className="nada">
+        Nenhuma {o} apontada por uma leitura <em>deste</em> mercado. Há{' '}
+        <strong>{estado.herdados}</strong> herdada
+        {estado.herdados === 1 ? '' : 's'} de outros mercados com o mesmo texto — no bloco
+        recolhido abaixo.
+      </p>
+    );
+
+  return (
+    <p className="nada">
+      {estado.leituras} leitura{estado.leituras === 1 ? '' : 's'}, nenhuma {o}.
+    </p>
   );
 }
 
@@ -408,7 +527,15 @@ function MancheteVsRegra({
  * chosen with. A second copy would drift, and the band would show a headline
  * drawn from a trap its own counter does not count.
  */
-function LinhaDeNumeros({ achados, liquidez }: { achados: Achado[]; liquidez: number | null }) {
+function LinhaDeNumeros({
+  achados,
+  recolhidos,
+  liquidez,
+}: {
+  achados: Achado[];
+  recolhidos: number;
+  liquidez: number | null;
+}) {
   const armadilhas = achados.filter(ehArmadilhaDeResultado).length;
   const contradicoes = achados.filter(
     a => a.classe === 'contradicao' && a.origem === 'acusado',
@@ -421,6 +548,13 @@ function LinhaDeNumeros({ achados, liquidez }: { achados: Achado[]; liquidez: nu
       </span>
       <span>
         <strong>{contradicoes}</strong> contradições acusadas
+      </span>
+      {/* Padrão da casa mais herdados. Vem das listas que a tela realmente
+          desenha, nunca de `ContagemDigest.achados_herdados` — aquele contador
+          é anterior à separação e anunciaria um número que os blocos abaixo
+          não confirmam. */}
+      <span>
+        <strong>{recolhidos}</strong> recolhidos
       </span>
       <span>
         <strong>{dinheiro(liquidez)}</strong> de liquidez
@@ -604,11 +738,12 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
 
       <div className="leituras-do-achado">
         {herdado ? (
-          <p className="herdado-explica">
-            Achado <strong>herdado</strong>: outro mercado com o mesmo texto de regra foi
-            lido e apontou esta contradição. As duas leituras não existem para{' '}
-            <em>este</em> mercado — e a do vizinho não vale aqui.
-          </p>
+          // A SEGUNDA cópia do parágrafo do mecanismo vivia aqui. Foi embora:
+          // a contradição herdada agora mora no bloco recolhido, cujo cabeçalho
+          // já explica por que estas duas leituras são nulas. Era o outro lado
+          // do critério 4 — o parágrafo aparecia uma vez por item em duas
+          // seções diferentes.
+          null
         ) : (
           <>
             <div>
@@ -657,6 +792,7 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
 function AchadoItem({
   achado,
   jaNoVeredito = false,
+  frequencia,
   aceso = false,
   onAcender,
   onApagar,
@@ -664,6 +800,7 @@ function AchadoItem({
 }: {
   achado: Achado;
   jaNoVeredito?: boolean;
+  frequencia?: Frequencia;
   aceso?: boolean;
   onAcender?: () => void;
   onApagar?: () => void;
@@ -689,15 +826,24 @@ function AchadoItem({
         <Selos achado={achado} />
       </div>
 
+      {frequencia && (
+        // A frequência é o produto, não o efeito colateral: saber que um
+        // defeito aparece em 47% dos 267 regulamentos lidos é o que transforma
+        // ruído em contexto. Sempre com o denominador — fração solta é opinião.
+        <p className="frequencia">
+          aparece em {Math.round(frequencia.fracao * 100)}% dos {frequencia.denominador}{' '}
+          regulamentos lidos
+        </p>
+      )}
+
       {jaNoVeredito ? (
         // A faixa do topo já escreveu esta prosa inteira. Repeti-la aqui é a
         // mesma armadilha aparecendo duas vezes na mesma tela.
         <p className="ja-no-veredito">É a armadilha do veredito, no topo desta tela.</p>
       ) : herdado ? (
-        <p className="herdado-explica">
-          Herdado de um mercado com o mesmo texto de regra. A descrição e o cenário são
-          nulos aqui porque não houve leitura deste mercado.
-        </p>
+        // Nada aqui: o parágrafo do mecanismo mora no cabeçalho do bloco, uma
+        // vez só (P3). O item leva o selo `herdado` de `Selos` e mais nada.
+        null
       ) : (
         <>
           {achado.descricao && <p>{achado.descricao}</p>}

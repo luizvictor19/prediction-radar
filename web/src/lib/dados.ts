@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
 import type {
   Achado,
   Contradicao,
@@ -153,6 +154,91 @@ export async function lerLeituras(eventId: string, sha: string): Promise<Leitura
     .order('leitura_n');
   if (error) throw new Error(error.message);
   return (data ?? []) as LeituraRegra[];
+}
+
+/**
+ * O índice de frequência do gate de boilerplate — item 5, seção 7.
+ *
+ * Três leituras sobre o corpus INTEIRO, porque a pergunta que o gate responde é
+ * sobre o corpus: em que fração dos regulamentos lidos esta passagem aparece.
+ * Uma consulta por mercado não conseguiria responder isso.
+ *
+ * ## Por que no cliente, e não numa view
+ *
+ * A chave de contagem é `chaveDoGate`, e ela chama `mascararParaGate` — troca de
+ * mês e número que existe só para juntar `December 31, 2026, 11:59 PM ET` com
+ * `June 30, 2027, 11:59 PM ET` na mesma contagem. Fazer isso em SQL criaria uma
+ * SEGUNDA implementação da máscara, e as duas divergiriam: o relatório de
+ * medição e a tela passariam a discordar sobre o que é padrão da casa, em
+ * silêncio. É o mesmo defeito que a réplica da view e a `normalizarTrecho`
+ * duplicada já custaram.
+ *
+ * O custo medido em 23/08/2026 não compra esse risco de volta: 1264 linhas em
+ * `market_rule_digests`, 3980 em `digest_pegadinhas`, 3252 em
+ * `digest_ambiguidades` — cerca de 8,5 mil linhas, ~10 idas ao servidor pela
+ * paginação de 500. Uma vez por sessão.
+ *
+ * ## Uma promessa em voo, reaproveitada
+ *
+ * O cache é de MÓDULO e guarda a promessa, não o resultado: duas telas abertas
+ * ao mesmo tempo compartilham a mesma requisição em vez de disparar seis. Em
+ * erro a promessa é descartada, para a próxima tela poder tentar de novo em vez
+ * de herdar a falha para sempre.
+ */
+let indiceEmVoo: Promise<IndiceDeBoilerplate> | null = null;
+
+export function lerIndiceDeBoilerplate(): Promise<IndiceDeBoilerplate> {
+  if (indiceEmVoo === null) {
+    indiceEmVoo = carregarIndice().catch(e => {
+      indiceEmVoo = null;
+      throw e;
+    });
+  }
+  return indiceEmVoo;
+}
+
+async function carregarIndice(): Promise<IndiceDeBoilerplate> {
+  type LinhaDigest = { id: string; description_sha256: string };
+  type LinhaFilha = { digest_id: string; tipo: string | null; trecho: string | null };
+
+  const [digests, pegadinhas, ambiguidades] = await Promise.all([
+    paginar<LinhaDigest>((de, ate) =>
+      supabase.from('market_rule_digests').select('id, description_sha256').order('id').range(de, ate),
+    ),
+    paginar<LinhaFilha>((de, ate) =>
+      supabase
+        .from('digest_pegadinhas')
+        // `severidade` vira `tipo`: é o campo que `montarIndice` lê, e na
+        // pegadinha a severidade é o subtipo.
+        .select('digest_id, tipo:severidade, trecho')
+        .order('id')
+        .range(de, ate),
+    ),
+    paginar<LinhaFilha>((de, ate) =>
+      supabase.from('digest_ambiguidades').select('digest_id, tipo, trecho').order('id').range(de, ate),
+    ),
+  ]);
+
+  const shaPorDigest = new Map(digests.map(d => [d.id, d.description_sha256]));
+
+  const linhas: LinhaDeTrecho[] = [];
+  for (const [classe, filhas] of [
+    ['pegadinha', pegadinhas],
+    ['ambiguidade', ambiguidades],
+  ] as const) {
+    for (const f of filhas) {
+      const sha = shaPorDigest.get(f.digest_id);
+      // Filha sem digest é impossível pela FK; se aparecer, sumir em silêncio
+      // encolheria o denominador e inflaria toda fração.
+      if (sha === undefined) continue;
+      linhas.push({ sha, classe, tipo: f.tipo, trecho: f.trecho });
+    }
+  }
+
+  // O denominador é TODO texto lido, inclusive o que não produziu achado
+  // nenhum: um texto lido e limpo é uma chance que a passagem teve de aparecer
+  // e não apareceu.
+  return montarIndice(linhas, [...shaPorDigest.values()]);
 }
 
 /**
