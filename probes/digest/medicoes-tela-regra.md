@@ -20,8 +20,8 @@ Cobertura do roster — o denominador da lista, não o da digestão:
 
 | | |
 | --- | ---: |
-| mercados em `v_radar` | 955 |
-| — sem digestão nenhuma | 44 (4.6%) |
+| mercados em `v_radar` | 976 |
+| — sem digestão nenhuma | 65 (6.7%) |
 | digeridos que já saíram do roster | 122 |
 
 **Conferência da réplica contra `digest_achados_por_mercado`:** 1033 linhas, zero divergência. Se divergisse, este script teria falhado antes de escrever o arquivo.
