@@ -29,9 +29,13 @@ implementa.
 - **Documento interno** — specs, relatórios, este arquivo: português.
 
 A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
-encostar: comentário novo em inglês, o resto do arquivo fica como está. Arquivo
-NOVO nasce em inglês. Normalizar arquivo inteiro é chore separado, nunca carona
-num fix.
+encostar: comentário novo em inglês, o resto do arquivo fica como está.
+Normalizar arquivo inteiro é chore separado, nunca carona num fix.
+
+Arquivo NOVO nasce com todo **comentário** em inglês — não há borda a respeitar
+num arquivo que ninguém escreveu antes. Os **nomes** continuam seguindo a pasta:
+`src/` inglês, `web/` e `scripts/` português. As duas metades da frase têm
+sujeitos diferentes, e é por isso que ela precisa de duas.
 
 **Isto descreve o código que já existe, e o número é medido.** Em 22/08/2026,
 por `npm run medir:idioma`: `src/` tem 61 de 723 nomes em português (**8,4%**),
