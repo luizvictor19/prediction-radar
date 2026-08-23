@@ -330,7 +330,13 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 
 **Campos estruturados no prompt (v5).** A v4 é inconsistente no campo `prazo`: num mercado escreveu `31 de agosto de 2026, 23:59 ET`, no outro `June 30, 2027, 11:59 PM ET`. Isso não é problema de tela — é campo de texto livre onde devia ser valor estruturado. Data em ISO, fonte em enum, e a tela formata em qualquer idioma sem traduzir nada. **Vira issue.**
 
-**As 21 chamadas com digest nulo** (6,6% da rodada de 320) não foram explicadas. Abrir o relatório e classificar: recusa do modelo, falha de validação verbatim, ou erro de rede. Cada uma pede resposta diferente. **Vira issue.**
+**As 21 chamadas com digest nulo** (6,6% da rodada de 320) estão classificadas. **A rodada é a do degrau 3, prompt `v4`, `deepseek-v4-flash`, em 22/08/2026 ~05:39 UTC** — o número tinha sido registrado aqui sem data, e datá-lo depois custou o mtime de `probes/digest/degrau-3-v4.{md,json}` mais o intervalo entre os commits `1fe47dd` (05:09) e `40b2b65` (06:04). A corrida agora carimba a própria data no cabeçalho do relatório, para a próxima não precisar disso.
+
+Refazível por **`npm run medir:digest-nulo`**; relatório em `probes/digest/digest-nulo.md`.
+
+Nenhuma das três causas que esta seção supunha é a que domina. **Trava de opinião: 17 de 21** — e dentro dela, 12 são vocabulário que a própria REGRA fornece (a boilerplate "prospective, contingent, probable or conditional statements do not count" derruba 8 mercados sozinha, todos com o mesmo texto byte a byte) e 5 são hedge do modelo sobre a própria leitura. **Transporte: 3 de 21** (`api_error`, `not_json`). **Enum inventado: 1 de 21.** **Recusa do modelo: 0** — o código `refusal` existe e não disparou. **Falha de validação verbatim: 0 por construção** — a conferência do `trecho` poda o item e soma em `descartes`, nunca lança, então não pode produzir digest nulo.
+
+Respostas, uma por causa, no relatório. Duas são "aceitar, e por quê": o hedge (1,6% das chamadas, preço que o comentário de `OPINIAO` já tinha escolhido pagar) e o enum (0,3%). **Sobra uma issue:** estreitar `detectarOpiniao` para não recusar por causa do texto que ela está extraindo.
 
 **`readMarketsToDigest` sem filtro de status** — US$ 0,22 dos US$ 1,08 desta rodada foram gastos lendo regra de mercado já resolvido, 20% do custo, crescendo sem teto. **Já na lista de issues.**
 

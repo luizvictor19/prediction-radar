@@ -44,6 +44,7 @@
     "medir:tela-regra": "tsx scripts/medicoes/tela-regra.ts",
     "medir:idioma": "tsx scripts/medicoes/idioma.ts",
     "medir:texto-perdido": "tsx scripts/medicoes/texto-perdido.ts",
+    "medir:digest-nulo": "tsx scripts/medicoes/digest-nulo.ts",
     "nivelar": "tsx scripts/nivelar-leituras.ts",
     "radar:lista": "tsx scripts/montar-lista-radar.ts",
     "radar:coletor": "tsx scripts/radar-coletor.ts",
