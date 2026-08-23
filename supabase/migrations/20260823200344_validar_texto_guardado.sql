@@ -1,0 +1,123 @@
+-- A segunda metade da issue #9: validar a FK que a `20260823190031` deixou
+-- `not valid`.
+--
+-- ---------------------------------------------------------------------------
+-- Por que isto é uma migration separada, e não podia não ser
+-- ---------------------------------------------------------------------------
+--
+-- `market_rule_digests_texto_guardado` nasceu `not valid` porque no instante
+-- daquele apply `market_rule_texts` estava VAZIA: as 1.264 linhas de
+-- `market_rule_digests` violariam a constraint todas de uma vez. `not valid`
+-- comprou o que importava — escrita NOVA passou a ser recusada sem o texto
+-- guardado, que é onde o vazamento acontecia — e adiou o resto.
+--
+-- O resto é este arquivo, e ele só existe depois do backfill. Escrevê-lo junto
+-- com o primeiro teria sido convidar um `supabase db push` a rodar os dois na
+-- mesma passada, com a tabela ainda vazia, e a falhar — por isso ele foi
+-- escrito agora e não antes.
+--
+-- ---------------------------------------------------------------------------
+-- O backfill rodou, e estes são os números
+-- ---------------------------------------------------------------------------
+--
+-- `npm run backfill:texto-da-regra -- --confirmar`, 23/08/2026:
+--
+--   textos guardados                267 de 267   (100,0%)
+--   ainda recuperáveis de events      0
+--   TEXTO PERDIDO                     0
+--
+-- Nenhuma evidência foi perdida. A taxa de recuperação foi de 100% porque o
+-- backfill correu antes de a Polymarket editar qualquer uma das descrições
+-- digeridas — e essa janela não voltaria a se abrir.
+--
+-- ---------------------------------------------------------------------------
+-- Toda chave tem destino. Conferido ANTES, e não descoberto durante
+-- ---------------------------------------------------------------------------
+--
+-- `validate constraint` percorre as 1.264 linhas perguntando, uma a uma, se o
+-- `description_sha256` delas existe em `market_rule_texts`. É a mesma pergunta
+-- que este SELECT faz de uma vez, e ele foi rodado em 23/08/2026, depois do
+-- backfill e antes deste arquivo existir:
+--
+--   select count(*)
+--     from public.market_rule_digests d
+--     left join public.market_rule_texts t using (description_sha256)
+--    where t.description_sha256 is null;
+--   -- devolveu: 0
+--
+-- Com o recorte completo:
+--
+--   market_rule_digests        1264 linhas
+--     textos distintos citados  267
+--   market_rule_texts           267 linhas
+--   LINHAS SEM DESTINO            0
+--
+-- Os dois 267 são o mesmo 267: não há texto guardado que ninguém cite, nem
+-- texto citado que não esteja guardado. As duas tabelas fecham exatamente.
+--
+-- ## O que uma falha aqui faria de verdade
+--
+-- Menos do que assusta, e vale escrever para ninguém decidir com medo errado:
+-- `validate constraint` roda dentro de uma transação, e uma linha em violação
+-- aborta e faz ROLLBACK. A constraint fica exatamente como estava — `not valid`,
+-- ainda barrando escrita nova — e nada de meio-caminho sobra no schema. Não
+-- existe estado "meio validado".
+--
+-- O SELECT acima continua sendo a coisa certa a fazer: ele troca um apply que
+-- falha às três da manhã por um número lido de dia. Mas o custo do erro é uma
+-- migration vermelha, não um banco em estado indeterminado.
+--
+-- ## O lock, porque é a única coisa que este arquivo faz em produção
+--
+-- `validate constraint` toma SHARE UPDATE EXCLUSIVE em `market_rule_digests` e
+-- ROW SHARE em `market_rule_texts`. Não bloqueia `select`, `insert`, `update`
+-- nem `delete` — só outro DDL na mesma tabela. Sobre 1.264 linhas com o outro
+-- lado indexado pela chave primária, é instantâneo.
+--
+-- Nada aqui varre `events`.
+
+alter table public.market_rule_digests
+  validate constraint market_rule_digests_texto_guardado;
+
+-- ---------------------------------------------------------------------------
+-- O que muda depois deste apply
+-- ---------------------------------------------------------------------------
+--
+-- Antes: digestão NOVA sem texto guardado era recusada; as 1.264 antigas eram
+-- aceitas como estavam, sem ninguém ter conferido.
+--
+-- Depois: a garantia vale para a tabela INTEIRA, passado incluído, e o Postgres
+-- passa a poder usar a constraint para raciocinar sobre os dados. "Todo achado
+-- aponta para um texto que este banco possui" deixa de ser uma medição que
+-- alguém precisa lembrar de rodar e vira propriedade do schema.
+--
+-- ---------------------------------------------------------------------------
+-- Verificação depois do apply
+-- ---------------------------------------------------------------------------
+--
+--   -- 1. a constraint agora está validada. Espera: t
+--   select convalidated from pg_constraint
+--    where conname = 'market_rule_digests_texto_guardado';
+--
+--   -- 2. a mesma pergunta do SELECT de cima, agora garantida pelo banco.
+--   --    Espera: 0, e agora por construção e não por sorte.
+--   select count(*)
+--     from public.market_rule_digests d
+--     left join public.market_rule_texts t using (description_sha256)
+--    where t.description_sha256 is null;
+--
+--   -- 3. a medição de drift continua rodando e continua tendo que dar zero:
+--   --    npm run medir:texto-perdido
+--   --    espera: 267 guardados, 0 recuperáveis, 0 perdidos
+--
+-- ---------------------------------------------------------------------------
+-- O que esta migration NÃO faz
+-- ---------------------------------------------------------------------------
+--
+-- 1. Não cria nada e não apaga nada. Uma linha de DDL, e ela só muda o
+--    `convalidated` de uma constraint que já existe.
+-- 2. Não guarda texto nenhum. Se algum dia o `medir:texto-perdido` voltar a
+--    acusar texto recuperável, quem guarda é o backfill — e a existência desse
+--    número acima de zero significa que uma digestão entrou sem o texto junto,
+--    o que a FK agora torna impossível pelo caminho normal.
+-- 3. Não toca em `events`.

@@ -266,6 +266,16 @@ export async function readDigested(): Promise<DigestedIndex> {
 }
 
 export interface DigestRows {
+  /**
+   * The row of `market_rule_texts`: the digested text, stored under its hash.
+   *
+   * It travels in the artifact with the digest that produced it so the text is
+   * stored the moment it was read, rather than recovered from
+   * `events.description` afterwards — which only works until Polymarket edits
+   * the description. The backfill of issue #9 cleans the past; this closes the
+   * leak that would refill it.
+   */
+  text: Record<string, unknown>;
   digest: Record<string, unknown>;
   /** Linhas de `digest_pegadinhas`, sem `digest_id` — ele só existe no insert. */
   pegadinhas: Record<string, unknown>[];
@@ -273,7 +283,7 @@ export interface DigestRows {
 }
 
 /**
- * As linhas das três tabelas, montadas e devolvidas — não gravadas.
+ * As linhas das quatro tabelas, montadas e devolvidas — não gravadas.
  *
  * Escrita é do dono, e as tabelas nem existem ainda. O que o projeto ganha com a
  * função existindo antes do apply é o payload conferido contra as colunas da
@@ -297,6 +307,16 @@ export function buildDigestRows(
   leituraN = 1,
 ): DigestRows {
   return {
+    // The two fields come from the same string by construction:
+    // `readMarketsToDigest` trims the description before handing it to the
+    // model, and `result.descriptionSha256` is `hashDescription` of exactly that
+    // trimmed text. Recomputing the hash here would be a second chance to
+    // disagree with the digest row sitting right below.
+    text: {
+      description_sha256: result.descriptionSha256,
+      description: market.input.description,
+      guardado_por: 'digestao',
+    },
     digest: {
       event_id: market.eventId,
       description_sha256: result.descriptionSha256,

@@ -141,6 +141,11 @@ export function leiturasPorTexto(
  * foi editada depois da digestão, os dois deixam de ser a mesma coisa, e
  * destacar os trechos de um sobre o outro atribuiria citação a um texto que não
  * a contém — que é P1 quebrado no lugar mais caro.
+ *
+ * The digested text itself now lives in `market_rule_texts`, addressed by this
+ * hash (issue #9), and what picks between it and the current description is
+ * `escolherRegulamento`. This function answers only the half of the question the
+ * browser owns: the hash of what it holds.
  */
 export async function sha256Hex(texto: string): Promise<string> {
   const bytes = new TextEncoder().encode(texto.trim());

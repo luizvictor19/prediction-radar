@@ -1581,7 +1581,12 @@ async function main(): Promise<void> {
   );
   await writeFile(`${base}.md`, md, 'utf8');
 
-  // O JSON carrega as LINHAS das três tabelas, montadas por `buildDigestRows`. O
+  // The fourth table is `market_rule_texts`: the digested text travels with the
+  // digest that produced it, so it is stored the moment it was read instead of
+  // recovered from `events.description` later, which only works until Polymarket
+  // edits the description (issue #9).
+  //
+  // O JSON carrega as LINHAS das quatro tabelas, montadas por `buildDigestRows`. O
   // script não grava — a migration não foi aplicada, e escrita é do dono. Quando
   // as tabelas existirem, o payload já está conferido.
   //
@@ -1603,7 +1608,7 @@ async function main(): Promise<void> {
 
   console.log(section('Onde ficou'));
   console.log(`  ${base}.md    — as digestões para ler`);
-  console.log(`  ${base}.json  — as linhas das três tabelas, prontas e NÃO gravadas`);
+  console.log(`  ${base}.json  — as linhas das quatro tabelas, prontas e NÃO gravadas`);
 }
 
 main().catch((err: unknown) => {

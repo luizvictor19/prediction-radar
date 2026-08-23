@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
 import { chaveDaLinha } from './concordancia';
 import { COLUNAS_CONTAGEM, ordenarContagens, paginar, type Resposta } from './paginacao';
+import type { TextoGuardado } from './regulamento';
 import type {
   Achado,
   Contradicao,
@@ -259,8 +260,13 @@ export async function lerContradicoes(defeitoIds: string[]): Promise<Contradicao
 }
 
 /**
- * O texto cru do regulamento. Lookup por PK — index scan de uma linha, não
- * varredura. Fica atrás de um "ver o texto original" fechado por padrão.
+ * The market's CURRENT description. Primary-key lookup -- a one-row index scan,
+ * not a table scan.
+ *
+ * "Current" is the word that matters: `events.description` is overwritten in
+ * place when Polymarket edits the rule, so this can be a different document from
+ * the one that produced the findings. What decides whether it serves is
+ * `escolherRegulamento`, and its answer depends on the hash.
  */
 export async function lerTextoDaRegra(eventId: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -270,6 +276,47 @@ export async function lerTextoDaRegra(eventId: string): Promise<string | null> {
     .single();
   if (error) throw new Error(error.message);
   return (data as { description: string | null } | null)?.description ?? null;
+}
+
+/**
+ * Does the table not exist, or did the query fail?
+ *
+ * Both arrive as an error and they mean the opposite of each other. A missing
+ * table is an ANSWER -- before the `20260823190031` apply no text is stored, and
+ * that is what the screen should say. A network failure is the absence of an
+ * answer, and asserting "not stored" on top of it would accuse the database of a
+ * loss that may not exist.
+ *
+ * `42P01` is Postgres's `undefined_table`; `PGRST205` is PostgREST's "no such
+ * table in the schema cache", which is what arrives first in practice.
+ */
+function tabelaAusente(error: { code?: string; message: string }): boolean {
+  if (error.code === '42P01' || error.code === 'PGRST205') return true;
+  return /market_rule_texts/.test(error.message) && /(does not exist|not find)/i.test(error.message);
+}
+
+/**
+ * The rule text stored under a hash -- `market_rule_texts`, issue #9.
+ *
+ * It is the screen's only read that does not depend on `events`: the digested
+ * text is here because it was stored at the moment of digestion (or recovered by
+ * the backfill while that was still possible), and it stays here after Polymarket
+ * edits the description. Primary-key lookup on a table of a few hundred rows.
+ */
+export async function lerTextoGuardado(sha: string): Promise<TextoGuardado> {
+  const { data, error } = await supabase
+    .from('market_rule_texts')
+    .select('description')
+    .eq('description_sha256', sha)
+    .maybeSingle();
+
+  if (error) {
+    const e = error as { code?: string; message: string };
+    return tabelaAusente(e) ? { fase: 'ausente' } : { fase: 'erro', motivo: e.message };
+  }
+
+  const linha = data as { description: string } | null;
+  return linha === null ? { fase: 'ausente' } : { fase: 'guardado', texto: linha.description };
 }
 
 export type Previsao = {
