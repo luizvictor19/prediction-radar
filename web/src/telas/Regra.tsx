@@ -24,7 +24,8 @@ import {
 import { leiturasPorTexto, sha256Hex, textosParaLer } from '../lib/regras';
 import { ehArmadilha, ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
 import { separarHerdados } from '../lib/herdados';
-import { destacar, type PedidoDeDestaque } from '../lib/destaque';
+import { destacar, type Segmento } from '../lib/destaque';
+import { mostraTrechoNaEsquerda } from '../lib/evidencia';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
 /**
@@ -301,6 +302,25 @@ function BlocoDeTexto({
   // topo já a escreveu inteira, palavra por palavra.
   const veredito = escolherVeredito(achados);
 
+  /**
+   * O destaque é calculado AQUI, e não dentro da coluna direita, porque as duas
+   * colunas precisam do mesmo conjunto: o invariante de `evidencia.ts` é que o
+   * trecho aparece exatamente uma vez, e para a esquerda saber se deve mostrá-lo
+   * ela tem que saber o que a direita marcou de fato.
+   *
+   * "De fato" é a palavra que importa: `naoLocalizados` não entra em
+   * `destacados`, então uma armadilha com âncora quebrada volta a mostrar a
+   * citação no item, em vez de sumir dos dois lados.
+   */
+  const mesmoTexto = regulamento !== null && shaRegulamento === linha.description_sha256;
+  const { segmentos, naoLocalizados } = destacar(
+    mesmoTexto ? regulamento : '',
+    mesmoTexto
+      ? visiveis.map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const }))
+      : [],
+  );
+  const destacados = new Set(segmentos.flatMap(s => s.ids));
+
   function irAteOTrecho(id: string) {
     document.getElementById(`trecho-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
@@ -353,6 +373,7 @@ function BlocoDeTexto({
                 <AchadoItem
                   key={a.achado_id}
                   achado={a}
+                  mostraTrecho={mostraTrechoNaEsquerda(a, destacados)}
                   jaNoVeredito={a.achado_id === veredito?.achado_id}
                   {...ligacao(a)}
                 />
@@ -384,7 +405,11 @@ function BlocoDeTexto({
               <summary>Outras ambiguidades acusadas ({resto.length})</summary>
               <ul className="achados">
                 {resto.map(a => (
-                  <AchadoItem key={a.achado_id} achado={a} />
+                  <AchadoItem
+                    key={a.achado_id}
+                    achado={a}
+                    mostraTrecho={mostraTrechoNaEsquerda(a, destacados)}
+                  />
                 ))}
               </ul>
             </details>
@@ -402,13 +427,23 @@ function BlocoDeTexto({
                 lado de cada uma é o que transforma ruído em contexto.
               </p>
               <ul className="achados">
-                {comuns.map(({ achado, frequencia }) => (
-                  <AchadoItem
-                    key={achado.achado_id}
-                    achado={achado}
-                    frequencia={frequencia}
-                  />
-                ))}
+                {comuns.map(({ achado, frequencia }) =>
+                  // Contradição comum passa pelo `Contradicao_`, como no bloco
+                  // herdado: as duas passagens dela não estão destacadas em
+                  // lugar nenhum, e o item sozinho não as mostraria.
+                  achado.classe === 'contradicao' ? (
+                    <li key={achado.achado_id} className="achado contradicao">
+                      <Contradicao_ achado={achado} alcance={alcance.get(achado.achado_id)} />
+                    </li>
+                  ) : (
+                    <AchadoItem
+                      key={achado.achado_id}
+                      achado={achado}
+                      frequencia={frequencia}
+                      mostraTrecho={mostraTrechoNaEsquerda(achado, destacados)}
+                    />
+                  ),
+                )}
               </ul>
             </details>
           )}
@@ -438,7 +473,11 @@ function BlocoDeTexto({
                       <Contradicao_ achado={a} alcance={alcance.get(a.achado_id)} />
                     </li>
                   ) : (
-                    <AchadoItem key={a.achado_id} achado={a} />
+                    <AchadoItem
+                      key={a.achado_id}
+                      achado={a}
+                      mostraTrecho={mostraTrechoNaEsquerda(a, destacados)}
+                    />
                   ),
                 )}
               </ul>
@@ -449,9 +488,10 @@ function BlocoDeTexto({
         {/* DIREITA: prova. A cláusula onde ela vive, não recortada. */}
         <ColunaDireita
           regulamento={regulamento}
-          shaRegulamento={shaRegulamento}
+          mesmoTexto={mesmoTexto}
           shaDoBloco={linha.description_sha256}
-          armadilhas={visiveis}
+          segmentos={segmentos}
+          naoLocalizados={naoLocalizados.length}
           aceso={aceso}
           tamanho={mercado.tamanho_regra}
         />
@@ -648,17 +688,20 @@ function LinhaDeNumeros({
  */
 function ColunaDireita({
   regulamento,
-  shaRegulamento,
+  mesmoTexto,
   shaDoBloco,
-  armadilhas,
+  segmentos,
+  naoLocalizados,
   aceso,
   tamanho,
 }: {
   regulamento: string | null;
-  shaRegulamento: string | null;
+  /** O texto na tela é o que produziu estes achados? */
+  mesmoTexto: boolean;
   shaDoBloco: string;
-  /** Só as VISÍVEIS na esquerda — ver o comentário em `pedidos`. */
-  armadilhas: Achado[];
+  /** Já calculado em `BlocoDeTexto`: as duas colunas leem o MESMO destaque. */
+  segmentos: Segmento[];
+  naoLocalizados: number;
   aceso: string | null;
   tamanho: number | null;
 }) {
@@ -691,7 +734,7 @@ function ColunaDireita({
   }
 
   // O texto na tela é o de OUTRA versão da regra: não destaca.
-  if (shaRegulamento !== null && shaRegulamento !== shaDoBloco) {
+  if (!mesmoTexto) {
     return (
       <aside className="coluna-direita">
         <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
@@ -709,22 +752,6 @@ function ColunaDireita({
     );
   }
 
-  // Só as armadilhas VISÍVEIS na esquerda. Destacar também as escondidas atrás
-  // do "ver mais" pinta quase todo parágrafo, e um destaque que cobre tudo não
-  // distingue nada — vira fundo. O que a esquerda mostra é o que a direita
-  // acende, e os dois lados sobem juntos quando o "ver mais" abre.
-  //
-  // `forte` = muda o resultado ou o prazo. O tom `clara` fica para quando o gate
-  // de boilerplate tiver as consultas de frequência: sem elas nada é "comum a
-  // quase todo regulamento", e pintar de claro por outro critério seria rotular
-  // errado.
-  const pedidos: PedidoDeDestaque[] = armadilhas.map(a => ({
-    id: a.achado_id,
-    trecho: a.trecho,
-    marca: 'forte' as const,
-  }));
-
-  const { segmentos, naoLocalizados } = destacar(regulamento, pedidos);
   const tons = new Set(segmentos.map(s => s.marca).filter(Boolean));
 
   // A âncora do clique vai no PRIMEIRO segmento de cada achado: um trecho pode
@@ -757,14 +784,15 @@ function ColunaDireita({
         )}
       </pre>
 
-      {naoLocalizados.length > 0 && (
+      {naoLocalizados > 0 && (
         // A razão de `destacar` devolver duas coisas. Sem isto a coluna
         // mostraria menos destaques do que a esquerda mostra achados, e
         // ninguém contaria os dois lados para perceber.
         <p className="nao-localizado">
-          {naoLocalizados.length}{' '}
-          {naoLocalizados.length === 1 ? 'trecho não localizado' : 'trechos não localizados'} no
-          texto acima. O achado continua na coluna da esquerda; o que falhou foi a âncora dele.
+          {naoLocalizados}{' '}
+          {naoLocalizados === 1 ? 'trecho não localizado' : 'trechos não localizados'} no texto
+          acima. A citação desses achados voltou para o item, à esquerda — o que falhou foi a
+          âncora, não a evidência.
         </p>
       )}
 
@@ -880,6 +908,7 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
  */
 function AchadoItem({
   achado,
+  mostraTrecho = true,
   jaNoVeredito = false,
   frequencia,
   aceso = false,
@@ -888,6 +917,8 @@ function AchadoItem({
   onIr,
 }: {
   achado: Achado;
+  /** Ver `evidencia.ts`: falso só quando o trecho está destacado à direita. */
+  mostraTrecho?: boolean;
   jaNoVeredito?: boolean;
   frequencia?: Frequencia;
   aceso?: boolean;
@@ -915,6 +946,12 @@ function AchadoItem({
         <Selos achado={achado} />
       </div>
 
+      {mostraTrecho && achado.trecho && (
+        // A citação, quando ela não está marcada dentro do regulamento. O
+        // invariante de `evidencia.ts`: exatamente um dos dois lados a mostra.
+        <blockquote>{achado.trecho}</blockquote>
+      )}
+
       {frequencia && (
         // A frequência é o produto, não o efeito colateral: saber que um
         // defeito aparece em 47% dos 267 regulamentos lidos é o que transforma
@@ -940,6 +977,22 @@ function AchadoItem({
             <p className="cenario">
               <span className="rotulo">cenário</span>
               {achado.cenario}
+            </p>
+          )}
+          {/* A prosa da ambiguidade SÃO as duas leituras: a view anula
+              `descricao` e `cenario` nela por construção. Sem isto, uma
+              ambiguidade acusada renderiza como uma fileira de selos e nada
+              mais. */}
+          {achado.leitura_a && (
+            <p className="leitura">
+              <span className="rotulo">leitura A</span>
+              {achado.leitura_a}
+            </p>
+          )}
+          {achado.leitura_b && (
+            <p className="leitura">
+              <span className="rotulo">leitura B</span>
+              {achado.leitura_b}
             </p>
           )}
         </>
