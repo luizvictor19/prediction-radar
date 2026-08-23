@@ -1003,7 +1003,9 @@ async function main(): Promise<void> {
 
   // ---- O artefato ----
   //
-  // As linhas das três tabelas, montadas e NÃO gravadas — escrita é do dono.
+  // The fourth table is `market_rule_texts`, carrying the rule text (issue #9).
+  //
+  // As linhas das quatro tabelas, montadas e NÃO gravadas — escrita é do dono.
   // `leitura_n` vai em cada uma: é o que faz a carga distinguir esta leitura da
   // que já estava lá, e sem ele o artefato seria impossível de carregar.
   await mkdir(dirname(ARTEFATO), { recursive: true });
@@ -1022,7 +1024,7 @@ async function main(): Promise<void> {
   await writeFile(`${ARTEFATO}.json`, JSON.stringify(linhas, null, 2), 'utf8');
 
   console.log(section('Onde ficou'));
-  console.log(`  ${ARTEFATO}.json  — as linhas das três tabelas, com leitura_n, NÃO gravadas`);
+  console.log(`  ${ARTEFATO}.json  — as linhas das quatro tabelas, com leitura_n, NÃO gravadas`);
   console.log('\n  Para carregar (o dono, depois de aplicar a 20260817163046):');
   console.log(`    npm run carregar-digest -- --arquivo=${ARTEFATO}.json`);
   console.log('    npm run nivelar -- --conferir');

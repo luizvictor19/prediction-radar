@@ -3,6 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { section, table } from './lib/probe-net.js';
 import { supabase } from '../src/lib/supabase.js';
 import { readDigested, jaCarregado, type DigestedIndex } from '../src/digest/store.js';
+import {
+  planBackfill,
+  type DigestedTextRef,
+  type LostText,
+  type TextToStore,
+} from '../src/digest/texts.js';
 import { tiposDe } from '../src/digest/prompts.js';
 import { SEVERIDADES } from '../src/digest/prompts.js';
 
@@ -91,6 +97,14 @@ interface Entrada {
   digest: Record<string, unknown>;
   pegadinhas: Record<string, unknown>[];
   ambiguidades: Record<string, unknown>[];
+  /**
+   * The `market_rule_texts` row, when the artifact carries one.
+   *
+   * Optional because artifacts older than issue #9 -- `degrau-3-v4.json`
+   * included -- do not store the text. For those the load recovers it from
+   * `events.description` and checks the hash, which is the backfill's own sum.
+   */
+  text?: Record<string, unknown>;
 }
 
 interface Falha {
@@ -186,6 +200,138 @@ function chaveDe(d: Record<string, unknown>): string {
   return [d['event_id'], d['description_sha256'], d['model'], d['prompt_version'], leituraDe(d)].join(
     '|',
   );
+}
+
+// ---------------------------------------------------------------------------
+// The rule text, which goes in BEFORE the digest
+// ---------------------------------------------------------------------------
+
+/**
+ * `market_rule_digests.description_sha256` has a foreign key to
+ * `market_rule_texts` (`market_rule_digests_texto_guardado`, `20260823190031`).
+ * Writing the digest before the text is not the preferable order: it is the only
+ * one there is. Without the text, the parent insert is refused by the database.
+ *
+ * And it is that way on purpose. The digested text is only recoverable while
+ * Polymarket has not edited the description, so the moment of the load is the
+ * last cheap hour to store it. Structure constrains; instructions do not.
+ *
+ * Two sources, in this order:
+ *
+ *   1. the artifact itself, when it carries `text` -- the new path, where the
+ *      text comes from when the model read it;
+ *   2. `events.description`, for an old artifact, with the hash checked.
+ *
+ * Both go through the SAME `planBackfill` the backfill uses, which is pure and
+ * tested. A text is only stored under a hash it produces itself -- either way.
+ */
+interface PlanoDeTextos {
+  aGravar: TextToStore[];
+  jaGuardados: number;
+  /** Digests whose text exists nowhere. The load cannot run. */
+  semTexto: LostText[];
+}
+
+async function lerTextosGuardados(): Promise<Set<string> | null> {
+  const guardados = new Set<string>();
+  for (let de = 0; ; de += 500) {
+    const { data, error } = await supabase
+      .from('market_rule_texts')
+      .select('description_sha256')
+      .order('description_sha256')
+      .range(de, de + 499);
+    if (error) return null;
+    const linhas = (data ?? []) as { description_sha256: string }[];
+    for (const l of linhas) guardados.add(l.description_sha256);
+    if (linhas.length < 500) return guardados;
+  }
+}
+
+async function lerDescricoes(ids: readonly string[]): Promise<Map<string, string | null>> {
+  const porId = new Map<string, string | null>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, description')
+      .in('id', ids.slice(i, i + 200));
+    if (error) throw new Error(`events: ${error.message}`);
+    for (const row of (data ?? []) as { id: string; description: string | null }[])
+      porId.set(row.id, row.description);
+  }
+  return porId;
+}
+
+async function planejarTextos(
+  pendentes: readonly Entrada[],
+  guardados: ReadonlySet<string>,
+): Promise<PlanoDeTextos> {
+  const refs: DigestedTextRef[] = pendentes.map(e => ({
+    eventId: String(e.digest['event_id']),
+    descriptionSha256: String(e.digest['description_sha256']),
+  }));
+
+  // First pass: only what the artifact carries. `planBackfill` checks the hash,
+  // so a `text` that does not match the `description_sha256` of its own entry is
+  // dropped here instead of stored as though it were the rule.
+  const doArtefato = new Map<string, string | null>();
+  for (const e of pendentes) {
+    const texto = e.text?.['description'];
+    if (typeof texto === 'string') doArtefato.set(String(e.digest['event_id']), texto);
+  }
+  const comArtefato = planBackfill(refs, doArtefato, guardados);
+
+  if (comArtefato.unrecoverable.length === 0) {
+    return {
+      aGravar: comArtefato.toStore,
+      jaGuardados: comArtefato.alreadyStored.length,
+      semTexto: [],
+    };
+  }
+
+  // Second pass, only for what is left: `events.description`, by primary key.
+  // It is the old-artifact path, and it reads only the markets the first pass
+  // did not resolve.
+  const faltando = comArtefato.unrecoverable;
+  const shasFaltando = new Set(faltando.map(t => t.descriptionSha256));
+  const idsFaltando = [...new Set(faltando.flatMap(t => t.markets))];
+  const deEvents = await lerDescricoes(idsFaltando);
+  const comEvents = planBackfill(
+    refs.filter(r => shasFaltando.has(r.descriptionSha256)),
+    deEvents,
+    new Set(),
+  );
+
+  return {
+    aGravar: [...comArtefato.toStore, ...comEvents.toStore],
+    jaGuardados: comArtefato.alreadyStored.length,
+    semTexto: comEvents.unrecoverable,
+  };
+}
+
+/**
+ * `upsert` with `ignoreDuplicates`, for the backfill's own reason: the primary
+ * key is the hash, "it is already there" is the right answer and not an error,
+ * and a crash halfway has to be able to continue.
+ */
+async function gravarTextos(
+  textos: readonly TextToStore[],
+  guardadoPor: string,
+): Promise<number> {
+  let gravados = 0;
+  for (let i = 0; i < textos.length; i += LOTE) {
+    const lote = textos.slice(i, i + LOTE).map(t => ({
+      description_sha256: t.descriptionSha256,
+      description: t.description,
+      guardado_por: guardadoPor,
+    }));
+    const { data, error } = await supabase
+      .from('market_rule_texts')
+      .upsert(lote, { onConflict: 'description_sha256', ignoreDuplicates: true })
+      .select('description_sha256');
+    if (error !== null) throw new Error(`insert em market_rule_texts falhou: ${error.message}`);
+    gravados += data?.length ?? 0;
+  }
+  return gravados;
 }
 
 // ---------------------------------------------------------------------------
@@ -561,7 +707,7 @@ async function main(): Promise<void> {
     process.exit(1);
     return;
   }
-  console.log(`  validação:           as ${entradas.length} passam nos CHECKs das três tabelas`);
+  console.log(`  validação:           as ${entradas.length} passam nos CHECKs das três tabelas do digest`);
 
   // A tabela tem que existir. Sem ela, `readDigested` devolve tabelaExiste=false
   // e uma carga que "não pulou nada" seria indistinguível de uma que não pode
@@ -629,11 +775,29 @@ async function main(): Promise<void> {
     );
   }
 
+  // The text comes first, and without it the load does not run. A missing table
+  // stops the script for the same reason a missing `market_rule_digests` does:
+  // writing a digest with no stored text is the state issue #9 exists to make
+  // impossible, and the foreign key would refuse it mid-load instead of here.
+  const textosGuardados = await lerTextosGuardados();
+  if (textosGuardados === null) {
+    console.error(
+      `\n[${LABEL}] market_rule_texts não existe. Aplique a\n` +
+        '  20260823190031_guardar_texto_da_regra.sql antes de carregar.\n' +
+        '  Este script não aplica migration — quem aplica é o dono. Nada foi gravado.',
+    );
+    process.exit(1);
+    return;
+  }
+  const textos = await planejarTextos(pendentes, textosGuardados);
+
   const problemas = validar(pendentes);
   console.log(
     table(
       ['medida', 'valor'],
       [
+        ['textos a guardar', String(textos.aGravar.length)],
+        ['textos já guardados', String(textos.jaGuardados)],
         ['digestões a gravar', String(pendentes.length)],
         ['já gravadas (puladas)', String(entradas.length - pendentes.length)],
         ['pegadinhas a gravar', String(pendentes.reduce((n, e) => n + e.pegadinhas.length, 0))],
@@ -661,6 +825,23 @@ async function main(): Promise<void> {
     return;
   }
 
+  // A digest whose text is in neither the artifact nor `events` is a digest born
+  // without its evidence. The foreign key would refuse it anyway; refusing here
+  // is the difference between an error and a half-written load.
+  if (textos.semTexto.length > 0) {
+    console.error(
+      `\n[${LABEL}] a carga NÃO vai rodar — ${textos.semTexto.length} texto(s) de regra não\n` +
+        '  existem nem no artefato nem em events.description, e a FK\n' +
+        '  market_rule_digests_texto_guardado recusaria as digestões deles:',
+    );
+    for (const t of textos.semTexto) {
+      const motivo = t.reason === 'edited' ? 'descrição editada' : 'sem descrição';
+      console.error(`    ${t.descriptionSha256.slice(0, 8)}  ${motivo}  ${t.markets.join(', ')}`);
+    }
+    process.exit(1);
+    return;
+  }
+
   if (pendentes.length === 0) {
     console.log('\n  nada a fazer: tudo deste arquivo já está no banco.');
     return;
@@ -668,13 +849,34 @@ async function main(): Promise<void> {
 
   if (!parsed.confirmar) {
     console.log(
-      `\n[${LABEL}] DRY RUN: nada foi escrito. A validação passou nas ${pendentes.length} digestões.\n` +
+      `\n[${LABEL}] DRY RUN: nada foi escrito. A validação passou nas ${pendentes.length} digestões,\n` +
+        `  e os ${textos.aGravar.length} textos delas estão conferidos contra o próprio hash.\n` +
         `  Para gravar: npm run carregar-digest -- --arquivo=${parsed.arquivo} --confirmar`,
     );
     return;
   }
 
   console.log(section('Gravando'));
+
+  // The texts first, all of them, before the first batch of digests: the foreign
+  // key is per row, and a batch whose text has not landed yet would be refused
+  // whole. A stored text with no digest citing it is harmless -- the right cost
+  // if something falls over in the middle here.
+  //
+  // `guardado_por` is 'digestao' when the text came in the artifact and
+  // 'backfill' when it was recovered from events. The column exists to tell
+  // exactly those apart, and the second case only happens with an artifact older
+  // than issue #9.
+  const daCarga = new Set(
+    pendentes
+      .map(e => e.text?.['description_sha256'])
+      .filter((s): s is string => typeof s === 'string'),
+  );
+  const textosGravados =
+    (await gravarTextos(textos.aGravar.filter(t => daCarga.has(t.descriptionSha256)), 'digestao')) +
+    (await gravarTextos(textos.aGravar.filter(t => !daCarga.has(t.descriptionSha256)), 'backfill'));
+  console.log(`  ${textosGravados} textos em market_rule_texts`);
+
   const total: Resultado = { digests: 0, pegadinhas: 0, ambiguidades: 0, orfas: [] };
 
   for (let i = 0; i < pendentes.length; i += LOTE) {
@@ -692,6 +894,7 @@ async function main(): Promise<void> {
     table(
       ['tabela', 'linhas'],
       [
+        ['market_rule_texts', String(textosGravados)],
         ['market_rule_digests', String(total.digests)],
         ['digest_pegadinhas', String(total.pegadinhas)],
         ['digest_ambiguidades', String(total.ambiguidades)],

@@ -5,6 +5,7 @@ import {
   lerCorpusDigerido,
   lerLeituras,
   lerTextoDaRegra,
+  lerTextoGuardado,
 } from '../lib/dados';
 import { separarBoilerplate, type Frequencia } from '../lib/boilerplate';
 import { anexarLeituras } from '../lib/concordancia';
@@ -23,6 +24,12 @@ import {
   valores,
 } from '../lib/leituras';
 import { leiturasPorTexto, sha256Hex, textosParaLer } from '../lib/regras';
+import {
+  escolherRegulamento,
+  type DescricaoAtual,
+  type Regulamento,
+  type TextoGuardado,
+} from '../lib/regulamento';
 import { ehArmadilha, ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
 import { separarHerdados } from '../lib/herdados';
 import { ancorasDeSegmentos, destacar, type Segmento } from '../lib/destaque';
@@ -62,23 +69,6 @@ import { dinheiro, urlPolymarket } from '../lib/formato';
  */
 const VARIANTE_DE_SELECAO = 'sel-v2';
 
-/**
- * O regulamento tem QUATRO estados, e conflatá-los foi o defeito.
- *
- * `string | null` dizia "lendo" e "não existe" com o mesmo valor, então um
- * mercado sem `events.description` ficava para sempre em "lendo o
- * regulamento…" — uma espera que nunca termina, indistinguível de uma lenta.
- *
- * `ausente` é resposta, não falta de resposta: é a mesma distinção que
- * `somaDigest` faz devolvendo `null` em vez de `0`, e que a tela já honra em
- * toda parte menos aqui.
- */
-type EstadoDoRegulamento =
-  | { fase: 'lendo' }
-  | { fase: 'ausente' }
-  | { fase: 'erro'; motivo: string }
-  | { fase: 'lido'; texto: string; sha: string };
-
 export function Regra({
   mercado,
   onVoltar,
@@ -94,7 +84,25 @@ export function Regra({
   const [alcance, setAlcance] = useState<Map<string, Contradicao>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
 
-  const [regulamento, setRegulamento] = useState<EstadoDoRegulamento>({ fase: 'lendo' });
+  /**
+   * `events.description`: the CURRENT description, which may be another version
+   * of the rule.
+   *
+   * Four states, and conflating them was the defect: `string | null` said
+   * "loading" and "does not exist" with the same value, and a market with no
+   * description sat forever on "lendo o regulamento…".
+   */
+  const [descricao, setDescricao] = useState<DescricaoAtual>({ fase: 'lendo' });
+
+  /**
+   * The digested text, by hash, from `market_rule_texts`.
+   *
+   * Keyed by the sha because every block on screen is one rule text and each has
+   * its own. A hash missing from the map means `lendo` -- the query has not come
+   * back -- and that distinction is what stops the screen from announcing "the
+   * text is not stored" an instant before it arrives.
+   */
+  const [guardados, setGuardados] = useState<Map<string, TextoGuardado>>(new Map());
 
   /**
    * `null` enquanto as três consultas de frequência não voltam, e `null` também
@@ -109,7 +117,8 @@ export function Regra({
     setLinhas(null);
     setLeituras(new Map());
     setAlcance(new Map());
-    setRegulamento({ fase: 'lendo' });
+    setDescricao({ fase: 'lendo' });
+    setGuardados(new Map());
     setErro(null);
 
     (async () => {
@@ -122,15 +131,15 @@ export function Regra({
             // `null` é resposta, não espera: o mercado não tem descrição
             // guardada. Sem distinguir as duas, a coluna ficava para sempre em
             // "lendo o regulamento…" — uma espera que nunca termina.
-            if (texto === null) return setRegulamento({ fase: 'ausente' });
+            if (texto === null) return setDescricao({ fase: 'ausente' });
             const sha = await sha256Hex(texto);
-            if (vivo) setRegulamento({ fase: 'lido', texto, sha });
+            if (vivo) setDescricao({ fase: 'lido', texto, sha });
           })
           .catch(e => {
             // O erro fica NA COLUNA. Mandá-lo para `erro` derrubava a tela
             // inteira e jogava fora os achados, o veredito e as leituras que já
             // tinham chegado — perder o que funcionou por causa do que falhou.
-            if (vivo) setRegulamento({ fase: 'erro', motivo: e instanceof Error ? e.message : String(e) });
+            if (vivo) setDescricao({ fase: 'erro', motivo: e instanceof Error ? e.message : String(e) });
           });
 
         // Em paralelo, e sem travar nada: o índice é do corpus inteiro e chega
@@ -148,6 +157,21 @@ export function Regra({
 
         const shas = textosParaLer(ls);
         if (shas.length === 0) return;
+
+        // One request per text, and each installs itself when it lands: a block
+        // does not wait on another block's text. Nothing blocks, for the corpus's
+        // own reason -- what the screen has to show first are the findings.
+        for (const sha of shas) {
+          lerTextoGuardado(sha)
+            .then(g => {
+              if (vivo) setGuardados(antes => new Map(antes).set(sha, g));
+            })
+            .catch(e => {
+              if (!vivo) return;
+              const motivo = e instanceof Error ? e.message : String(e);
+              setGuardados(antes => new Map(antes).set(sha, { fase: 'erro', motivo }));
+            });
+        }
 
         const [porTexto, contras] = await Promise.all([
           Promise.all(shas.map(sha => lerLeituras(mercado.id, sha))),
@@ -213,7 +237,12 @@ export function Regra({
           leituras={leituras.get(linha.description_sha256) ?? []}
           alcance={alcance}
           mercado={mercado}
-          regulamento={regulamento}
+          regulamento={escolherRegulamento(
+            linha.description_sha256,
+            descricao,
+            // A hash not in the map yet is a query that has not come back.
+            guardados.get(linha.description_sha256) ?? { fase: 'lendo' },
+          )}
           corpus={corpus}
         />
       ))}
@@ -244,7 +273,7 @@ function BlocoDeTexto({
   leituras: LeituraRegra[];
   alcance: Map<string, Contradicao>;
   mercado: MercadoNaLista;
-  regulamento: EstadoDoRegulamento;
+  regulamento: Regulamento;
   corpus: CorpusDigerido | null;
 }) {
   /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
@@ -345,11 +374,15 @@ function BlocoDeTexto({
    * `destacados`, então uma armadilha com âncora quebrada volta a mostrar a
    * citação no item, em vez de sumir dos dois lados.
    */
-  const mesmoTexto =
-    regulamento.fase === 'lido' && regulamento.sha === linha.description_sha256;
+  // `escolherRegulamento` has already decided: `guardado` and `atual` are the
+  // two states where the text on screen is provably the one that produced these
+  // findings -- in one because the database stored it under the hash, in the
+  // other because the current description's hash was checked. Outside them,
+  // nothing gets highlighted.
+  const podeDestacar = regulamento.fase === 'guardado' || regulamento.fase === 'atual';
   const { segmentos, naoLocalizados } = destacar(
-    mesmoTexto && regulamento.fase === 'lido' ? regulamento.texto : '',
-    mesmoTexto
+    podeDestacar ? regulamento.texto : '',
+    podeDestacar
       ? [
           // `forte` = muda o resultado ou o prazo, e só as VISÍVEIS na
           // esquerda: destacar as escondidas atrás do "ver mais" pinta quase
@@ -553,13 +586,11 @@ function BlocoDeTexto({
         {/* DIREITA: prova. A cláusula onde ela vive, não recortada. */}
         <ColunaDireita
           regulamento={regulamento}
-          mesmoTexto={mesmoTexto}
           shaDoBloco={linha.description_sha256}
           segmentos={segmentos}
           naoLocalizados={naoLocalizados.length}
           aceso={aceso}
           selecionado={fixado}
-          tamanho={mercado.tamanho_regra}
         />
       </div>
     </div>
@@ -750,35 +781,40 @@ function LinhaDeNumeros({
  * engana, e mostrar a cláusula onde ela vive é o antídoto — por isso a coluna é
  * `sticky`: rolar as armadilhas não pode tirar o regulamento da vista.
  *
- * ## O hash é conferido, não presumido
+ * ## The hash is checked, not presumed
  *
- * `market_rule_digests` guarda o hash do texto digerido, nunca o texto. O texto
- * mora em `events.description`, que é a descrição ATUAL. Quando a descrição foi
- * editada depois da digestão os dois deixam de ser a mesma coisa, e destacar os
- * trechos de uma versão sobre a outra atribuiria citação a um texto que não a
- * contém. Nesse caso a coluna não destaca nada e DIZ por quê — a versão antiga
- * não é recuperável, porque ninguém a guardou.
+ * `market_rule_digests` keeps the hash of the digested text, never the text. The
+ * digested text lives in `market_rule_texts`, addressed by that hash (issue #9),
+ * and `events.description` is the CURRENT description -- which may be another
+ * version of the rule. Highlighting one version's spans over the other would
+ * attribute a quotation to a text that does not contain it, which is why the
+ * source is chosen by `escolherRegulamento`, by the hash.
+ *
+ * ## The two failures this column must NOT confuse
+ *
+ * "the span was not found in the text" is an ANCHOR failure: the document is
+ * here and the passage was not found inside it.
+ *
+ * "the digested text is not stored" is a STORAGE failure: the passage may be
+ * perfect, and it is the document that no longer exists. Before
+ * `market_rule_texts` the screen could only say the first, which is why it
+ * blamed the anchor every time Polymarket edited a description.
  */
 function ColunaDireita({
   regulamento,
-  mesmoTexto,
   shaDoBloco,
   segmentos,
   naoLocalizados,
   aceso,
   selecionado,
-  tamanho,
 }: {
-  regulamento: EstadoDoRegulamento;
-  /** O texto na tela é o que produziu estes achados? */
-  mesmoTexto: boolean;
+  regulamento: Regulamento;
   shaDoBloco: string;
   /** Já calculado em `BlocoDeTexto`: as duas colunas leem o MESMO destaque. */
   segmentos: Segmento[];
   naoLocalizados: number;
   aceso: string | null;
   selecionado: string | null;
-  tamanho: number | null;
 }) {
   /**
    * No estreito o regulamento entra RECOLHIDO. Empilhado e aberto, um paredão
@@ -793,10 +829,20 @@ function ColunaDireita({
   const [aberto, setAberto] = useState(!estreito);
   useEffect(() => setAberto(!estreito), [estreito]);
 
-  const cabecalho = (
+  /**
+   * The size comes from the DISPLAYED text, not from `v_radar.tamanho_regra`.
+   *
+   * That column is `length(events.description)` -- the current description. When
+   * this column shows the stored text, the other number would be the character
+   * count of a different document, printed right next to the one on screen.
+   */
+  const cabecalho = (texto: string) => (
     <summary>
-      O regulamento
-      {tamanho !== null && <span className="proveniencia">{tamanho} caracteres</span>}
+      {/* Explicit `{' '}`: JSX eats the newline between the text and the
+          element, and without it the header reads "O regulamento3389
+          caracteres". */}
+      O regulamento{' '}
+      <span className="proveniencia">{texto.length} caracteres</span>
     </summary>
   );
 
@@ -812,9 +858,10 @@ function ColunaDireita({
     return (
       <aside className="coluna-direita">
         <p className="aviso-versao">
-          Este mercado não tem descrição guardada, então não há regulamento para mostrar.
-          Os achados da esquerda continuam valendo — eles vieram de um texto que existiu
-          quando a digestão rodou.
+          O texto digerido não está guardado e este mercado também não tem descrição
+          atual — não há regulamento nenhum para mostrar. Os achados da esquerda
+          continuam valendo: eles vieram de um texto que existiu quando a digestão
+          rodou.
         </p>
       </aside>
     );
@@ -829,20 +876,24 @@ function ColunaDireita({
     );
   }
 
-  // O texto na tela é o de OUTRA versão da regra: não destaca.
-  if (!mesmoTexto) {
+  // The digested text is not stored, and the current description is ANOTHER
+  // version of the rule. No highlighting -- and the sentence blames the storage,
+  // not the anchor.
+  if (regulamento.fase === 'nao-guardado') {
     return (
       <aside className="coluna-direita">
         <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
-          {cabecalho}
+          {cabecalho(regulamento.atual)}
           <p className="aviso-versao">
-            Os achados desta seção saíram de outra versão da regra (
-            <code>{shaDoBloco.slice(0, 8)}</code>), e esse texto não está guardado — o
-            banco registra o hash, não o texto. Abaixo está a descrição atual do
-            mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão
-            sobre a outra apontaria citação para um texto que não a contém.
+            <strong>O texto que produziu estes achados não está guardado.</strong> Eles
+            saíram da versão <code>{shaDoBloco.slice(0, 8)}</code> da regra, digerida antes
+            de o texto passar a ser guardado, e a Polymarket editou a descrição desde
+            então. Abaixo está a descrição atual do mercado,{' '}
+            <strong>sem destaques</strong>: marcar os trechos de uma versão sobre a outra
+            apontaria citação para um texto que não a contém. Nenhum trecho aqui falhou —
+            o que falta é o documento.
           </p>
-          <pre className="regulamento">{regulamento.texto}</pre>
+          <pre className="regulamento">{regulamento.atual}</pre>
         </details>
       </aside>
     );
@@ -855,7 +906,16 @@ function ColunaDireita({
   return (
     <aside className="coluna-direita">
       <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
-      {cabecalho}
+      {cabecalho(regulamento.texto)}
+
+      {regulamento.fase === 'guardado' && (
+        // The document's provenance, said once. Not decorative: this is the text
+        // the digestion read, and it is here because it was stored -- not because
+        // Polymarket has not touched the description yet.
+        <p className="proveniencia">
+          texto guardado sob o hash <code>{shaDoBloco.slice(0, 8)}</code>
+        </p>
+      )}
 
       <pre className="regulamento">
         {segmentos.map((s, i) =>
@@ -1140,7 +1200,9 @@ function CamposDaRegra({ leituras }: { leituras: LeituraRegra[] }) {
   return (
     <section className="campos">
       <h2>
-        A regra, lida
+        {/* Same `{' '}` as the right column's header, same reason: without it
+            this reads "A regra, lidaleitura 1 de 3". */}
+        A regra, lida{' '}
         <span className="proveniencia">
           leitura {exibida.leitura_n} de {leituras.length} · {exibida.model}/
           {exibida.prompt_version}
