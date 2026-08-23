@@ -104,6 +104,34 @@ Três vezes até agora:
   três mutações, porque sair de Hoje reinicia o relógio de qualquer jeito.
   Passou a afirmar o `null` do meio da sequência.
 
+## Issue fecha pela mensagem de commit, não pelo corpo do PR
+`gh pr create --fill` monta o PR a partir dos commits, e num PR de mais de um
+commit ele lista só os ASSUNTOS. O corpo de cada commit não entra. Então a linha
+`Closes #N`, que mora no corpo, nunca chega ao corpo do PR — e fecha a issue
+assim mesmo, porque o GitHub também lê a mensagem dos commits que entram na
+branch padrão. É por aí que a issue fecha. O PR não fechou nenhuma.
+
+Três PRs em 23/08/2026, dois commits cada, todos com `--fill`, todos com corpo
+de PR igual a duas linhas de assunto:
+- `1631d69` carrega `Closes #7.` — PR #15 mergeado 19:09:42Z, issue #7 fechada
+  **19:09:43Z**.
+- `2b1b8c8` carrega `Closes #6.` — PR #16 mergeado 19:33:53Z, issue #6 fechada
+  **19:33:54Z**.
+- `3909986` e `1ec5ef6` não carregam nenhuma — PR #17 mergeado 20:28:37Z com
+  todo o trabalho da #9 dentro, e a #9 continuou aberta. Fechada na mão às
+  22:27:49Z, **1h59 depois**, por alguém que lembrou.
+
+Um segundo separa as duas primeiras do merge que as fechou. A terceira levou
+uma hora e cinquenta e nove minutos e uma pessoa se lembrando dela, pela única
+diferença de uma linha faltando numa mensagem de commit.
+
+Ou o commit carrega `Closes #N`, ou o PR ganha corpo próprio (`--body`, `-F`)
+em vez de `--fill`. `--fill` sozinho não fecha issue nenhuma.
+
+Os três entraram por merge commit, que é o que faz a mensagem de cada commit
+chegar à main inteira. Trocar a estratégia de merge mexe justamente no texto
+que o GitHub lê, então é conferir de novo, não supor.
+
 ## Onde está o quê
 - Schema atual: `supabase/migrations/20260804054445_remote_schema.sql` (baseline).
   As migrations 001-004 são anteriores e já aplicadas.
