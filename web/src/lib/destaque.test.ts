@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { destacar, type PedidoDeDestaque } from './destaque.js';
+import { ancorasDeSegmentos, destacar, type PedidoDeDestaque } from './destaque.js';
 
 /**
  * Destaque dentro do regulamento — etapa 3 do item 5.
@@ -213,4 +213,55 @@ test('a entrada não é modificada', () => {
   destacar(REGULAMENTO, pedidos);
 
   assert.equal(JSON.stringify(pedidos), antes);
+});
+
+// ---------------------------------------------------------------------------
+// A âncora do clique
+// ---------------------------------------------------------------------------
+
+test('dois achados que começam no mesmo segmento mantêm os DOIS a âncora', () => {
+  // O caso que a inversão ingênua perdia: `Map<índice, id>` guarda um só, e o
+  // outro fica sem elemento para o clique encontrar — silenciosamente.
+  const texto = 'by December 31, 2026, 11:59 PM ET, resolve';
+  const { segmentos } = destacar(texto, [
+    pedido({ id: 'um', trecho: '11:59 PM ET', marca: 'forte' }),
+    pedido({ id: 'dois', trecho: '11:59 PM ET', marca: 'clara' }),
+  ]);
+
+  const ancoras = ancorasDeSegmentos(segmentos);
+  const todos = [...ancoras.values()].flat().sort();
+
+  assert.deepEqual(todos, ['dois', 'um']);
+});
+
+test('a âncora é o PRIMEIRO segmento do achado, não o último', () => {
+  // Sobreposição reparte o trecho; parar no segundo pedaço cairia no meio da
+  // frase.
+  const texto = 'aaa bbb ccc ddd';
+  const { segmentos } = destacar(texto, [
+    pedido({ id: 'longo', trecho: 'aaa bbb ccc', marca: 'clara' }),
+    pedido({ id: 'curto', trecho: 'bbb', marca: 'forte' }),
+  ]);
+
+  const ancoras = ancorasDeSegmentos(segmentos);
+  const indiceDoLongo = [...ancoras].find(([, ids]) => ids.includes('longo'))?.[0];
+  const primeiroMarcado = segmentos.findIndex(s => s.ids.includes('longo'));
+
+  assert.equal(indiceDoLongo, primeiroMarcado);
+});
+
+test('cada achado destacado tem exatamente uma âncora', () => {
+  const texto = 'by December 31, 2026, 11:59 PM ET, the market resolves to Other';
+  const { segmentos } = destacar(texto, [
+    pedido({ id: 'a', trecho: 'December 31, 2026, 11:59 PM ET', marca: 'forte' }),
+    pedido({ id: 'b', trecho: '11:59 PM ET', marca: 'clara' }),
+    pedido({ id: 'c', trecho: 'resolves to Other', marca: 'forte' }),
+  ]);
+
+  const ancoras = ancorasDeSegmentos(segmentos);
+  const todos = [...ancoras.values()].flat();
+  const destacados = new Set(segmentos.flatMap(s => s.ids));
+
+  assert.equal(todos.length, new Set(todos).size, 'algum achado tem duas âncoras');
+  assert.deepEqual(todos.slice().sort(), [...destacados].sort(), 'algum destacado ficou sem âncora');
 });

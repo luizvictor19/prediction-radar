@@ -33,6 +33,32 @@ export type Segmento = {
   ids: string[];
 };
 
+/**
+ * A âncora de cada achado: em que segmento o clique deve parar.
+ *
+ * O PRIMEIRO segmento de cada achado, porque sobreposição reparte um trecho em
+ * vários e rolar até o segundo pedaço pararia no meio da frase.
+ *
+ * Devolve `índice → LISTA de ids`, e a lista é o ponto. Dois achados que citam a
+ * mesma passagem — comum, e a razão de a segmentação existir — começam no mesmo
+ * segmento. Um `Map<índice, id>` guardaria só um deles, e o outro perderia a
+ * âncora em silêncio: o clique não encontraria elemento e não rolaria a lugar
+ * nenhum, sem nada na tela dizendo por quê.
+ */
+export function ancorasDeSegmentos(segmentos: readonly Segmento[]): Map<number, string[]> {
+  const primeiro = new Map<string, number>();
+  for (const [i, s] of segmentos.entries())
+    for (const id of s.ids) if (!primeiro.has(id)) primeiro.set(id, i);
+
+  const porIndice = new Map<number, string[]>();
+  for (const [id, i] of primeiro) {
+    const lista = porIndice.get(i);
+    if (lista === undefined) porIndice.set(i, [id]);
+    else lista.push(id);
+  }
+  return porIndice;
+}
+
 /** Escapa o que é metacaractere de regex, para o trecho valer como literal. */
 function escapar(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

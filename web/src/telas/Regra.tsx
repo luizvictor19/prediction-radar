@@ -24,7 +24,7 @@ import {
 import { leiturasPorTexto, sha256Hex, textosParaLer } from '../lib/regras';
 import { ehArmadilha, ehArmadilhaDeResultado, escolherVeredito } from '../lib/veredito';
 import { separarHerdados } from '../lib/herdados';
-import { destacar, type Segmento } from '../lib/destaque';
+import { ancorasDeSegmentos, destacar, type Segmento } from '../lib/destaque';
 import { mostraTrechoNaEsquerda } from '../lib/evidencia';
 import { dinheiro, urlPolymarket } from '../lib/formato';
 
@@ -322,7 +322,13 @@ function BlocoDeTexto({
   const destacados = new Set(segmentos.flatMap(s => s.ids));
 
   function irAteOTrecho(id: string) {
-    document.getElementById(`trecho-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // `data-trecho` e não `id`: um elemento tem UM id, e dois achados que citam
+    // a mesma passagem começam no mesmo segmento. Com `id`, um dos dois ficava
+    // sem âncora e o clique não rolava a lugar nenhum, sem nada dizendo por quê.
+    // `~=` casa um token dentro da lista separada por espaço.
+    document
+      .querySelector(`[data-trecho~="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
   const ligacao = (a: Achado) => ({
@@ -754,14 +760,7 @@ function ColunaDireita({
 
   const tons = new Set(segmentos.map(s => s.marca).filter(Boolean));
 
-  // A âncora do clique vai no PRIMEIRO segmento de cada achado: um trecho pode
-  // ser repartido em vários segmentos por sobreposição, e rolar até o segundo
-  // pedaço pararia no meio da frase.
-  const primeiro = new Map<string, number>();
-  segmentos.forEach((s, i) => {
-    for (const id of s.ids) if (!primeiro.has(id)) primeiro.set(id, i);
-  });
-  const ancoras = new Map([...primeiro].map(([id, i]) => [i, id]));
+  const ancoras = ancorasDeSegmentos(segmentos);
 
   return (
     <aside className="coluna-direita">
@@ -775,7 +774,7 @@ function ColunaDireita({
           ) : (
             <mark
               key={i}
-              id={ancoras.has(i) ? `trecho-${ancoras.get(i)}` : undefined}
+              data-trecho={ancoras.get(i)?.join(' ')}
               className={`${s.marca}${aceso !== null && s.ids.includes(aceso) ? ' aceso' : ''}`}
             >
               {s.texto}
