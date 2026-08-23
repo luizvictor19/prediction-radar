@@ -44,6 +44,23 @@ import { dinheiro, urlPolymarket } from '../lib/formato';
  * a leitura do vizinho seria inventar uma detecção que não houve.
  */
 
+/**
+ * O regulamento tem QUATRO estados, e conflatá-los foi o defeito.
+ *
+ * `string | null` dizia "lendo" e "não existe" com o mesmo valor, então um
+ * mercado sem `events.description` ficava para sempre em "lendo o
+ * regulamento…" — uma espera que nunca termina, indistinguível de uma lenta.
+ *
+ * `ausente` é resposta, não falta de resposta: é a mesma distinção que
+ * `somaDigest` faz devolvendo `null` em vez de `0`, e que a tela já honra em
+ * toda parte menos aqui.
+ */
+type EstadoDoRegulamento =
+  | { fase: 'lendo' }
+  | { fase: 'ausente' }
+  | { fase: 'erro'; motivo: string }
+  | { fase: 'lido'; texto: string; sha: string };
+
 export function Regra({
   mercado,
   onVoltar,
@@ -59,16 +76,7 @@ export function Regra({
   const [alcance, setAlcance] = useState<Map<string, Contradicao>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
 
-  /**
-   * O regulamento e o hash DELE, calculado aqui.
-   *
-   * O hash é a única ligação entre um texto e os achados que saíram dele:
-   * `market_rule_digests` guarda `description_sha256` e nunca o texto. Sem
-   * conferir, a coluna direita destacaria os trechos de uma versão da regra
-   * sobre outra sempre que a descrição tivesse sido editada depois da digestão.
-   */
-  const [regulamento, setRegulamento] = useState<string | null>(null);
-  const [shaRegulamento, setShaRegulamento] = useState<string | null>(null);
+  const [regulamento, setRegulamento] = useState<EstadoDoRegulamento>({ fase: 'lendo' });
 
   /**
    * `null` enquanto as três consultas de frequência não voltam, e `null` também
@@ -83,8 +91,7 @@ export function Regra({
     setLinhas(null);
     setLeituras(new Map());
     setAlcance(new Map());
-    setRegulamento(null);
-    setShaRegulamento(null);
+    setRegulamento({ fase: 'lendo' });
     setErro(null);
 
     (async () => {
@@ -93,14 +100,19 @@ export function Regra({
         // que se abre sob demanda e virou a coluna direita, que abre com a tela.
         lerTextoDaRegra(mercado.id)
           .then(async texto => {
-            if (!vivo || texto === null) return;
-            const sha = await sha256Hex(texto);
             if (!vivo) return;
-            setRegulamento(texto);
-            setShaRegulamento(sha);
+            // `null` é resposta, não espera: o mercado não tem descrição
+            // guardada. Sem distinguir as duas, a coluna ficava para sempre em
+            // "lendo o regulamento…" — uma espera que nunca termina.
+            if (texto === null) return setRegulamento({ fase: 'ausente' });
+            const sha = await sha256Hex(texto);
+            if (vivo) setRegulamento({ fase: 'lido', texto, sha });
           })
           .catch(e => {
-            if (vivo) setErro(e instanceof Error ? e.message : String(e));
+            // O erro fica NA COLUNA. Mandá-lo para `erro` derrubava a tela
+            // inteira e jogava fora os achados, o veredito e as leituras que já
+            // tinham chegado — perder o que funcionou por causa do que falhou.
+            if (vivo) setRegulamento({ fase: 'erro', motivo: e instanceof Error ? e.message : String(e) });
           });
 
         // Em paralelo, e sem travar nada: o índice é do corpus inteiro e chega
@@ -184,7 +196,6 @@ export function Regra({
           alcance={alcance}
           mercado={mercado}
           regulamento={regulamento}
-          shaRegulamento={shaRegulamento}
           corpus={corpus}
         />
       ))}
@@ -208,7 +219,6 @@ function BlocoDeTexto({
   alcance,
   mercado,
   regulamento,
-  shaRegulamento,
   corpus,
 }: {
   linha: LinhaAchados;
@@ -216,8 +226,7 @@ function BlocoDeTexto({
   leituras: LeituraRegra[];
   alcance: Map<string, Contradicao>;
   mercado: MercadoNaLista;
-  regulamento: string | null;
-  shaRegulamento: string | null;
+  regulamento: EstadoDoRegulamento;
   corpus: CorpusDigerido | null;
 }) {
   /** O achado sob o cursor. Acende o trecho dele na coluna direita. */
@@ -312,9 +321,10 @@ function BlocoDeTexto({
    * `destacados`, então uma armadilha com âncora quebrada volta a mostrar a
    * citação no item, em vez de sumir dos dois lados.
    */
-  const mesmoTexto = regulamento !== null && shaRegulamento === linha.description_sha256;
+  const mesmoTexto =
+    regulamento.fase === 'lido' && regulamento.sha === linha.description_sha256;
   const { segmentos, naoLocalizados } = destacar(
-    mesmoTexto ? regulamento : '',
+    mesmoTexto && regulamento.fase === 'lido' ? regulamento.texto : '',
     mesmoTexto
       ? visiveis.map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const }))
       : [],
@@ -701,7 +711,7 @@ function ColunaDireita({
   aceso,
   tamanho,
 }: {
-  regulamento: string | null;
+  regulamento: EstadoDoRegulamento;
   /** O texto na tela é o que produziu estes achados? */
   mesmoTexto: boolean;
   shaDoBloco: string;
@@ -731,10 +741,31 @@ function ColunaDireita({
     </summary>
   );
 
-  if (regulamento === null) {
+  if (regulamento.fase === 'lendo') {
     return (
       <aside className="coluna-direita">
         <p className="aviso">lendo o regulamento…</p>
+      </aside>
+    );
+  }
+
+  if (regulamento.fase === 'ausente') {
+    return (
+      <aside className="coluna-direita">
+        <p className="aviso-versao">
+          Este mercado não tem descrição guardada, então não há regulamento para mostrar.
+          Os achados da esquerda continuam valendo — eles vieram de um texto que existiu
+          quando a digestão rodou.
+        </p>
+      </aside>
+    );
+  }
+
+  if (regulamento.fase === 'erro') {
+    // Erro DESTA coluna, e só dela: o resto da tela continua em pé.
+    return (
+      <aside className="coluna-direita">
+        <p className="erro">Não deu para ler o regulamento: {regulamento.motivo}</p>
       </aside>
     );
   }
@@ -752,7 +783,7 @@ function ColunaDireita({
             mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão
             sobre a outra apontaria citação para um texto que não a contém.
           </p>
-          <pre className="regulamento">{regulamento}</pre>
+          <pre className="regulamento">{regulamento.texto}</pre>
         </details>
       </aside>
     );
