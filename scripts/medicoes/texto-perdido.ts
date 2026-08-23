@@ -37,13 +37,31 @@ function hashDe(description: string): string {
 
 type Par = { event_id: string; description_sha256: string };
 
+/**
+ * Ordenado por `id`, a chave primária, e não por `event_id`.
+ *
+ * `range` é OFFSET, e OFFSET sobre ordem NÃO TOTAL não é determinístico: o
+ * Postgres não promete a mesma ordem entre uma página e a seguinte dentro de um
+ * grupo empatado. `event_id` empata — são 1264 leituras para 1033 mercados —, e
+ * com página de 1000 existe exatamente uma fronteira, caindo dentro de um desses
+ * grupos. Uma linha empatada pode vir duas vezes ou nenhuma.
+ *
+ * Duplicata este script absorveria (a contagem é por chave), mas PERDA não: um
+ * par sumido é um texto que a medição deixa de conferir e conta como se não
+ * existisse. Numa medição cujo resultado é "zero perdidos", perder a linha é
+ * perder exatamente a evidência que ela procura.
+ *
+ * É o defeito que `dados.ts` documenta e evita ordenando pela chave da view, e é
+ * o mesmo que a issue #6 quer poder provar com um Postgres de verdade — escrito
+ * aqui, no script que mede para a issue #9.
+ */
 async function lerPares(): Promise<Par[]> {
   const pares: Par[] = [];
   for (let de = 0; ; de += 1000) {
     const { data, error } = await supabase
       .from('market_rule_digests')
       .select('event_id, description_sha256')
-      .order('event_id')
+      .order('id')
       .range(de, de + 999);
     if (error) throw new Error(`market_rule_digests: ${error.message}`);
     const linhas = (data ?? []) as Par[];
