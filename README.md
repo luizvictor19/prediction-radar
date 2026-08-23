@@ -21,6 +21,7 @@ can judge them. The system finds and records; it decides nothing.
 - [Point-in-time correctness](#point-in-time-correctness)
 - [Findings](#findings)
 - [Results](#results)
+- [Tests](#tests)
 - [Stack](#stack)
 - [Current state](#current-state)
 
@@ -280,6 +281,41 @@ declarable *before* the outcome is known. No band clears it.
 **Fidelity.** 802 recorded claims, 802 pointing at a fragment actually in the
 prompt, zero analyses discarded in validation. Enforced structurally: a claim
 citing a label that was never supplied causes the whole analysis to be dropped.
+
+---
+
+## Tests
+
+```sh
+npm test        # everything that runs without a database
+npm run test:db # the same suite, with a local Postgres for the tests that need one
+```
+
+`npm test` is the whole suite and needs nothing installed. Tests that require a
+database skip themselves, stating why.
+
+`npm run test:db` starts a local Supabase stack — Postgres, PostgREST and the
+gateway, with the schema built from `supabase/migrations` so it cannot drift from
+production — and then runs the suite with `RADAR_TEST_DB=required`, which turns a
+missing database into a failure instead of a skip. Stop it with
+`npm run test:db:stop`.
+
+Measured on 2026-08-23, images already pulled: **32s** from nothing — empty
+volumes, all 48 migrations replayed, whole suite run — and **5s** with the stack
+already up. The first run ever also downloads about 2 GB of container images.
+
+Why a real Postgres and not a fake: some defects are the database exercising a
+freedom no mock has. The one under test is pagination by `OFFSET` under a
+non-total order, where equal-keyed rows shift between pages and the reader
+silently sees one twice and another never. Two substitutes were tried and
+rejected in `f755843` — spying on the query builder, and simulating PostgREST —
+because both only assert that the code calls what it already calls. The
+reproduction and the measured thresholds are in `web/src/lib/dados.db.test.ts`.
+
+The test database is never this project's Supabase instance: every client goes
+through a guard that refuses any host that is not this machine, so the writing
+prohibition in `CLAUDE.md` holds everywhere else. Point it elsewhere with
+`TEST_SUPABASE_URL` and the run aborts rather than writing.
 
 ---
 
