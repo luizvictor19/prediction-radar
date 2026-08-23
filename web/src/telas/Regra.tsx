@@ -414,6 +414,34 @@ function BlocoDeTexto({
 }
 
 /**
+ * A largura em que as duas colunas deixam de caber lado a lado.
+ *
+ * O mesmo número está no `@media` do `estilo.css`. Ele vive nos dois lugares
+ * porque um é layout e o outro é comportamento — e é por isso que a constante
+ * carrega o aviso: mexer num sem o outro faz o regulamento empilhar aberto, que
+ * é exatamente o que a etapa 5 existe para evitar.
+ */
+const ESTREITO = '(max-width: 900px)';
+
+/** A tela está estreita agora? Reavalia quando a janela cruza o limiar. */
+function useEstreito(): boolean {
+  const [estreito, setEstreito] = useState(
+    () => typeof matchMedia === 'function' && matchMedia(ESTREITO).matches,
+  );
+
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const mq = matchMedia(ESTREITO);
+    const ouvir = (e: MediaQueryListEvent) => setEstreito(e.matches);
+    mq.addEventListener('change', ouvir);
+    setEstreito(mq.matches);
+    return () => mq.removeEventListener('change', ouvir);
+  }, []);
+
+  return estreito;
+}
+
+/**
  * O estado vazio de uma seção, e nunca a ausência dela.
  *
  * As quatro frases da seção 5 do item 5. `estadoVazio` decide qual; aqui só se
@@ -595,6 +623,26 @@ function ColunaDireita({
   aceso: string | null;
   tamanho: number | null;
 }) {
+  /**
+   * No estreito o regulamento entra RECOLHIDO. Empilhado e aberto, um paredão
+   * de texto em inglês fica logo abaixo do veredito e enterra as armadilhas —
+   * que são o que a tela existe para mostrar primeiro. Aberto, o destaque
+   * continua valendo igual.
+   *
+   * Controlado, e não só `open` inicial: o leitor pode abrir e fechar, e o
+   * padrão volta a valer quando a janela cruza o limiar.
+   */
+  const estreito = useEstreito();
+  const [aberto, setAberto] = useState(!estreito);
+  useEffect(() => setAberto(!estreito), [estreito]);
+
+  const cabecalho = (
+    <summary>
+      O regulamento
+      {tamanho !== null && <span className="proveniencia">{tamanho} caracteres</span>}
+    </summary>
+  );
+
   if (regulamento === null) {
     return (
       <aside className="coluna-direita">
@@ -607,14 +655,17 @@ function ColunaDireita({
   if (shaRegulamento !== null && shaRegulamento !== shaDoBloco) {
     return (
       <aside className="coluna-direita">
-        <p className="aviso-versao">
-          Os achados desta seção saíram de outra versão da regra (
-          <code>{shaDoBloco.slice(0, 8)}</code>), e esse texto não está guardado — o
-          banco registra o hash, não o texto. Abaixo está a descrição atual do
-          mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão
-          sobre a outra apontaria citação para um texto que não a contém.
-        </p>
-        <pre className="regulamento">{regulamento}</pre>
+        <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
+          {cabecalho}
+          <p className="aviso-versao">
+            Os achados desta seção saíram de outra versão da regra (
+            <code>{shaDoBloco.slice(0, 8)}</code>), e esse texto não está guardado — o
+            banco registra o hash, não o texto. Abaixo está a descrição atual do
+            mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão
+            sobre a outra apontaria citação para um texto que não a contém.
+          </p>
+          <pre className="regulamento">{regulamento}</pre>
+        </details>
       </aside>
     );
   }
@@ -648,10 +699,8 @@ function ColunaDireita({
 
   return (
     <aside className="coluna-direita">
-      <h2>
-        O regulamento
-        {tamanho !== null && <span className="proveniencia">{tamanho} caracteres</span>}
-      </h2>
+      <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
+      {cabecalho}
 
       <pre className="regulamento">
         {segmentos.map((s, i) =>
@@ -685,6 +734,7 @@ function ColunaDireita({
           <mark className="forte">tom forte</mark> muda o resultado ou o prazo
         </p>
       )}
+      </details>
     </aside>
   );
 }

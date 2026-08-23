@@ -240,9 +240,26 @@ button.link {
   border-radius: 6px;
   padding: 12px 14px;
 }
-.coluna-direita h2 {
-  margin: 0 0 10px;
+.coluna-direita > details > summary {
+  cursor: pointer;
+  margin-bottom: 10px;
   font-size: 14px;
+  font-weight: 600;
+}
+
+/* Abaixo de ~900px as colunas viram uma, e o regulamento vai para baixo
+   RECOLHIDO — o mesmo limiar da constante `ESTREITO` em `Regra.tsx`. Empilhado
+   e aberto, o paredão de texto em inglês fica logo abaixo do veredito e enterra
+   as armadilhas, que são o que a tela mostra primeiro. */
+@media (max-width: 900px) {
+  .duas-colunas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .coluna-direita {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 .regulamento {
   /* Citação em monoespaçada, interpretação em sans: a diferença tem que
