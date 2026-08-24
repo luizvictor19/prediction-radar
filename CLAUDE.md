@@ -163,7 +163,7 @@ para a branch errada — aconteceu em 23/08/2026.
   As migrations 001-004 são anteriores e já aplicadas.
 - Trabalho corrente: `specs/000-contencao.md`. Respeitar a Parte E (divisão
   humano/agente) antes de executar qualquer item.
-- `specs/001-esports-verticals.md` vem depois. Não começar antes da 000 terminar.
+- `specs/001-esports-vertical.md` vem depois. Não começar antes da 000 terminar.
 
 ## PROJECT.md está desatualizado
 É registro histórico (v7, maio/2026). Serve para entender o sistema como está
