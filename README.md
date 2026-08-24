@@ -231,6 +231,11 @@ from a browser, and the radar views are revoked from `anon`, so the Vite dev
 server proxies `/sb` to PostgREST and swaps the headers server-side. The service
 key never enters the bundle.
 
+That proxy authenticates nobody. It attaches the service key to whatever reaches
+it, and `service_role` bypasses RLS — so anyone who reaches the dev server
+reaches the whole database. Listening on localhost is the only thing making it
+safe: never start it with `--host`, and never put it anywhere exposed.
+
 Every threshold quoted in this README came from a measurement script, and the
 ones behind a decision write a dated report into `probes/` rather than printing
 and vanishing — `npm run medir:tela-regra` and `medir:digest-nulo` do;

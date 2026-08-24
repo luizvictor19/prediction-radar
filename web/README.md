@@ -29,6 +29,12 @@ trocando `apikey`, `Authorization` e `User-Agent` (`vite.config.ts`). O cliente
 manda uma chave placeholder; o proxy a descarta. Leituras e escritas passam pelo
 mesmo caminho.
 
+**Esse proxy não autentica ninguém.** Ele anexa a service key a qualquer coisa
+que chegue nele, e `service_role` passa por cima da RLS — então quem alcança o
+dev server alcança o banco inteiro, sem nenhuma trava no meio. O que o torna
+seguro é escutar em localhost, e só isso: nunca subir com `--host`, nunca em
+ambiente exposto.
+
 Consequência: **esta tela só funciona em `npm run dev`.** Sem dev server não há
 proxy, e sem proxy não há banco. Um build publicado não funcionaria — e se
 funcionasse, seria porque a chave vazou.
