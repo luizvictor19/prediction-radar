@@ -217,8 +217,8 @@ export function Hoje({
                 list, you pick, and only then you decide whether to bet. */}
             <div className="acoes">
               <button onClick={() => onAbrirRegra(m.id)}>ler a regra</button>
-              {urlPolymarket(m.slug) && (
-                <a href={urlPolymarket(m.slug)!} target="_blank" rel="noreferrer">
+              {urlPolymarket(m.slug, m.event_group_slug) && (
+                <a href={urlPolymarket(m.slug, m.event_group_slug)!} target="_blank" rel="noreferrer">
                   Polymarket ↗
                 </a>
               )}

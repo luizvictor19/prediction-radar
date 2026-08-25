@@ -7,6 +7,8 @@
  * não fez.
  */
 
+import { polymarketUrl } from '../../../src/lib/polymarket-url';
+
 export const VAZIO = '—';
 
 export function preco(v: number | null): string {
@@ -58,10 +60,31 @@ export function idade(minutos: number | null): string {
   return `${Math.round(minutos / 1440)} d`;
 }
 
-export function urlPolymarket(slug: string | null): string | null {
-  // `v_radar` não tem coluna `url`; a montagem é a mesma que
-  // `digest_contradicoes` já faz internamente (`20260817033302_...sql:207`).
-  return slug ? `https://polymarket.com/event/${slug}` : null;
+/**
+ * A URL do Polymarket. A regra NÃO mora aqui.
+ *
+ * Ela mora em `src/lib/polymarket-url.ts`, e as duas camadas — esta e o bot —
+ * importam de lá. Isto aqui é só o nome em português da fronteira de `web/`.
+ *
+ * Antes eram duas cópias, e elas divergiram: o bot montava com
+ * `event_group_slug` e esta função montava `/event/<slug>` com slug de MERCADO,
+ * que respondia 404 em 956 dos 1.024 mercados do roster ativo. Uma cópia certa
+ * e uma errada é o estado que produziu o defeito; ter escrito a certa aqui de
+ * novo teria recriado a condição.
+ *
+ * `slugDoGrupo` é `events.event_group_slug`. `v_radar` ainda NÃO o expõe — a
+ * migration que acrescenta a coluna está escrita e não aplicada
+ * (`20260825..._v_radar_expoe_event_group_slug.sql`). Enquanto ela não entra,
+ * as telas passam `null` e a URL cai no fallback `/market/<slug>`, medido
+ * abrindo 55/55 no mercado certo. Não é o caminho preferido — é o caminho que
+ * funciona com um campo só, e o parâmetro já está aqui para o dia em que o
+ * segundo campo chegar.
+ */
+export function urlPolymarket(
+  slug: string | null,
+  slugDoGrupo: string | null = null,
+): string | null {
+  return polymarketUrl(slug, slugDoGrupo);
 }
 
 export function segundos(ms: number): string {

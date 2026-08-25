@@ -42,7 +42,7 @@ export function Operar({
   const [estado, setEstado] = useState<Estado>({ fase: 'digitando' });
   const [erro, setErro] = useState<string | null>(null);
 
-  const url = urlPolymarket(mercado.slug);
+  const url = urlPolymarket(mercado.slug, mercado.event_group_slug);
 
   function conferir() {
     const leitura = lerProbabilidade(bruto);

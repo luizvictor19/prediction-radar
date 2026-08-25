@@ -8,7 +8,17 @@
 /** Uma linha de `v_radar`. Uma por mercado do roster ativo. */
 export type MercadoRadar = {
   id: string;
+  /** Slug do MERCADO (`events.slug`). Sozinho NÃO monta URL de `/event/`. */
   slug: string | null;
+  /**
+   * Slug do EVENTO pai (`events.event_group_slug`). Opcional porque `v_radar`
+   * ainda não expõe a coluna — a migration
+   * `20260825024030_v_radar_expoe_event_group_slug.sql` está escrita e não
+   * aplicada. Enquanto isso ele chega `undefined`, e `urlPolymarket` cai no
+   * fallback. Quando a migration entrar, o campo passa a vir e o tipo perde o
+   * `?` — nenhum código de tela muda.
+   */
+  event_group_slug?: string | null;
   pergunta: string;
   categoria: string | null;
   tema: string | null;
