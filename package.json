@@ -48,6 +48,7 @@
     "medir:idioma": "tsx scripts/medicoes/idioma.ts",
     "medir:texto-perdido": "tsx scripts/medicoes/texto-perdido.ts",
     "medir:digest-nulo": "tsx scripts/medicoes/digest-nulo.ts",
+    "medir:serie": "tsx scripts/medicoes/serie-prob-self.ts",
     "nivelar": "tsx scripts/nivelar-leituras.ts",
     "radar:lista": "tsx scripts/montar-lista-radar.ts",
     "radar:coletor": "tsx scripts/radar-coletor.ts",

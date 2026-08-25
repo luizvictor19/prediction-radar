@@ -168,6 +168,39 @@ regulamento) e 1 é timeout de rede. A recusa **não** é reprodutível: o mesmo
 texto no mesmo mercado passou em `leitura_n=2` e foi recusado em `n=3`, e não há
 `temperature`/`seed` no código.
 
+## A série de dois meses não começou, e o que a bloqueia não é código (24/08/2026)
+
+`npm run medir:serie`, medido em 24/08/2026:
+
+```
+my_bets, total de linhas:   58
+com prob_self NÃO NULO:      0   (0,0%)
+PONTUÁVEIS:                  0
+```
+
+A tela Operar existe desde **22/08** (`81ba010`) e o fluxo `/register` do bot
+desde **14/08** (`20260814142957`). Entre os dois, **nenhuma probabilidade foi
+registrada**. As 58 linhas de `my_bets` são todas `estrategia = 'legado'` — o
+default que a migration deu ao que já estava lá — e a mais recente é de
+**23/05/2026**, três meses atrás.
+
+O zero foi conferido por três caminhos, porque zero é o resultado que uma query
+errada também produz: o filtro invertido fecha (58 nulos + 0 não nulos = 58); a
+coluna irmã `confidence_self` tem 57 preenchidas, então a tabela não está vazia
+de dado, está vazia **desta** coluna; e `v_radar`, que lê por outro caminho,
+concorda. A hipótese de a tela escrever noutro banco foi fechada: `web/.env.local`
+e o `.env` da raiz apontam para o mesmo projeto.
+
+**Isto não é issue, e é por isso que está aqui.** Não há bug a consertar, não há
+código a escrever que faça a série começar. O `README` promete "accumulate two
+months of series"; o dia 1 dessa contagem ainda não aconteceu. Todo trabalho de
+eval do humano — o consumidor que lê `prob_self`, o Brier, a comparação contra o
+preço — fica esperando um dado que só existe se alguém abrir a tela e registrar.
+
+O número está num comando e não numa frase de propósito: `npm run medir:serie` o
+refaz. Um zero datado numa issue envelhece até virar afirmação que ninguém
+confere; um zero refazível não.
+
 ## Operacional
 
 - **Migrations: escrever e parar.** Quem aplica é o dono (`supabase db push`).
