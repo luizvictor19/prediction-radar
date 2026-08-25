@@ -10,6 +10,7 @@ import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
 import { fetchActiveSignals, fetchOpenLegEventIds } from '../lib/signal-queries.js';
 import { pauseNotify } from '../lib/notify-pause.js';
+import { polymarketUrl } from '../../lib/polymarket-url.js';
 
 interface SlugEntry { event_group_slug?: string; slug?: string }
 
@@ -71,6 +72,15 @@ async function resolveEarliestEndMap(signals: SignalRow[]): Promise<Map<string, 
   return result;
 }
 
+/**
+ * The home page, for when there is no slug at all to address a market with.
+ *
+ * The bot always sends SOMETHING because the URL sits on a button that is part
+ * of the message layout; the screens, which can omit the link entirely, return
+ * null instead. Neither ever sends a link that 404s.
+ */
+const HOME = 'https://polymarket.com';
+
 async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
   const { data } = await supabase
     .from('events')
@@ -79,20 +89,16 @@ async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
     .limit(1)
     .maybeSingle();
 
-  if (data?.event_group_slug) return `https://polymarket.com/event/${data.event_group_slug as string}`;
-  if (data?.slug) return `https://polymarket.com/market/${data.slug as string}`;
-  return 'https://polymarket.com';
+  return polymarketUrl(data?.slug as string | null, data?.event_group_slug as string | null) ?? HOME;
 }
 
 function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, SlugEntry>): string {
   const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
   const firstId = members[0]?.polymarket_id;
-  if (firstId) {
-    const entry = slugMap.get(firstId);
-    if (entry?.event_group_slug) return `https://polymarket.com/event/${entry.event_group_slug}`;
-    if (entry?.slug) return `https://polymarket.com/market/${entry.slug}`;
-  }
-  return 'https://polymarket.com';
+  if (!firstId) return HOME;
+
+  const entry = slugMap.get(firstId);
+  return polymarketUrl(entry?.slug ?? null, entry?.event_group_slug ?? null) ?? HOME;
 }
 
 export async function signalsHandler(ctx: BotContext): Promise<void> {

@@ -198,7 +198,7 @@ export function Regra({
   if (erro) return <div className="aviso erro">{erro}</div>;
   if (!linhas) return <div className="aviso">lendo a digestão…</div>;
 
-  const url = urlPolymarket(mercado.slug);
+  const url = urlPolymarket(mercado.slug, mercado.event_group_slug);
 
   return (
     <div className={`regra ${VARIANTE_DE_SELECAO}`}>

@@ -29,6 +29,11 @@ import type {
 const COLUNAS_RADAR = [
   'id',
   'slug',
+  // `event_group_slug` entra AQUI quando
+  // `20260825024030_v_radar_expoe_event_group_slug.sql` for aplicada. Pedir
+  // agora derruba a query inteira: a view ainda não tem a coluna. Até lá
+  // `urlPolymarket` recebe `undefined` e cai no fallback `/market/<slug>`, que
+  // foi medido abrindo 55/55 no mercado certo.
   'pergunta',
   'categoria',
   'tema',
