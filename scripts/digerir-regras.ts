@@ -264,7 +264,7 @@ function montarDegrau(args: Args, config: { digest_model: string }): Degrau {
     case 1:
       return {
         numero: 1,
-        descricao: '10 mercados, um modelo só — a leitura antes de qualquer escala',
+        descricao: '10 mercados, um modelo só: a leitura antes de qualquer escala',
         models: [args.model ?? 'deepseek-v4-flash'],
         inicio: 0,
         fim: args.limit ?? 10,
@@ -272,7 +272,7 @@ function montarDegrau(args: Args, config: { digest_model: string }): Degrau {
     case 2:
       return {
         numero: 2,
-        descricao: '50 mercados, dois modelos lado a lado — a comparação',
+        descricao: '50 mercados, dois modelos lado a lado: a comparação',
         // Os 10 do degrau 1 estão dentro destes 50, de propósito: são os que já
         // foram lidos à mão, e ver o segundo modelo sobre eles é a comparação
         // mais barata que existe.
@@ -436,7 +436,7 @@ function listaPegadinhas(items: readonly Pegadinha[]): string {
   if (items.length === 0) return '**Pegadinhas:** nenhuma (a regra é direta)\n';
 
   const linhas = items.map(p => {
-    const cabeca = p.severidade === null ? `- ${p.texto}` : `- \`${p.severidade}\` — ${p.texto}`;
+    const cabeca = p.severidade === null ? `- ${p.texto}` : `- \`${p.severidade}\`: ${p.texto}`;
     const detalhes = [
       p.trecho === null ? null : `  - trecho: *"${p.trecho}"*`,
       p.cenario === null ? null : `  - cenário: ${p.cenario}`,
@@ -453,7 +453,7 @@ function listaAmbiguidades(items: readonly Ambiguidade[]): string {
   const linhas = items.map(a => {
     if (a.tipo === null) return `- ${a.leituraA}`;
     return [
-      `- \`${a.tipo}\` — trecho: *"${a.trecho ?? '—'}"*`,
+      `- \`${a.tipo}\`, trecho: *"${a.trecho ?? '—'}"*`,
       // A segunda passagem só existe em `contradicao_interna`, e ali ela é
       // metade do achado: a contradição não está em nenhum dos dois trechos, e
       // sim entre eles.
@@ -526,7 +526,7 @@ function avisoDeAmostra(mercadosValidos: number): string[] {
   if (mercadosValidos >= N_MINIMO_PARA_COMPARAR) return [];
   return [
     `> **n = ${mercadosValidos}: isto é smoke test, não comparação.** Os percentuais acima`,
-    '> não sustentam "ficou melhor que a versão anterior" — a v3 rodou três vezes com',
+    '> não sustentam "ficou melhor que a versão anterior": a v3 rodou três vezes com',
     '> prompt idêntico nos mesmos 10 mercados e deu 20,0%, 6,7% e 30,4% de `outro`. A',
     `> variância entre rodadas iguais engole o efeito. Comparação de qualidade só em`,
     `> n ≥ ${N_MINIMO_PARA_COMPARAR}. O que este relatório responde é: rodou, validou, o trecho bate, nada truncou.`,
@@ -597,7 +597,7 @@ interface Contradicao {
  * ausência declarada.
  */
 function urlPolymarket(slug: string | null, polymarketId: string): string {
-  return slug === null ? `(sem slug — id ${polymarketId})` : `https://polymarket.com/event/${slug}`;
+  return slug === null ? `(sem slug, id ${polymarketId})` : `https://polymarket.com/event/${slug}`;
 }
 
 /**
@@ -626,10 +626,10 @@ function secaoContradicoes(items: readonly Contradicao[]): string[] {
   if (items.length === 0) return [];
 
   return [
-    `## ⚠️ Contradições internas — ${items.length}`,
+    `## ⚠️ Contradições internas: ${items.length}`,
     '',
     'A regra afirma duas coisas incompatíveis. Nenhuma das duas leituras está',
-    'errada, porque o texto sustenta as duas — quem resolve vai ter que escolher,',
+    'errada, porque o texto sustenta as duas: quem resolve vai ter que escolher,',
     'e a escolha não está escrita. É o formato do caso de US$ 60 milhões.',
     '',
     '**Ordenado por liquidez, do maior para o menor.** Mercado sem liquidez',
@@ -702,12 +702,12 @@ function distribuir(outputs: readonly DigestOutput[]): Distribuicoes {
     if (o.pegadinhas.length === 0) zeros += 1;
     for (const p of o.pegadinhas) {
       totalPegadinhas += 1;
-      const chave = p.severidade ?? '(sem severidade — v1)';
+      const chave = p.severidade ?? '(sem severidade, v1)';
       porSeveridade.set(chave, (porSeveridade.get(chave) ?? 0) + 1);
     }
     for (const a of o.ambiguidades) {
       totalAmbiguidades += 1;
-      const chave = a.tipo ?? '(sem tipo — v1)';
+      const chave = a.tipo ?? '(sem tipo, v1)';
       porTipo.set(chave, (porTipo.get(chave) ?? 0) + 1);
     }
   }
@@ -878,7 +878,7 @@ function renderRelatorio(
     descartes.contradicaoSemSegundoTrecho + descartes.contradicaoNaoAncorada;
 
   const cabecalho = [
-    `# Digestão de regras — degrau ${degrau.numero}, prompt \`${promptVersion}\``,
+    `# Digestão de regras: degrau ${degrau.numero}, prompt \`${promptVersion}\``,
     '',
     degrau.descricao,
     '',
@@ -908,14 +908,14 @@ function renderRelatorio(
     '',
     markdownMetricas(saidas, degrau.models),
     '',
-    `**Pegadinhas:** ${dist.totalPegadinhas} em ${dist.mercadosValidos} digestões válidas — ` +
+    `**Pegadinhas:** ${dist.totalPegadinhas} em ${dist.mercadosValidos} digestões válidas. ` +
       `${dist.mercadosComZeroPegadinhas} mercado(s) vieram com ZERO, que é resposta desejada quando a regra é direta.`,
     '',
     ...(podado === 0 && descartes.severidadeRebaixada === 0
       ? []
       : [
           `**Podadas pela conferência:** ${podado} de ${podado + dist.totalPegadinhas} ` +
-            `(${((podado / Math.max(1, podado + dist.totalPegadinhas)) * 100).toFixed(1)}%) — ` +
+            `(${((podado / Math.max(1, podado + dist.totalPegadinhas)) * 100).toFixed(1)}%). ` +
             `${descartes.trechoInexistente} por trecho inexistente, ` +
             `${descartes.trechoRepetido} por trecho repetido, ` +
             `${descartes.trechoCurto} por trecho curto demais. ` +
@@ -927,7 +927,7 @@ function renderRelatorio(
                 '<details><summary>o que foi podado</summary>',
                 '',
                 ...descartes.amostras.map(
-                  a => `- \`${a.motivo}\` — ${a.texto}${a.trecho === '' ? '' : `  \n  trecho citado: *"${a.trecho}"*`}`,
+                  a => `- \`${a.motivo}\`: ${a.texto}${a.trecho === '' ? '' : `  \n  trecho citado: *"${a.trecho}"*`}`,
                 ),
                 '',
                 '</details>',
@@ -940,14 +940,14 @@ function renderRelatorio(
     ...(podadasContradicao === 0
       ? []
       : [
-          `**Contradições podadas:** ${podadasContradicao} — ` +
+          `**Contradições podadas:** ${podadasContradicao}. ` +
             `${descartes.contradicaoSemSegundoTrecho} sem a segunda passagem, ` +
             `${descartes.contradicaoNaoAncorada} com trecho que não está na regra.`,
           '',
           '<details><summary>as contradições que não se sustentaram</summary>',
           '',
           ...descartes.amostrasAmbiguidade.map(
-            a => `- \`${a.motivo}\` — ${a.texto}  \n  trechos citados: *"${a.trecho}"*`,
+            a => `- \`${a.motivo}\`: ${a.texto}  \n  trechos citados: *"${a.trecho}"*`,
           ),
           '',
           '</details>',
@@ -958,7 +958,7 @@ function renderRelatorio(
     `**Ambiguidades:** ${dist.totalAmbiguidades}` +
       (dist.taxaOutro === null
         ? ''
-        : ` — taxa de \`outro\`: **${(dist.taxaOutro * 100).toFixed(1)}%**` +
+        : `, taxa de \`outro\`: **${(dist.taxaOutro * 100).toFixed(1)}%**` +
           (dist.taxaOutro >= TETO_OUTRO
             ? ' ⚠️ **no limiar de 20% ou acima: vá LER os `outro`, um a um.**'
             : ' (abaixo de 20%)')),
@@ -1148,7 +1148,7 @@ function renderComparacao(
     `${d.taxaOutro === null ? '—' : (d.taxaOutro * 100).toFixed(1) + '%'} |`;
 
   const cabecalho = [
-    `# Digestão de regras — \`${a.version}\` × \`${b.version}\`, mesmos mercados`,
+    `# Digestão de regras: \`${a.version}\` × \`${b.version}\`, mesmos mercados`,
     '',
     `Mesma amostra, mesma semente, mesmo modelo. A única variável é a versão do prompt.`,
     '',
@@ -1157,11 +1157,11 @@ function renderComparacao(
     resumo(a.version, distA),
     resumo(b.version, distB),
     '',
-    `### Severidade das pegadinhas — \`${b.version}\``,
+    `### Severidade das pegadinhas: \`${b.version}\``,
     '',
     markdownDistribuicao('severidade', distB.porSeveridade, SEVERIDADES, distB.totalPegadinhas),
     '',
-    `### Tipo das ambiguidades — \`${b.version}\``,
+    `### Tipo das ambiguidades: \`${b.version}\``,
     '',
     markdownDistribuicao('tipo', distB.porTipo, tiposDe(b.version), distB.totalAmbiguidades),
     '',

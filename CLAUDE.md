@@ -68,6 +68,9 @@ teria que se justificar sozinha. Reescrever três quartos dos nomes da camada do
 operador cortaria o código do vocabulário das specs que ele existe para
 implementar.
 
+Nada de travessão longo (—) em texto do projeto. Use vírgula, ponto, dois-pontos
+ou parêntese. Travessão curto (–) só em faixa de números.
+
 ### Leitura pesada não é inofensiva só por ser leitura
 Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
 `esports_snapshots`, `system_logs` — deve ser MOSTRADA antes de rodar.
@@ -79,6 +82,36 @@ era seq scan dos 711 MB de `events` (ver `20260807230005_retention_old_branch_pl
 índice ali é incidente de produção, não consulta.
 
 Na dúvida sobre o plano, mostrar a query e esperar.
+
+## Busca vazia não é ausência até os arquivos estarem legíveis
+Um único byte NUL faz o `grep` tratar o arquivo como binário e pular o conteúdo
+inteiro: sem erro, sem aviso, e com o mesmo exit code de "não encontrei". Assim
+"não achei o termo" e "não li o arquivo" ficam indistinguíveis.
+
+Antes de concluir de uma busca vazia:
+
+    git ls-files -z | xargs -0 file | grep -v text
+
+O que sobrar e não for imagem é arquivo que TODA busca do repo está pulando.
+
+Em 27/08/2026, `src/eval/dataset.ts` tinha um NUL cru na linha 382, escrito no
+lugar do escape `\0` numa chave composta (`` `${source}\0${reason}` ``). O
+arquivo tem 479 linhas e `grep -c "" src/eval/dataset.ts` devolvia zero, porque
+o `file` o classificava como `data`. A verificação de se `src/eval/` lia
+`prob_self`, que virou texto de README e corpo de commit, rodou contra esse
+silêncio. A resposta estava certa por acaso; o método, não. Consertado em
+`38c8972`: um byte virou dois, sem mudança de runtime.
+
+Varredura dos 375 arquivos versionados na mesma data, pela classificação do
+`file` e procurando o byte direto: `dataset.ts` era o único, e o resto é o PNG
+do README.
+
+`grep -a` força a leitura e confirma um caso já suspeito. Não substitui a
+varredura, porque é ela que diz ONDE desconfiar.
+
+Isto não é detalhe de ferramenta. As frações deste arquivo (`61 de 723 nomes`,
+`npm run medir:idioma`) são contadas por busca, e fonte invisível não derruba a
+medida: deixa ela parecendo confiável.
 
 ## Teste que afirma só o estado final não prova a transição
 Quando o caminho até o valor tem mais de um passo, outra regra do caminho

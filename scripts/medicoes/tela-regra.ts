@@ -346,7 +346,7 @@ async function main(): Promise<void> {
     m.add(x.event_id);
   }
 
-  p('# Medições M1–M4 — tela de Regra');
+  p('# Medições M1–M4: tela de Regra');
   p();
   p(`Gerado por \`npm run medir:tela-regra\` (\`scripts/medicoes/tela-regra.ts\`).`);
   p('Só leitura: nenhuma linha deste relatório escreve no banco.');
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
   p(`| — acusados | ${conferencia.acusados} |`);
   p(`| — herdados | ${conferencia.herdados} |`);
   p();
-  p('Cobertura do roster — o denominador da lista, não o da digestão:');
+  p('Cobertura do roster, o denominador da lista, não o da digestão:');
   p();
   const semDigestao = d.roster.filter((id) => !mercados.has(id));
   const foraDoRoster = [...mercados].filter((id) => !d.roster.includes(id));
@@ -385,7 +385,7 @@ async function main(): Promise<void> {
   const distLeituras = new Map<number, number>();
   for (const n of leiturasDoTexto.values()) distLeituras.set(n, (distLeituras.get(n) ?? 0) + 1);
   p();
-  p('Leituras por texto — o denominador da concordância:');
+  p('Leituras por texto, o denominador da concordância:');
   p();
   p('| leituras do texto | textos |');
   p('| ---: | ---: |');
@@ -413,7 +413,7 @@ async function main(): Promise<void> {
   }
 
   p();
-  p('## M1 — frequência de cada tipo sobre os textos distintos');
+  p('## M1: frequência de cada tipo sobre os textos distintos');
   p();
   p(`Denominador: ${nTextos} textos distintos de regra.`);
   p();
@@ -425,7 +425,7 @@ async function main(): Promise<void> {
   p();
   p('> **P2 se aplica no grão `(tipo, trecho)`, nunca no grão `tipo`.** Esta tabela');
   p('> NÃO é entrada do gate de boilerplate. Lida como se fosse, ela mandaria');
-  p('> recolher `pegadinha:muda_resultado` — o produto da tela — por aparecer em');
+  p('> recolher `pegadinha:muda_resultado` (o produto da tela) por aparecer em');
   p('> quase todo texto. O que se repete é o TIPO; o trecho que o causa é');
   p('> diferente em cada regulamento. Quem decide o gate é M1b.');
 
@@ -468,10 +468,10 @@ async function main(): Promise<void> {
   ] as const;
 
   p();
-  p('## M1b — `(tipo, trecho)`: o grão do gate de boilerplate');
+  p('## M1b, `(tipo, trecho)`: o grão do gate de boilerplate');
   p();
   p('Duas chaves de agrupamento, porque o boilerplate da Polymarket é o mesmo');
-  p('texto com a data trocada — `December 31, 2026, 11:59 PM ET` e');
+  p('texto com a data trocada: `December 31, 2026, 11:59 PM ET` e');
   p('`June 30, 2027, 11:59 PM ET` são a mesma omissão de fuso. A máscara vale só');
   p('para AGRUPAR: o trecho exibido é sempre o literal, e a dedup da seção 4');
   p('também opera sobre o literal.');
@@ -498,7 +498,7 @@ async function main(): Promise<void> {
     // Histograma de 1 ponto na cauda alta, onde o limiar se decide, e faixas
     // largas embaixo, onde não há decisão a tomar.
     p();
-    p('Histograma — resolução de 1 ponto acima de 5%, que é onde o corte mora:');
+    p('Histograma, resolução de 1 ponto acima de 5%, que é onde o corte mora:');
     p();
     p('| faixa | pares |');
     p('| --- | ---: |');
@@ -520,7 +520,7 @@ async function main(): Promise<void> {
     } else {
       p(
         `**Vale:** o maior salto acima de 5% vai de **${vale.abaixo.toFixed(1)}%** a ` +
-          `**${vale.acima.toFixed(1)}%** — ${vale.largura.toFixed(1)} pontos sem nenhum par. ` +
+          `**${vale.acima.toFixed(1)}%**, ${vale.largura.toFixed(1)} pontos sem nenhum par. ` +
           `Acima dele: ${vale.paresAcima} pares.`,
       );
     }
@@ -530,7 +530,7 @@ async function main(): Promise<void> {
   p();
   p('### Quanto o gate recolhe, por limiar');
   p();
-  p('Cada achado do texto vale por todos os mercados daquele texto — é assim que');
+  p('Cada achado do texto vale por todos os mercados daquele texto: é assim que');
   p('ele aparece na tela.');
   p();
   p('| chave | limiar | pares | achados recolhidos | de | fração | mercados atingidos |');
@@ -569,7 +569,7 @@ async function main(): Promise<void> {
   const compEncadeada = rodarDedup(porMercado, 'componentes-encadeadas', 3);
 
   p();
-  p('## M2 — quanto a dedup por sobreposição corta');
+  p('## M2: quanto a dedup por sobreposição corta');
   p();
   p('| variante | antes | depois | corte | invariante quebrado |');
   p('| --- | ---: | ---: | ---: | ---: |');
@@ -591,8 +591,8 @@ async function main(): Promise<void> {
   p('idênticos normalizados. É o que faz o eixo de mutação "igualdade em vez de');
   p('sobreposição" morder de verdade.');
   p();
-  p('`invariante quebrado` conta as fusões em que o sobrevivente — o trecho mais');
-  p('longo — NÃO contém todo mundo que absorveu.');
+  p('`invariante quebrado` conta as fusões em que o sobrevivente (o trecho mais');
+  p('longo) NÃO contém todo mundo que absorveu.');
   p();
   p('**Continência não basta: o que quebra o invariante é o fecho transitivo.**');
   p('`A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente, e o');
@@ -601,7 +601,7 @@ async function main(): Promise<void> {
   p(
     `Trocar encavalamento por continência derruba o número de ` +
       `${compEncadeada.invarianteQuebrado} para ${compContinencia.invarianteQuebrado}, não para ` +
-      `zero. Zero só sai de abandonar a transitividade — e custa ` +
+      `zero. Zero só sai de abandonar a transitividade, e custa ` +
       `${(((compContinencia.antes - compContinencia.depois) / compContinencia.antes - (escolhida.antes - escolhida.depois) / escolhida.antes) * 100).toFixed(1)} ` +
       `ponto de corte, contra o direito de esconder um achado sem esconder a citação dele.`,
   );
@@ -653,7 +653,7 @@ async function main(): Promise<void> {
   const vd = [...dedupPorEvento.values()];
 
   p();
-  p('## M3 — achados por mercado');
+  p('## M3: achados por mercado');
   p();
   p(`Mercados: ${porEvento.size}.`);
   p();
@@ -669,7 +669,7 @@ async function main(): Promise<void> {
   p();
   p(
     `Mercados com **zero** armadilha acusada: ${vf.filter((x) => x === 0).length} ` +
-      `(${pct(vf.filter((x) => x === 0).length, vf.length)}) — o estado vazio da seção 7 é raro, e existe.`,
+      `(${pct(vf.filter((x) => x === 0).length, vf.length)}), o estado vazio da seção 7 é raro, e existe.`,
   );
   p(
     `Mercados acima do teto de 5 itens visíveis: ${vf.filter((x) => x > 5).length} ` +
@@ -736,7 +736,7 @@ async function main(): Promise<void> {
   }
 
   p();
-  p('## M4 — mercados com pegadinha `muda_resultado` e concordância ≥ 2/3');
+  p('## M4: mercados com pegadinha `muda_resultado` e concordância ≥ 2/3');
   p();
   p(
     '| mínimo de leituras do texto | mercados elegíveis | tem alguma | acusada | acusada com descrição e cenário |',

@@ -453,12 +453,12 @@ async function main(): Promise<void> {
 
   if (sorteadas.length > 0) {
     const md = [
-      '# Amostra para rotulagem humana — spec 003, fase 2 (H1)',
+      '# Amostra para rotulagem humana: spec 003, fase 2 (H1)',
       '',
       `Sorteadas ao acaso (semente \`${args.semente}\`) entre as **compatíveis**, não entre as mais`,
       'confiantes: medir só o topo mediria o topo, não a ferramenta (Parte H).',
       '',
-      'Compatível significa que o desfecho não contradisse a relação — o que NÃO é o mesmo',
+      'Compatível significa que o desfecho não contradisse a relação, o que NÃO é o mesmo',
       'que a relação existir. Este arquivo é justamente o que separa as duas coisas.',
       '',
       'Para cada linha, marque **certa**, **errada** ou **ambígua** na coluna `rótulo`.',

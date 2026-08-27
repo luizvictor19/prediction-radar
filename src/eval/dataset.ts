@@ -379,7 +379,7 @@ export async function loadEvalDataset(options: EvalOptions = {}): Promise<EvalDa
     if (status === 'abstained') {
       const source = asString(row['abstain_source']) ?? 'desconhecida';
       const reason = asString(row['abstain_reason']) ?? 'sem motivo';
-      const key = `${source} ${reason}`;
+      const key = `${source}\0${reason}`;
       const existing = abstentions.get(key);
       if (existing === undefined) abstentions.set(key, { source, reason, n: 1 });
       else existing.n += 1;

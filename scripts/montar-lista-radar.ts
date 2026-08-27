@@ -1405,33 +1405,33 @@ async function relatorio(
     const acimaDaMediana = escolhidos.filter((c) => c.descLen > qUniverso.mediana).length;
 
     const md = [
-      '# Radar — lista candidata v2',
+      '# Radar: lista candidata v2',
       '',
       `Preços lidos em ${coletadaEm} por \`scripts/montar-lista-radar.ts\`. **Nada foi marcado ` +
-        'como `tracked`** — a lista existe para ser aprovada, e marcar é escrita no banco (H4).',
+        'como `tracked`**: a lista existe para ser aprovada, e marcar é escrita no banco (H4).',
       '',
       '## Como ela foi montada',
       '',
       `- Mercados **abertos** (\`closed=false, active=true, archived=false\`) com \`endDate\` entre ` +
-        `${dia(de)} e ${dia(ate)} — ${args.semanaMin} a ${args.semanaMax} dias.`,
+        `${dia(de)} e ${dia(ate)} (${args.semanaMin} a ${args.semanaMax} dias).`,
       `- Preço do YES entre ${args.precoMin} e ${args.precoMax}.`,
       `- Liquidez ≥ ${usd(args.liqMin)} USD e **volume 24h ≥ ${usd(args.vol24Min)} USD**.` +
         (args.book ? `  Book de dois lados com spread ≤ ${args.spreadMax}.` : '  Sanidade de book DESLIGADA.'),
       `- Espelhos removidos: dentro do mesmo evento, dois mercados com YES somando 0,97–1,03 são um só. ` +
         `Caíram ${descartadosEspelho.size}.`,
-      `- Tetos: ${args.tetoAssunto} por assunto, ${args.tetoEvento} por evento, ${args.tetoCategoria} por categoria — ` +
+      `- Tetos: ${args.tetoAssunto} por assunto, ${args.tetoEvento} por evento, ${args.tetoCategoria} por categoria. ` +
         `${new Set(escolhidos.map((c) => c.grupoId)).size} assuntos e ` +
         `${new Set(escolhidos.map((c) => c.m.eventId)).size} eventos distintos.`,
       '',
       '## Os dois papéis',
       '',
-      `**tese** (${daTese.length}, volume mediano ${usd(medianaVol(daTese))}) — regra acima de ${args.cortePapel} ` +
+      `**tese** (${daTese.length}, volume mediano ${usd(medianaVol(daTese))}), regra acima de ${args.cortePapel} ` +
         'caracteres: ressalva, fonte nomeada, cláusula de escape. É onde ler com cuidado deveria dar vantagem.',
       '',
-      `**controle** (${doControle.length}, volume mediano ${usd(medianaVol(doControle))}) — regra curta porque ` +
+      `**controle** (${doControle.length}, volume mediano ${usd(medianaVol(doControle))}), regra curta porque ` +
         'delega a resolução a um placar: resultado oficial, decisão anunciada, score final, feed de preço. ' +
         'Ler com atenção não deveria ajudar. Se a vantagem aparecer igual nos dois lados, o que se achou foi ' +
-        'sorte, não leitura — é para isso que o controle está aqui, e ele passa no mesmo piso de volume.',
+        'sorte, não leitura: é para isso que o controle está aqui, e ele passa no mesmo piso de volume.',
       '',
       `Universo da janela: ${universo.length} mercados. Passaram nos filtros: ${passaram.length}. ` +
         `Depois de espelho e tetos: ${escolhidos.length}. ` +
