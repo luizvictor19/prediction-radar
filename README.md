@@ -85,8 +85,10 @@ one rule. A finding on a shared text is `herdado` by every market that shares it
 grouping by subject: all `where` clauses, swappable in seconds. Nothing about
 what counts as interesting is compiled into the collectors.
 
-**eval**: the machine that measured the agent, pointed at the human instead. It
-does not care whether the forecast came from a model or a person.
+**eval**: the machine that scored the agent. It reads `esports_analyses` and
+`esports_matches`, comparing each forecast against the market price at `as_of`.
+It does not read `my_bets.prob_self` anywhere, so pointing it at a human
+forecaster is still work to do, not a switch already thrown.
 
 Still running from the older system: heartbeat, health alerting, the Telegram
 bot. Deliberately off: the analyst, every enricher, esports collection, the
