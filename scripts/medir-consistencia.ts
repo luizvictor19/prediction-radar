@@ -432,13 +432,13 @@ function render(
   md: Map<string, BlocoMd>,
 ): string {
   const linhas: string[] = [
-    `# Consistência da digestão — \`${arquivo}\``,
+    `# Consistência da digestão: \`${arquivo}\``,
     '',
     'Medida sem chamar modelo e sem tocar no banco: só o `.json` do artefato e o',
     '`.md` irmão. Mercados com o mesmo hash receberam a mesma regra, byte a byte.',
     '',
     '**Ressalva:** a digestão recebe `question` e `outcomes` além da `description`.',
-    'Mercados do mesmo grupo têm a mesma REGRA e perguntas diferentes — parte da',
+    'Mercados do mesmo grupo têm a mesma REGRA e perguntas diferentes: parte da',
     'divergência é prompt diferente, não temperatura. Isto é TETO de instabilidade.',
     '',
     '| medida | valor |',
@@ -459,7 +459,7 @@ function render(
     '## Contradição interna: recall ou precisão?',
     '',
     'Só os grupos divididos. Se os dois trechos citados existem no texto, quem não',
-    'acusou tinha as passagens na frente e não as ligou — falha de recall, e a lista',
+    'acusou tinha as passagens na frente e não as ligou: falha de recall, e a lista',
     'de contradições segue válida, só incompleta.',
     '',
     '| medida | valor |',
@@ -474,7 +474,7 @@ function render(
 
   for (const g of [...divergentes].sort((a, b) => b.membros.length - a.membros.length)) {
     linhas.push(
-      `### hash \`${g.hash.slice(0, 12)}\` — ${g.membros.length} mercados`,
+      `### hash \`${g.hash.slice(0, 12)}\`: ${g.membros.length} mercados`,
       '',
       '| pegadinhas | ambiguidades | mercado |',
       '| ---: | ---: | --- |',

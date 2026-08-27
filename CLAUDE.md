@@ -68,6 +68,9 @@ teria que se justificar sozinha. Reescrever três quartos dos nomes da camada do
 operador cortaria o código do vocabulário das specs que ele existe para
 implementar.
 
+Nada de travessão longo (—) em texto do projeto. Use vírgula, ponto, dois-pontos
+ou parêntese. Travessão curto (–) só em faixa de números.
+
 ### Leitura pesada não é inofensiva só por ser leitura
 Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
 `esports_snapshots`, `system_logs` — deve ser MOSTRADA antes de rodar.

@@ -13,7 +13,7 @@ Escrito para consulta, não para leitura linear.
 
 ## 1. O caminho de uma análise
 
-Cada etapa alimenta a seguinte. Se uma falhar, a próxima não tem como reclamar —
+Cada etapa alimenta a seguinte. Se uma falhar, a próxima não tem como reclamar:
 ela só recebe menos dado e segue.
 
 ```
@@ -42,7 +42,7 @@ eval           a análise é pontuada contra o desfecho    sob demanda
 | `match-history` | h2h, form, market_calibration | confrontos, forma recente, acerto histórico do mercado |
 
 Se um enricher não produz, o analista não sabe que faltou. Ele analisa com o que
-chegou. **Por isso a distribuição de citações importa** — se 58% das afirmações
+chegou. **Por isso a distribuição de citações importa**: se 58% das afirmações
 vêm da fonte mais fraca, é porque as outras não estavam lá.
 
 ---
@@ -56,7 +56,7 @@ vêm da fonte mais fraca, é porque as outras não estavam lá.
 Você diz 0,70. Se acontece, o erro é (0,70 − 1)² = 0,09. Se não acontece,
 (0,70 − 0)² = 0,49. O Brier é a média disso em todas as previsões.
 
-**Menor é melhor. 0,25 é a moeda** — quem sempre diz 0,50 erra 0,25 toda vez,
+**Menor é melhor. 0,25 é a moeda**: quem sempre diz 0,50 erra 0,25 toda vez,
 independente do resultado.
 
 Seus números com n=75:
@@ -67,7 +67,7 @@ mercado   0,1266
 50/50     0,2500
 ```
 
-Os dois batem a moeda com folga. Mas isso não diz nada — o interessante é que
+Os dois batem a moeda com folga. Mas isso não diz nada: o interessante é que
 **o agente perde do mercado**.
 
 ### Skill: por que o baseline é o preço, não a moeda
@@ -90,8 +90,8 @@ preço e não pensando.
 
 Duas qualidades diferentes, e a confusão entre elas é o erro mais comum.
 
-**Calibração** — quando você diz 70%, acontece 70% das vezes?
-**Resolução** — você chega a dizer 70%, ou fica sempre perto de 50%?
+**Calibração**: quando você diz 70%, acontece 70% das vezes?
+**Resolução**: você chega a dizer 70%, ou fica sempre perto de 50%?
 
 Um agente que responde 0,50 para tudo é **perfeitamente calibrado** (a taxa base
 é ~50%) e completamente inútil. Brier aceitável, zero informação.
@@ -101,12 +101,12 @@ A decomposição de Murphy separa os três:
 ```
 Brier = confiabilidade − resolução + incerteza
 
-confiabilidade  0,0494   quanto você erra o alvo — menor é melhor
-resolução       0,1508   quanto você se afasta da média acertando — maior é melhor
+confiabilidade  0,0494   quanto você erra o alvo (menor é melhor)
+resolução       0,1508   quanto você se afasta da média acertando (maior é melhor)
 incerteza       0,2446   propriedade da amostra, não sua
 ```
 
-Sua resolução é 0,1508, não zero. **O agente está discriminando** — ele não é
+Sua resolução é 0,1508, não zero. **O agente está discriminando**: ele não é
 tímido, ele discorda. O problema é discordar na direção errada.
 
 ### O diagrama de confiabilidade
@@ -149,13 +149,13 @@ mentira.
 Três defesas, todas no banco:
 
 **`as_of` ≠ `observed_at`.** Quando o fato era verdade não é quando você soube.
-O replay filtra por `observed_at`, nunca por `as_of` — fonte que faz backfill
+O replay filtra por `observed_at`, nunca por `as_of`: fonte que faz backfill
 grava hoje um fato de ontem, e cortar por `as_of` deixaria passar.
 
 **`observed_at` não é forjável.** Um trigger carimba com o relógio do servidor.
 Teste feito: mandar `2020-01-01` grava a data de hoje.
 
-**Append-only, imposto pelo banco.** O mesmo trigger recusa `UPDATE` — o que pega
+**Append-only, imposto pelo banco.** O mesmo trigger recusa `UPDATE`, o que pega
 `UPSERT` junto, que é como o erro entraria sem ninguém notar.
 
 E `supportsPointInTime` por enricher: fonte que não pode garantir fica de fora do
@@ -168,7 +168,7 @@ carimbo de quando soube.
 
 Quatro categorias. A terceira e a quarta são as perigosas, porque não têm sintoma.
 
-### Ausente — o mais fácil
+### Ausente: o mais fácil
 
 O fragmento não existe. Aparece como recusa nomeada no log:
 
@@ -178,12 +178,12 @@ where component = 'esports_enricher' order by created_at desc limit 1;
 ```
 
 Toda saída de enricher tem nome. `sem motivo declarado` é bug do enricher, não
-ausência de dado — significa que ele saiu sem se explicar.
+ausência de dado: significa que ele saiu sem se explicar.
 
 **Exemplo real:** `oddspapi: sem fixture correspondente x26`. Diagnóstico:
 cobertura de 54%, medida. Metade das partidas simplesmente não tem odds.
 
-### Errado — dá para pegar comparando fontes
+### Errado: dá para pegar comparando fontes
 
 Duas fontes independentes discordando é o sinal. Uma fonte sozinha discordando de
 si mesma é ainda melhor.
@@ -192,25 +192,25 @@ si mesma é ainda melhor.
 instantes com `active: false`, os dois lados trocavam de preço. O que denunciou:
 na abertura, Pinnacle e Stake concordavam que aquele lado era o azarão; no
 fechamento, as duas concordavam que virou favorito. **Só as entradas suspensas
-discordavam — de si mesmas e da outra casa.**
+discordavam: de si mesmas e da outra casa.**
 
 Se tivesse passado, o fragmento diria 30% onde o certo é 70%. E ninguém notaria,
 porque probabilidade invertida continua sendo probabilidade plausível.
 
-### Velho — parece atual
+### Velho: parece atual
 
 Dado correto, mas de outro momento. Não tem sintoma nenhum.
 
 **Exemplo real:** o cooldown de `/v4/fixtures` recebia o horário de início do
 ciclo como se fosse "agora". A espera calculada crescia junto com o tempo
-decorrido — "129s de cooldown" era na verdade "o ciclo está rodando há 129s".
+decorrido: "129s de cooldown" era na verdade "o ciclo está rodando há 129s".
 Efeito: toda descoberta era recusada depois dos primeiros segundos.
 
 **Como pegar:** desconfie de todo lugar onde um horário é passado adiante. Se a
 função precisa saber "agora", ela deve perguntar ao relógio, não receber de quem
 chamou.
 
-### Vazado — o pior
+### Vazado: o pior
 
 Informação do futuro no dado do passado. O backtest fica bom e mente.
 
@@ -228,7 +228,7 @@ provavelmente não há corte.
 
 Sempre nesta ordem. As três primeiras são baratas e eliminam a maioria dos casos.
 
-### Passo 1 — Está vivo?
+### Passo 1: Está vivo?
 
 ```sql
 select component, last_status, last_detail,
@@ -239,12 +239,12 @@ from collector_heartbeats order by seg_atras desc;
 `seg_atras` maior que o cron do componente = travado.
 
 **Por que o heartbeat existe:** um componente que parou e um componente sem
-trabalho produzem o mesmo silêncio no log. O heartbeat distingue — ele bate
+trabalho produzem o mesmo silêncio no log. O heartbeat distingue: ele bate
 quando o ciclo *completa*, mesmo sem ter feito nada.
 
 Foi essa distinção que faltou quando o collector ficou 48 horas parado.
 
-### Passo 2 — Está reclamando?
+### Passo 2: Está reclamando?
 
 ```sql
 select component, status, left(message, 100) as msg, count(*)
@@ -254,9 +254,9 @@ group by 1,2,3 order by 4 desc;
 ```
 
 Olhe o **padrão**, não só o volume. A mesma mensagem centenas de vezes é log
-dentro de loop — foi o que levou `system_logs` a 2,7 milhões de linhas.
+dentro de loop: foi o que levou `system_logs` a 2,7 milhões de linhas.
 
-### Passo 3 — O pipeline fecha?
+### Passo 3: O pipeline fecha?
 
 ```sql
 select
@@ -267,9 +267,9 @@ select
 ```
 
 Zero em qualquer etapa quebra a cadeia. E a etapa seguinte **não tem como
-reclamar** — ela recebe menos dado e segue normalmente.
+reclamar**: ela recebe menos dado e segue normalmente.
 
-### Passo 4 — A análise faz sentido?
+### Passo 4: A análise faz sentido?
 
 ```sql
 select m.match_slug,
@@ -292,10 +292,10 @@ O que procurar na tese:
 - Trata movimento de preço como informação ou como ruído?
 
 **Padrão encontrado hoje:** *"houve queda abrupta, deve ser ruído, prefiro o
-preço anterior"*. Foi assim que ele disse 0,840 onde o mercado dizia 0,145 — e o
+preço anterior"*. Foi assim que ele disse 0,840 onde o mercado dizia 0,145, e o
 mercado estava certo.
 
-### Passo 5 — O que ele leu?
+### Passo 5: O que ele leu?
 
 ```sql
 select f.enricher_id, f.kind, f.confidence, left(f.summary, 250) as summary
@@ -310,7 +310,7 @@ Separa duas coisas que parecem iguais: **a informação não estava lá** (probl
 de enricher) ou **estava e ele ignorou** (problema de prompt).
 
 `fragment_id` é ponteiro vivo e vira NULL quando a retenção de 365 dias leva o
-fragmento — o `join` acima descarta essas linhas em silêncio. Em análise antiga,
+fragmento: o `join` acima descarta essas linhas em silêncio. Em análise antiga,
 troque por `left join` e leia `c.fragment_enricher_id` / `c.fragment_kind`, que
 sobrevivem.
 
@@ -326,13 +326,13 @@ select fragment_enricher_id, count(*),
 from analysis_claims group by 1 order by 2 desc;
 ```
 
-Enricher que nunca aparece produz fragmento que ninguém lê — custo de coleta sem
+Enricher que nunca aparece produz fragmento que ninguém lê: custo de coleta sem
 retorno. Enricher que domina pode estar carregando a tese sozinho.
 
 Hoje: `polymarket-context` 58,5% (confiança 0,4), `oddspapi` 5,4%.
 
 **A query acima soma tudo desde sempre.** Com mais de uma versão de prompt no ar,
-ela mistura os dois comportamentos numa média que não é nenhum dos dois — e a
+ela mistura os dois comportamentos numa média que não é nenhum dos dois, e a
 mistura piora conforme a versão nova acumula. Quebre por versão:
 
 ```sql
@@ -359,12 +359,12 @@ análises como se fosse tendência.
 | `esports_analyses` | `prompt_version` | a versão que rodou naquela análise |
 | `system_config` | `analyst_prompt_version` | a versão que roda agora |
 
-`analysis_claims` não tem nenhuma das duas — daí o `join` com `esports_analyses`.
+`analysis_claims` não tem nenhuma das duas, daí o `join` com `esports_analyses`.
 
 ### Citação é o sinal precoce; Brier é o tardio
 
 Depois de trocar `analyst_prompt_version`, a distribuição de citações **muda em
-horas** — bastam alguns ciclos de análise para a nova versão dizer de onde ela
+horas**: bastam alguns ciclos de análise para a nova versão dizer de onde ela
 está tirando as afirmações. O Brier **leva dias**: cada ponto precisa de uma
 partida que comece, termine e resolva, e n=20 é o piso para a diferença sair do
 ruído.

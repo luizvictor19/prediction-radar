@@ -8,7 +8,7 @@ It arrived here by measuring. Three months and eight hypotheses went into asking
 whether an LLM agent could out-forecast a prediction market. All eight closed
 negative, and the record is kept: [`docs/research-record.md`](docs/research-record.md).
 
-**Status** — collection and rule reading are running in production. **1,021**
+**Status**: collection and rule reading are running in production. **1,021**
 markets in the roster across 7 subjects; **1,033** markets digested into
 **267** distinct rule texts; **78.1%** of them carry a `veredito`. The weekly
 human judgement loop is next.
@@ -17,7 +17,7 @@ human judgement loop is next.
 
 ![The rule screen: a verdict contrasting headline and rule, the traps that change the outcome, an internal contradiction, and the rule text with each quoted passage highlighted where it sits.](docs/imagens/tela-regra.png)
 
-*The rule screen, 24/08/2026 — the headline asks about warships, the rule counts
+*The rule screen, 24/08/2026: the headline asks about warships, the rule counts
 cargo ships. What it shows and why is in [The rule screen](#the-rule-screen).*
 
 ---
@@ -25,12 +25,12 @@ cargo ships. What it shows and why is in [The rule screen](#the-rule-screen).*
 ## The thesis
 
 Prediction markets publish a probability for every event. That number is a strong
-baseline — aggregated, incentive-aligned, continuously updated. There are only
+baseline: aggregated, incentive-aligned, continuously updated. There are only
 two ways past it: **find information the market prices poorly**, or **run a
 computation nobody bothers to run**.
 
-Eight hypotheses went down the first road — better forecasts, from better
-information — and all eight closed negative. This project took the second road:
+Eight hypotheses went down the first road (better forecasts, from better
+information), and all eight closed negative. This project took the second road:
 
 > **The market prices the HEADLINE. The market resolves on the RULE. The gap
 > between the two is the opening.**
@@ -45,7 +45,7 @@ forecast. It is reading.
 
 A worked example, from the screenshot above. The headline asks whether France
 will send **warships** through the Strait of Hormuz. The rule says military cargo
-and support vessels count as warships — so a supply ship resolves the market YES
+and support vessels count as warships, so a supply ship resolves the market YES
 while the headline still reads as a combat deployment. Nobody has to predict
 anything for that gap to be worth money.
 
@@ -63,29 +63,29 @@ selection ──► collector ──► digestion ──► views ──► rule
                                                             └──► eval: my Brier vs the market's
 ```
 
-**selection** — recomputes the roster every 6h from a rule, not from a fixed
+**selection**: recomputes the roster every 6h from a rule, not from a fixed
 list. A new market that passes gets in; a market that resolves drops out. Today:
 1,021 active markets across 7 subjects (`brasil`, `ia-e-tecnologia`,
 `macro-e-mercados`, `saude-e-pandemias`, `eleicoes-e-politica`,
 `esporte-de-temporada`, `geopolitica-e-conflitos`), measured 24/08/2026.
 
-**collector** — a price snapshot every 15 minutes: `best_bid`, `best_ask`,
-`mid_price`, `spread`, `bid_depth`, `ask_depth`. Fifteen minutes because a
+**collector**: a price snapshot every 15 minutes (`best_bid`, `best_ask`,
+`mid_price`, `spread`, `bid_depth`, `ask_depth`). Fifteen minutes because a
 reaction that decays in 3h yields 12 points; hourly would yield 3, and a jump
 between two snapshots leaves no trace at all.
 
-**digestion** — an LLM reads each market's rule text several times and records
-what it found: traps, ambiguities, contradictions, each quoting the exact
-`trecho` it came from. The rule text is stored under its own `sha256`, which is
-what makes the readings survive Polymarket editing a description — and what
+**digestion**: an LLM reads each market's rule text several times and records
+what it found (traps, ambiguities, contradictions, each quoting the exact
+`trecho` it came from). The rule text is stored under its own `sha256`, which is
+what makes the readings survive Polymarket editing a description, and what
 collapses 1,033 markets into 267 distinct texts, because sibling markets share
 one rule. A finding on a shared text is `herdado` by every market that shares it.
 
-**views** — where all the opinion lives. Price band, minimum volume, rule size,
+**views**: where all the opinion lives. Price band, minimum volume, rule size,
 grouping by subject: all `where` clauses, swappable in seconds. Nothing about
 what counts as interesting is compiled into the collectors.
 
-**eval** — the machine that measured the agent, pointed at the human instead. It
+**eval**: the machine that measured the agent, pointed at the human instead. It
 does not care whether the forecast came from a model or a person.
 
 Still running from the older system: heartbeat, health alerting, the Telegram
@@ -119,7 +119,7 @@ that runs unbroken from spec to screen to `select`.
 ## The rule screen
 
 [The screenshot at the top of this file](#prediction-radar) is this screen. Its
-interface chrome is still hardcoded in Portuguese — that is issue #10, the last
+interface chrome is still hardcoded in Portuguese: that is issue #10, the last
 open acceptance criterion here.
 
 One market, one screen, ordered by the question it exists to answer. Seven
@@ -139,7 +139,7 @@ scrolling the traps never takes the rule out of view.
 
 **Repeated findings merge.** The same defect quoted at three different lengths
 was three rows. Absorption by the longest containing span makes it one, and the
-merged agreement count is the union of the readings that found it — not the sum,
+merged agreement count is the union of the readings that found it, not the sum,
 which inflates. The merge cuts **45.3%** of findings corpus-wide but only
 **7.0%** of what the visible sections show, because it lands almost entirely
 inside the collapsed block.
@@ -153,7 +153,7 @@ between across 22.1 points. The spec guessed 80% before measuring, which would
 have collapsed nothing.
 
 **`herdado` findings collapse, and the mechanism is explained once.** The
-paragraph explaining what an inherited finding is used to appear once per item —
+paragraph explaining what an inherited finding is used to appear once per item,
 ten times on one screen in the worst case.
 
 **Empty sections say which kind of empty they are.** "Read and clean" is
@@ -165,7 +165,7 @@ reads as "nobody looked at this".
 accused traps per market, so the button fires in **10.6%** of markets.
 
 Navigation follows the flow rather than offering parallel destinations. You list,
-you pick a market, and only then you decide whether to bet — so the market
+you pick a market, and only then you decide whether to bet, so the market
 travels in the route, and `{ tela: 'operar' }` with no market is not a state that
 can be written down.
 
@@ -184,7 +184,7 @@ server clock, overwriting whatever the client sends. The residual error has a
 known direction and it is the harmless one: replay considers *less* than we knew.
 
 **The context store is append-only, enforced by the database.** The same trigger
-raises on `UPDATE` — which catches `UPSERT` too, the most likely way the mistake
+raises on `UPDATE`, which catches `UPSERT` too, the most likely way the mistake
 gets in unnoticed.
 
 **Rule text is stored under its own hash, not by reference.** Polymarket can edit
@@ -193,7 +193,7 @@ against is what keeps a `leitura` interpretable after that happens, and what let
 a `trecho` still be located inside the text it was quoted from.
 
 Each source declares `supportsPointInTime`. Sources that cannot honestly claim it
-are refused in replay — both when the caller asks, and when `asOf` is in the past
+are refused in replay: both when the caller asks, and when `asOf` is in the past
 even if nobody asked. That second guard is the one that protects against
 forgetting.
 
@@ -232,17 +232,17 @@ server proxies `/sb` to PostgREST and swaps the headers server-side. The service
 key never enters the bundle.
 
 That proxy authenticates nobody. It attaches the service key to whatever reaches
-it, and `service_role` bypasses RLS — so anyone who reaches the dev server
+it, and `service_role` bypasses RLS, so anyone who reaches the dev server
 reaches the whole database. Listening on localhost is the only thing making it
 safe: never start it with `--host`, and never put it anywhere exposed.
 
 Every threshold quoted in this README came from a measurement script, and the
 ones behind a decision write a dated report into `probes/` rather than printing
-and vanishing — `npm run medir:tela-regra` and `medir:digest-nulo` do;
+and vanishing: `npm run medir:tela-regra` and `medir:digest-nulo` do;
 `medir:idioma` and `medir:texto-perdido` print to stdout.
 
 Migrations are written but never applied by the tooling: `supabase migration new`
-produces the `.sql`, and applying it is a human decision. There are 47 of them.
+produces the `.sql`, and applying it is a human decision. There are 48 of them.
 
 ---
 
@@ -253,25 +253,32 @@ npm test        # everything that runs without a database
 npm run test:db # the same suite, with a local Postgres for the tests that need one
 ```
 
-**987 tests, 986 passing, 1 skipped, 30 suites, 8.8s** — measured 24/08/2026 with
-`npm test`, which is the whole suite and needs nothing installed. The one skip is
-the test that requires a database, and it states why it skipped.
+**995 tests, 994 passing, 1 skipped, 30 suites, 10.4s**, measured 27/08/2026
+with `npm test`, which is the whole suite and needs nothing installed. The one
+skip is the test that requires a database, and it states why it skipped.
 
-`npm run test:db` starts a local Supabase stack — Postgres, PostgREST and the
-gateway, with the schema built from `supabase/migrations` so it cannot drift from
-production — and then runs the suite with `RADAR_TEST_DB=required`, which turns a
-missing database into a failure instead of a skip. Stop it with
+`npm run test:db` starts a local Supabase stack (Postgres, PostgREST and the
+gateway, with the schema built from `supabase/migrations`, so it is never
+maintained by hand), and then runs the suite with `RADAR_TEST_DB=required`,
+which turns a missing database into a failure instead of a skip. Stop it with
 `npm run test:db:stop`.
 
-Measured 23/08/2026, images already pulled: **32s** from nothing — empty volumes,
-every migration replayed, whole suite run — and **5s** with the stack already up.
+Building it from the migrations means the test schema is all 48 of them, and
+production can sit behind it: applying is the owner's decision, so a `.sql`
+that is written and not yet applied leaves the test database ahead. That is a
+deliberate consequence of the rule, not drift to correct. On 27/08/2026 the gap
+is `20260825024030_v_radar_expoe_event_group_slug.sql`: the test stack has
+`event_group_slug` on `v_radar` and production does not.
+
+Measured 23/08/2026, images already pulled: **32s** from nothing (empty volumes,
+every migration replayed, whole suite run) and **5s** with the stack already up.
 The first run ever also downloads about 2 GB of container images.
 
 Why a real Postgres and not a fake: some defects are the database exercising a
 freedom no mock has. The one under test is pagination by `OFFSET` under a
 non-total order, where equal-keyed rows shift between pages and the reader
 silently sees one twice and another never. Two substitutes were tried and
-rejected in `f755843` — spying on the query builder, and simulating PostgREST —
+rejected in `f755843` (spying on the query builder, and simulating PostgREST)
 because both only assert that the code calls what it already calls. The
 reproduction and the measured thresholds are in `web/src/lib/dados.db.test.ts`.
 
@@ -298,7 +305,7 @@ not, because filtering by price drops a market from the roster *exactly when it
 moves*, which is the event being studied.
 
 **2. `radar_tracked` is a protection mark and only grows.** Never unmark. A
-market leaves the roster *because it resolved* — and unmarking hands its series
+market leaves the roster *because it resolved*, and unmarking hands its series
 to the retention job's `finalized` branch, which deletes without an age
 condition, at the moment the outcome makes the data valuable. This is why the
 mark stands at 1,201 while the active roster is 1,021: the 180 resolved markets
@@ -313,7 +320,7 @@ the single side repeated. An empty book has a mid of 0.50 by arithmetic, and tha
 fabricated a +0.13 gap that did not exist.
 
 **5. Ceilings come from measurement, not invention.** The API is not the
-bottleneck — calls are batched, a thousand markets cost ~1.3k calls/day on a free
+bottleneck: calls are batched, a thousand markets cost ~1.3k calls/day on a free
 endpoint. Disk is.
 
 **6. Deleted code is in git; deleted data is gone.** Delete code freely. Never
@@ -331,12 +338,12 @@ declared before the measurement. All eight closed negative:
 > no size.**
 
 The headline number: at n = 167 scorable forecasts, the agent's Brier was 0.1762
-against the market's 0.1712 — a skill of **−0.029**. A later prompt version
+against the market's 0.1712, a skill of **−0.029**. A later prompt version
 reached parity on a harder sample, which is not the same as edge.
 
-The full record — all eight hypotheses with the number that killed each, the
+The full record (all eight hypotheses with the number that killed each, the
 calibration results, and ten infrastructure findings that were not what they
-looked like — is in [`docs/research-record.md`](docs/research-record.md). It is
+looked like) is in [`docs/research-record.md`](docs/research-record.md). It is
 kept rather than deleted, because a closed door is only useful if the reason it
 closed can be checked.
 
@@ -362,7 +369,7 @@ the list-to-decision stopwatch is not yet persisted, so no series of it exists
 already have an outcome (#4, #5).
 
 The question this answers is the one the project has been circling since the
-start — *is there edge here, and is it mine or the market's?*
+start: *is there edge here, and is it mine or the market's?*
 
 This is a personal research project, built solo, as the practical component of a
 postgraduate program in applied AI engineering. It has no users, no revenue, and

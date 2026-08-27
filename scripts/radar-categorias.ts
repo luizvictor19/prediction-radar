@@ -265,24 +265,24 @@ async function main(): Promise<void> {
   // O relatório
   // -------------------------------------------------------------------------
   const linhas: string[] = [
-    '# Radar — o mapeamento de categoria',
+    '# Radar: o mapeamento de categoria',
     '',
     `Lido em ${new Date(agora).toISOString()} por \`scripts/radar-categorias.ts\`. **Nada foi ` +
       'gravado.** Mesma regra do coletor, mesmo universo, rodada em memória.',
     '',
     'O que este arquivo existe para responder: o recorte por tag da Gamma está deixando de fora ' +
-      'algo que interessa? Coletar lixo é barato — a view esconde. **Não coletar o que interessa ' +
+      'algo que interessa? Coletar lixo é barato: a view esconde. **Não coletar o que interessa ' +
       'é o erro caro**, porque a API não devolve orderbook histórico: o mercado que não foi ' +
       'coletado em agosto não tem série em novembro.',
     '',
     '## Como ler',
     '',
-    '- **Entraram** — os mais líquidos de cada categoria, com as tags do evento. A tag que causou ' +
+    '- **Entraram**: os mais líquidos de cada categoria, com as tags do evento. A tag que causou ' +
       'a classificação é a que aparece na coluna `via`.',
-    '- **Perto de entrar** — os que o teto por categoria cortou, em ordem de liquidez. Estes ' +
+    '- **Perto de entrar**: os que o teto por categoria cortou, em ordem de liquidez. Estes ' +
       'voltam sozinhos se subirem de liquidez na próxima renovação.',
-    '- **Descartados pela regra** — caíram na triagem. Não voltam, mas foi decisão explícita.',
-    '- **Fora de todas as categorias** — a seção que importa. São os mercados mais líquidos da ' +
+    '- **Descartados pela regra**: caíram na triagem. Não voltam, mas foi decisão explícita.',
+    '- **Fora de todas as categorias**: a seção que importa. São os mercados mais líquidos da ' +
       'janela que NENHUMA tag do recorte alcançou. Se algo aqui interessa, o mapa está errado.',
     '',
     '## Resumo',
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
       .slice(0, N);
     linhas.push(
       '',
-      `### Perto de entrar — cortados pelo teto de ${rules.maxPorCategoria} (${perto.length})`,
+      `### Perto de entrar: cortados pelo teto de ${rules.maxPorCategoria} (${perto.length})`,
       '',
       '| pergunta | liquidez | vol 24h | via | tags do evento |',
       '| --- | ---: | ---: | --- | --- |',
