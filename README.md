@@ -255,9 +255,13 @@ npm test        # everything that runs without a database
 npm run test:db # the same suite, with a local Postgres for the tests that need one
 ```
 
-**995 tests, 994 passing, 1 skipped, 30 suites, 10.4s**, measured 27/08/2026
-with `npm test`, which is the whole suite and needs nothing installed. The one
-skip is the test that requires a database, and it states why it skipped.
+**1007 tests, 1006 passing, 1 skipped, 33 suites, 8.5s**, measured 29/08/2026 as
+the median of five runs of `npm test`, which is the whole suite and needs
+nothing installed. The one skip is the test that requires a database, and it
+states why it skipped.
+
+A suite here is a `describe` block and not a file, which is why one new test
+file moved the count by three.
 
 `npm run test:db` starts a local Supabase stack (Postgres, PostgREST and the
 gateway, with the schema built from `supabase/migrations`, so it is never

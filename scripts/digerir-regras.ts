@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { section, table } from './lib/probe-net.js';
+import { montarElegiveis, resumoDoDescarte } from './lib/fila-digestao.js';
 import { getSystemConfig } from '../src/lib/config.js';
 import { listDeepseekModels } from '../src/llm/deepseek.js';
 import { providerFor } from '../src/llm/registry.js';
@@ -1315,7 +1316,11 @@ async function main(): Promise<void> {
   } else {
     // A exclusão entra ANTES do corte da fatia, não depois: cortar primeiro e
     // filtrar depois devolveria menos mercados que o degrau pede, em silêncio.
-    const elegiveis = embaralhadosTodos.filter(m => !excluidos.has(m.eventId));
+    // O mesmo vale para o descarte de quem já tem desfecho (issue #4), e por
+    // isso os dois moram juntos em `montarElegiveis`.
+    const { digeriveis: elegiveis, descartados } = montarElegiveis(embaralhadosTodos, excluidos);
+    const resumo = resumoDoDescarte(descartados);
+    if (resumo !== '') console.log(`  ${resumo}`);
     amostra = elegiveis.slice(degrau.inicio, degrau.fim ?? undefined);
   }
 

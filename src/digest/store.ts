@@ -44,6 +44,15 @@ export interface MarketToDigest {
    * faltou.
    */
   liquidez: number | null;
+  /**
+   * `events.status`, cru, sem interpretação nenhuma aqui.
+   *
+   * Esta função NÃO filtra por ele de propósito: ela tem três consumidores e só
+   * dois devem descartar mercado com desfecho (ver `scripts/lib/fila-digestao.ts`).
+   * Filtrar aqui encolheria também o denominador dos modos `--comparar` e
+   * `--amostra-de`, que existem para responder sobre a rodada antiga.
+   */
+  status: string | null;
   input: DigestInput;
 }
 
@@ -57,6 +66,7 @@ interface EventRow {
   outcomes: unknown;
   radar_tema: string | null;
   liquidity: number | string | null;
+  status: string | null;
 }
 
 /**
@@ -120,7 +130,9 @@ export async function readMarketsToDigest(): Promise<MarketToDigest[]> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from('events')
-      .select('id, polymarket_id, slug, title, description, end_date, outcomes, radar_tema, liquidity')
+      .select(
+        'id, polymarket_id, slug, title, description, end_date, outcomes, radar_tema, liquidity, status',
+      )
       .eq('radar_tracked', true)
       .order('id')
       .range(from, from + PAGE - 1);
@@ -140,6 +152,7 @@ export async function readMarketsToDigest(): Promise<MarketToDigest[]> {
         // precisão de um double. Ler os dois casos aqui é mais barato que
         // descobrir a ordenação errada num relatório de 752.
         liquidez: readNumber(row.liquidity),
+        status: row.status,
         input: {
           question: row.title,
           description,
