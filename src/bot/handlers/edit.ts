@@ -95,7 +95,7 @@ export async function editConversation(
 
     const { data: leg, error: legErr } = await supabase
       .from('my_bet_legs')
-      .select('id, entry_price, stake_usd, outcome, event_id')
+      .select('id, entry_price, stake_usd, outcome, event_id, bet_id')
       .eq('id', id)
       .single();
 
@@ -184,6 +184,58 @@ export async function editConversation(
       }
 
       await supabase.from('my_bet_legs').update({ outcome: newOutcome }).eq('id', id);
+
+      // The bet's `prob_self_outcome` was copied from this leg's outcome at
+      // registration, so correcting the leg and leaving the bet alone would
+      // leave the probability labelled with the side that was just declared
+      // wrong. That row would still satisfy `my_bets_prob_self_tem_lado`, which
+      // only asks that the label exist, and would score as a bet never made.
+      //
+      // Single-leg bets only, and that is a decision rather than a gap left
+      // open. A basket carries ONE probability across N legs, so no leg's
+      // outcome is the probability's side: registration deliberately writes no
+      // label there, and there is nothing to keep in step. Moving a label onto
+      // a basket from whichever leg happened to be edited would invent the
+      // side the basket flow refused to invent.
+      //
+      // The count cannot mistake a basket for a single bet, and the invariant
+      // is about the DATABASE rather than about this handler, so it was swept
+      // that way: `src/`, `web/` and `scripts/`, plus the SQL in
+      // `supabase/migrations/` and every `rpc` any of them calls.
+      //
+      // Nothing deletes an individual leg. `register.ts` rejects a basket with
+      // fewer than 2 legs before any insert; the only delete that reaches
+      // `my_bet_legs` is the `on delete cascade` from `my_bets`, which removes
+      // ALL legs of a bet at once and so cannot shrink a basket into a single
+      // bet; and `my_bet_legs.event_id` references `events` with no
+      // `on delete` at all, so that side cannot remove a leg either. No `rpc`
+      // touches the table. So a bet with one leg was registered with one leg.
+      //
+      // `prob_self is not null` on the update carries the rest: a `track.ts` or
+      // `track-custom.ts` bet also has one leg, and neither stores a
+      // probability, so the write matches nothing there.
+      const betId = (leg as { bet_id: string }).bet_id;
+      const { count: legsDoBet } = await supabase
+        .from('my_bet_legs')
+        .select('id', { count: 'exact', head: true })
+        .eq('bet_id', betId);
+
+      if (legsDoBet === 1) {
+        const { error: betErr } = await supabase
+          .from('my_bets')
+          .update({ prob_self_outcome: newOutcome })
+          .eq('id', betId)
+          .not('prob_self', 'is', null);
+        if (betErr) {
+          await logEvent({ component: 'telegram_bot', status: 'error', message: `edit prob_self_outcome update failed: ${betErr.message}` });
+          await ctx.reply(
+            '⚠️ Outcome da leg atualizado, mas o lado da probabilidade NÃO acompanhou. ' +
+              'A linha ficou com a probabilidade rotulada do lado antigo. Avisa antes de pontuar.',
+          );
+          return;
+        }
+      }
+
       await ctx.reply(`✅ Outcome atualizado: \`${currentOutcome}\` → \`${newOutcome}\``, { parse_mode: 'Markdown' });
 
     } else if (field === 'edit:notes') {

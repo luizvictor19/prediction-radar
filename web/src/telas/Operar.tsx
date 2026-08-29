@@ -4,6 +4,7 @@ import { useState } from 'react';
 // `mid_price` e de `kelly({ probability })`, e o jeito de garantir isso é haver
 // um arquivo só. Ele é TypeScript puro, sem nada de Node.
 import { formatarProb, lerProbabilidade } from '../../../src/lib/prob-self';
+import { decideSide } from '../../../src/lib/prob-self-outcome';
 import { gravarLeg, gravarPrevisao } from '../lib/dados';
 import type { MercadoNaLista } from '../lib/tipos';
 import { data, idade, preco, segundos, urlPolymarket } from '../lib/formato';
@@ -54,6 +55,8 @@ export function Operar({
     setEstado({ fase: 'confirmando', prob: leitura.prob });
   }
 
+  const lado = decideSide({ kind: 'single_market', outcome: mercado.outcome });
+
   async function salvar(prob: number) {
     setEstado({ fase: 'salvando' });
     setErro(null);
@@ -67,6 +70,16 @@ export function Operar({
         precoMercado: mercado.mid_price,
         precoMercadoEm: mercado.preco_em,
         precoMercadoOutcome: mercado.outcome,
+        // The side the question above named. It is the same expression as
+        // `precoMercadoOutcome` and it is not the same fact: this one is only
+        // true because the question names the side, so the number answered is
+        // about it. Take the label out of the question and this write becomes
+        // a guess wearing a label.
+        //
+        // Through `decideSide` so the screen and the bot cannot answer this
+        // differently. `refuse` cannot arrive here: the render above returns
+        // early on a market with no side, so the form never opens.
+        probSelfOutcome: lado.kind === 'label' ? lado.outcome : null,
       });
       setEstado({
         fase: 'salvo',
@@ -78,6 +91,31 @@ export function Operar({
       setErro(e instanceof Error ? e.message : String(e));
       setEstado({ fase: 'confirmando', prob });
     }
+  }
+
+  // No side, no question to ask.
+  //
+  // The side comes from the last snapshot, so a roster market that has never
+  // been captured has none. Measured on 29/08/2026: 0 of 1074 roster markets,
+  // so this is a guard and not a common path. It exists because the two ways
+  // out of here are both worse than refusing: the insert would be rejected by
+  // `my_bets_prob_self_tem_lado`, which would surface as a raw Postgres error
+  // on top of a filled-in form; and a probability recorded with no side is not
+  // scorable later, which is the whole defect this screen was fixed for.
+  if (lado.kind === 'refuse') {
+    return (
+      <div className="operar">
+        <button className="voltar" onClick={onVoltarParaRegra}>
+          ← A regra
+        </button>
+        <h1>{mercado.pergunta}</h1>
+        <p className="erro">
+          Este mercado ainda não tem lado: nenhuma foto do livro chegou. Sem
+          saber de que desfecho é a probabilidade, ela não pode ser pontuada
+          depois, então a tela não grava. Tenta de novo quando o radar capturar.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -109,7 +147,13 @@ export function Operar({
       {estado.fase === 'digitando' && (
         <div className="passo">
           <label>
-            <span className="pergunta">Sua probabilidade de isso acontecer, em %?</span>
+            {/* The side is named here, and that is what makes the recorded
+                `prob_self_outcome` true rather than lucky. "Isso acontecer"
+                let the reader supply their own side, and the row then stored
+                a label derived from the market instead of from the answer. */}
+            <span className="pergunta">
+              Sua probabilidade de <strong>{mercado.outcome}</strong>, em %?
+            </span>
             <input
               autoFocus
               value={bruto}
@@ -142,10 +186,14 @@ export function Operar({
           <h2>Confere?</h2>
           {/* O resumo é a defesa contra "0.72" quando se queria 72%: o parser não
               adivinha, a tela mostra o número interpretado antes de gravar. */}
-          <p className="numero">{formatarProb(estado.prob)}</p>
+          {/* Both lines carry the same side, so the pair reads as one
+              comparison. Before, "72,0%" sat above "mercado: 0,37 (No)" and
+              the two were sides of the same market shown as comparable. */}
+          <p className="numero">
+            {formatarProb(estado.prob)} ({mercado.outcome})
+          </p>
           <p className="contra">
-            mercado: {preco(mercado.mid_price)}
-            {mercado.outcome && ` (${mercado.outcome})`}
+            mercado: {preco(mercado.mid_price)} ({mercado.outcome})
           </p>
           {nota.trim() && <p className="nota-resumo">nota: {nota.trim()}</p>}
           {erro && <p className="erro">{erro}</p>}
