@@ -120,7 +120,28 @@ Isto não é detalhe de ferramenta. As frações deste arquivo (`61 de 723 nomes
 `npm run medir:idioma`) são contadas por busca, e fonte invisível não derruba a
 medida: deixa ela parecendo confiável.
 
-### `gh issue view` e `gh pr edit` falham neste ambiente
+### O `gh` falha calado de três jeitos aqui
+Três casos no mesmo dia, 29/08/2026, com **gh 2.46.0**. Dois são o bug de
+Projects classic; o terceiro é campo ausente na versão. A causa difere, o
+sintoma é o mesmo: o comando não faz o que o nome dele promete, e não é falha
+de rede nem de permissão.
+
+1. `gh issue view` e `gh pr edit`, abaixo.
+2. `gh pr view --json closingIssuesReferences`, na seção sobre os dois canais
+   de fechamento.
+
+**O terceiro é o pior dos três, e a diferença importa.** Os dois primeiros
+falham fazendo TRABALHO: quebram na cara de quem chamou, alto, e a pessoa
+procura outro caminho porque ainda precisa do resultado. O terceiro falha
+fazendo a VERIFICAÇÃO. Quem roda um comando de conferência e recebe erro não
+fica sem o resultado que queria, fica sem a conferência, e a reação natural é
+seguir sem ela. Comando de verificação quebrado não protege menos: ele ensina
+a pular a verificação, e some do hábito no primeiro dia corrido.
+
+Por isso o comando daquela seção foi trocado por um que não depende da versão
+do CLI, em vez de anotado como "às vezes não funciona".
+
+#### `gh issue view` e `gh pr edit`
 As duas quebram com um erro de GraphQL sobre Projects classic:
 
     GraphQL: Projects (classic) is being deprecated [...] (repository.issue.projectCards)
@@ -265,8 +286,16 @@ keyword estava no commit.
 
 Conferir os DOIS antes de mergear:
 
-    gh pr view <N> --json body,closingIssuesReferences
+    gh api graphql -f query='{ repository(owner:"luizvictor19", name:"prediction-radar") {
+      pullRequest(number:<N>) { closingIssuesReferences(first:20) { nodes { number state } } } } }'
     git log origin/main..HEAD --format='%B' | grep -niE '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) +#[0-9]+'
+
+**O primeiro comando era `gh pr view <N> --json body,closingIssuesReferences` e
+não funciona aqui.** Medido em 29/08/2026 com **gh 2.46.0**: o campo não existe
+na lista de campos de PR dessa versão, e o comando sai com
+`Unknown JSON field: "closingIssuesReferences"`. A versão vai anotada porque um
+`gh` mais novo pode ter o campo, e aí a nota vira histórica em vez de errada. O
+`gh api graphql` acima não depende da versão do CLI: fala com a API direto.
 
 As nove keywords vão escritas por extenso de propósito. A primeira versão desta
 linha era `(close|fix|resolve)[sd]?`, que casa `closes` e `closed` mas NÃO casa
