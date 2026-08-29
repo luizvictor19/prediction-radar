@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { section, table } from './lib/probe-net.js';
+import { filtrarDigeriveis, resumoDoDescarte } from './lib/fila-digestao.js';
 import { supabase } from '../src/lib/supabase.js';
 import { getSystemConfig } from '../src/lib/config.js';
 import {
@@ -798,7 +799,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  const mercados = await readMarketsToDigest();
+  // O nivelamento também paga modelo, então ele também não relê regra de
+  // mercado já decidido (issue #4). O descarte é contado e impresso: um texto
+  // pode ficar órfão por causa dele, e a mensagem de órfãos abaixo diz isso.
+  const { digeriveis: mercados, descartados } = filtrarDigeriveis(await readMarketsToDigest());
+  const resumoDescarte = resumoDoDescarte(descartados);
+  if (resumoDescarte !== '') console.log(`\n  ${resumoDescarte}`);
+
   const mercadosPorSha = new Map<string, MarketToDigest[]>();
   for (const m of mercados) {
     const sha = hashDescription(m.input.description);
@@ -826,7 +833,8 @@ async function main(): Promise<void> {
   if (plano.orfaos.length > 0) {
     console.log(
       `\n  ${plano.orfaos.length} textos abaixo do mínimo NÃO podem ser nivelados: o mercado que os\n` +
-        '  carregava saiu do roster do radar, ou teve a descrição editada (e o hash de hoje é outro).\n' +
+        '  carregava saiu do roster do radar, já tem desfecho (e por isso não volta à fila),\n' +
+        '  ou teve a descrição editada (e o hash de hoje é outro).\n' +
         '  A chamada precisa de um mercado; sem ele não há o que reenviar. Ficam como estão.',
     );
   }
