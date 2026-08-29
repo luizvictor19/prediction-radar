@@ -113,6 +113,35 @@ Isto não é detalhe de ferramenta. As frações deste arquivo (`61 de 723 nomes
 `npm run medir:idioma`) são contadas por busca, e fonte invisível não derruba a
 medida: deixa ela parecendo confiável.
 
+## Afirmação herdada não é medição
+
+Texto copiado de issue, spec, comentário antigo ou migration anterior conta como
+NÃO medido até alguém exercitar. Antes de usar como justificativa, meça.
+
+Três casos em 29/08/2026, todos derrubados pelo subagente adversário no mesmo
+dia:
+
+- **A justificativa de partição era falsa.** "Partição acessada diretamente pelo
+  PostgREST responde com as próprias permissões" aparece com a mesma frase em
+  `20260805142957_esports_snapshots.sql:83`,
+  `20260814014541_particionar_polymarket_snapshots.sql:234` e
+  `20260814024742_consertar_particao_de_agosto.sql:131-132`, e sustentava o
+  corpo da issue #21. O PostgREST exclui partição do schema cache: as quatro
+  respondem `404 PGRST205`, com ou sem grant. Quatro repetições, nenhum
+  exercício.
+- **O número "48 de 299" era falso.** Piso de mercados digeridos com prazo
+  vencido, calculado por um parse de data no título que ninguém escreveu em
+  lugar nenhum. Refeito por outro caminho no mesmo dia, deu 54. E não era piso
+  de nada: o filtro da issue #4 olha `status`, não prazo.
+- **A premissa da issue #4 foi refutada por 600 ciclos de `system_logs`.** "O
+  `status` é sobrescrito para `active` a cada renovação do roster, então
+  `resolved` é apagado no ciclo seguinte" caiu contra os dados: os 237
+  `resolved` do roster carregam `resolved_at` de até 14,36 dias, e os 237
+  foram tocados DEPOIS de resolver e continuam `resolved`.
+
+O padrão: quanto mais vezes a afirmação foi repetida, mais ela parece medida e
+menos alguém a exercita.
+
 ## Teste que afirma só o estado final não prova a transição
 Quando o caminho até o valor tem mais de um passo, outra regra do caminho
 costuma produzir aquele mesmo valor no fim — e a asserção passa sem nunca ter
