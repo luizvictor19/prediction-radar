@@ -77,6 +77,6 @@
     "grammy": "^1.42.0",
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.67.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.23.12"
   }
 }
