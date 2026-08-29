@@ -25,3 +25,38 @@ probes/digest/nivelamento-v4.json
 # consequência de errar aqui é vazar a service key e com ela o banco inteiro
 web/node_modules/
 web/.env.local
+
+# Keys and certificates. Vite's `server.fs.deny` already refuses to serve
+# these; git has no equivalent, so the pattern is the whole defence.
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+id_rsa*
+.npmrc
+
+# Diagnostic output and database exports. Reading the database is allowed and
+# routine, and the file it produces looks like every other untracked file.
+*.csv
+*.dump
+*.bak
+
+# A dump of a session transcript, tracked since 9e0d98b (2026-05-03) and read
+# by nothing. Named exactly, with no wildcard: the criterion for keeping a file
+# is having a reader, and a broad pattern would decide that for files nobody has
+# looked at yet. Untracking does not remove it from history.
+context_claude_chat.txt
+
+# Ignore every `.sql` and re-include the three directories that hold tracked
+# migrations and queries. An earlier draft anchored this as `/*.sql`, which
+# only covers the repository root: `probes/dump.sql` and `scripts/export.sql`
+# both went through, and `probes/` is where this project actually writes
+# diagnostic output. The negations are what let the pattern stay broad, and
+# they are legal here because no parent directory is excluded.
+*.sql
+!supabase/migrations/*.sql
+!supabase/migrations-adiadas/*.sql
+!supabase/queries/*.sql

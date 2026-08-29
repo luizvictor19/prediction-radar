@@ -21,7 +21,8 @@
 > valendo como registro histórico — para entender como o sistema foi construído
 > (tabelas, detectores, coletores, comandos do bot), salvaguardas de operação e
 > as decisões que levaram até aqui. Para o que roda hoje e com que cron, ver
-> `scheduled_jobs_overview.txt`.
+> `docs/processos-automaticos.md`. Para a superfície de comandos do bot no
+> Telegram, ver `docs/comandos-do-bot.md`.
 
 > v7 — atualizado pós-sessão de bugs do auto-resolver, cleanup truncation, fix de cauda no early_market, padronização de formato de data, refactor de hardcodes pra config-driven, open_legs collector de 30s pra 10s, validações reais em produção (Bitcoin May 7, Aston Villa, Forest, Braga). Sistema agora rodando sólido. Próxima fase: validar com volume real (30+ trades) antes de Fase 5 (IA).
 
