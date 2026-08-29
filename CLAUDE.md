@@ -52,6 +52,13 @@ num arquivo que ninguém escreveu antes. Os **nomes** continuam seguindo a pasta
 `src/` inglês, `web/` e `scripts/` português. As duas metades da frase têm
 sujeitos diferentes, e é por isso que ela precisa de duas.
 
+Migration nova também nasce com comentário em inglês. As anteriores ficam como
+estão; a regra vale daqui pra frente.
+
+Comentário `--` em migration segue a regra de código, inglês. `comment on` é
+objeto de schema, vive no banco e segue o idioma dos comentários vizinhos da
+mesma tabela.
+
 **Isto descreve o código que já existe, e o número é medido.** Em 22/08/2026,
 por `npm run medir:idioma`: `src/` tem 61 de 723 nomes em português (**8,4%**),
 `scripts/` 33 de 115 (**28,7%**) e `web/` 65 de 88 (**73,9%**). As frações vêm
@@ -113,6 +120,43 @@ Isto não é detalhe de ferramenta. As frações deste arquivo (`61 de 723 nomes
 `npm run medir:idioma`) são contadas por busca, e fonte invisível não derruba a
 medida: deixa ela parecendo confiável.
 
+### O `gh` falha calado de três jeitos aqui
+Três casos no mesmo dia, 29/08/2026, com **gh 2.46.0**. Dois são o bug de
+Projects classic; o terceiro é campo ausente na versão. A causa difere, o
+sintoma é o mesmo: o comando não faz o que o nome dele promete, e não é falha
+de rede nem de permissão.
+
+1. `gh issue view` e `gh pr edit`, abaixo.
+2. `gh pr view --json closingIssuesReferences`, na seção sobre os dois canais
+   de fechamento.
+
+**O terceiro é o pior dos três, e a diferença importa.** Os dois primeiros
+falham fazendo TRABALHO: quebram na cara de quem chamou, alto, e a pessoa
+procura outro caminho porque ainda precisa do resultado. O terceiro falha
+fazendo a VERIFICAÇÃO. Quem roda um comando de conferência e recebe erro não
+fica sem o resultado que queria, fica sem a conferência, e a reação natural é
+seguir sem ela. Comando de verificação quebrado não protege menos: ele ensina
+a pular a verificação, e some do hábito no primeiro dia corrido.
+
+Por isso o comando daquela seção foi trocado por um que não depende da versão
+do CLI, em vez de anotado como "às vezes não funciona".
+
+#### `gh issue view` e `gh pr edit`
+As duas quebram com um erro de GraphQL sobre Projects classic:
+
+    GraphQL: Projects (classic) is being deprecated [...] (repository.issue.projectCards)
+
+Não é falha de rede nem de permissão, e nada do que se peça na linha de comando
+contorna: o campo entra na query que o `gh` monta sozinho. Aconteceu duas vezes
+em 29/08/2026.
+
+O caminho que funciona é pedir os campos explicitamente, ou ir pela REST API:
+
+    gh issue view <N> --json number,title,body,state
+    gh api repos/{owner}/{repo}/issues/<N> -X PATCH -F body=@arquivo.md
+
+`-F body=@arquivo` lê o corpo do arquivo e evita brigar com aspas no shell.
+
 ## Afirmação herdada não é medição
 
 Texto copiado de issue, spec, comentário antigo ou migration anterior conta como
@@ -166,19 +210,31 @@ Três vezes até agora:
   três mutações, porque sair de Hoje reinicia o relógio de qualquer jeito.
   Passou a afirmar o `null` do meio da sequência.
 
-## Issue fecha pela mensagem de commit, não pelo corpo do PR
+## `--fill` não leva o corpo do commit para a descrição do PR
+**Esta seção se chamava "Issue fecha pela mensagem de commit, não pelo corpo do
+PR", e o título estava errado pela metade.** O GitHub lê OS DOIS: o corpo do PR
+e a mensagem dos commits que chegam à branch padrão. Corrigido em 29/08/2026,
+depois de medir. O que a observação original de fato estabeleceu está abaixo e
+continua valendo, com o nome certo.
+
 `gh pr create --fill` monta o PR a partir dos commits, e num PR de mais de um
 commit ele lista só os ASSUNTOS. O corpo de cada commit não entra. Então a linha
-`Closes #N`, que mora no corpo, nunca chega ao corpo do PR — e fecha a issue
-assim mesmo, porque o GitHub também lê a mensagem dos commits que entram na
-branch padrão. É por aí que a issue fecha. O PR não fechou nenhuma.
+`Closes #<N>`, que mora no corpo, nunca chega ao corpo do PR, e fecha a issue
+assim mesmo, pela mensagem do commit. Nos três casos abaixo foi por aí que a
+issue fechou, porque o corpo do PR estava vazio de keyword: não porque o corpo
+do PR não conte.
+
+Ela é, e a ironia é registrada de propósito, um exemplo da regra da seção
+"Afirmação herdada não é medição": a conclusão de um caso onde só um dos dois
+canais tinha texto virou uma afirmação geral sobre qual canal o GitHub lê, e
+ficou escrita aqui até alguém exercitar o outro.
 
 Três PRs em 23/08/2026, dois commits cada, todos com `--fill`, todos com corpo
 de PR igual a duas linhas de assunto:
-- `1631d69` carrega `Closes #7.` — PR #15 mergeado 19:09:42Z, issue #7 fechada
-  **19:09:43Z**.
-- `2b1b8c8` carrega `Closes #6.` — PR #16 mergeado 19:33:53Z, issue #6 fechada
-  **19:33:54Z**.
+- `1631d69` carrega a keyword de fechamento da issue 7 no corpo. PR #15
+  mergeado 19:09:42Z, issue fechada **19:09:43Z**.
+- `2b1b8c8` carrega a mesma linha para a issue 6. PR #16 mergeado 19:33:53Z,
+  issue fechada **19:33:54Z**.
 - `3909986` e `1ec5ef6` não carregam nenhuma — PR #17 mergeado 20:28:37Z com
   todo o trabalho da #9 dentro, e a #9 continuou aberta. Fechada na mão às
   22:27:49Z, **1h59 depois**, por alguém que lembrou.
@@ -187,12 +243,69 @@ Um segundo separa as duas primeiras do merge que as fechou. A terceira levou
 uma hora e cinquenta e nove minutos e uma pessoa se lembrando dela, pela única
 diferença de uma linha faltando numa mensagem de commit.
 
-Ou o commit carrega `Closes #N`, ou o PR ganha corpo próprio (`--body`, `-F`)
+Ou o commit carrega `Closes #<N>`, ou o PR ganha corpo próprio (`--body`, `-F`)
 em vez de `--fill`. `--fill` sozinho não fecha issue nenhuma.
 
 Os três entraram por merge commit, que é o que faz a mensagem de cada commit
 chegar à main inteira. Trocar a estratégia de merge mexe justamente no texto
 que o GitHub lê, então é conferir de novo, não supor.
+
+### A keyword de fechamento não entende negação
+O GitHub casa `close`, `fix` e `resolve` colados a `#<N>`, em qualquer flexão
+(`closes`, `closed`, `fixes`, `fixed`, `resolves`, `resolved`) e em qualquer
+posição da frase, e **ignora o que vem antes**. Não existe forma negativa: "não
+fecha", "does not close", "isto NÃO resolve" fecham a issue do mesmo jeito.
+
+**Nenhum exemplo desta seção usa um número real depois do `#`, e isso é
+requisito e não estilo.** Um exemplo literal aqui é uma arma carregada: basta
+alguém citar o parágrafo numa mensagem de commit para a issue fechar de novo.
+Placeholder `#<N>` no exemplo, e número sem `#` quando for preciso nomear o
+caso.
+
+Medido em 29/08/2026. O commit `05c991c`, segundo da PR #39, carrega no corpo
+uma frase em inglês dizendo que aquele commit NÃO fecha a issue 21, com a
+keyword colada no `#` e no número. A frase não é reproduzida aqui, pelo motivo
+do parágrafo acima.
+
+A PR entrou por squash às **06:07:02Z**, o que concatenou os corpos dos três
+commits na mensagem de `9757ed2`, e a issue 21 fechou às **06:07:04Z**, dois
+segundos depois, com `commit_id` apontando para esse merge. Foi reaberta na mão
+às **06:07:40Z**, 36 segundos depois. A frase dizia o contrário exato do que a
+ação fez, e a explicação de por que não deveria fechar foi o que a fechou.
+
+Quando a intenção é NÃO fechar, não escreva `#<N>` perto de `close`, `fix` ou
+`resolve`. Escreva sem keyword ("a issue continua aberta"), ou sem o `#` ("a
+issue 21"), ou o nome por extenso.
+
+### Os dois canais, e medir só um deles é o erro
+`closingIssuesReferences` da API lê **o corpo do PR**, NÃO o corpo dos commits.
+Com squash os dois chegam à main, então os dois podem fechar. Consultar só
+aquele campo dá confiança sobre metade do canal e silêncio sobre a outra
+metade, e foi assim que a #21 fechou sem ninguém ver: o campo estava vazio, e a
+keyword estava no commit.
+
+Conferir os DOIS antes de mergear:
+
+    gh api graphql -f query='{ repository(owner:"luizvictor19", name:"prediction-radar") {
+      pullRequest(number:<N>) { closingIssuesReferences(first:20) { nodes { number state } } } } }'
+    git log origin/main..HEAD --format='%B' | grep -niE '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) +#[0-9]+'
+
+**O primeiro comando era `gh pr view <N> --json body,closingIssuesReferences` e
+não funciona aqui.** Medido em 29/08/2026 com **gh 2.46.0**: o campo não existe
+na lista de campos de PR dessa versão, e o comando sai com
+`Unknown JSON field: "closingIssuesReferences"`. A versão vai anotada porque um
+`gh` mais novo pode ter o campo, e aí a nota vira histórica em vez de errada. O
+`gh api graphql` acima não depende da versão do CLI: fala com a API direto.
+
+As nove keywords vão escritas por extenso de propósito. A primeira versão desta
+linha era `(close|fix|resolve)[sd]?`, que casa `closes` e `closed` mas NÃO casa
+`fixes` nem `fixed`, porque `[sd]?` é um caractere e essas duas precisam de
+dois. Uma varredura que perde duas das nove é pior que varredura nenhuma: ela
+devolve vazio e isso parece resposta.
+
+E a varredura pega o que está CITADO também. O commit que escreveu esta seção
+citava a frase do incidente entre aspas, e a citação fechou a issue de novo na
+revisão. Quando precisar mencionar o caso numa mensagem de commit, tire o `#`.
 
 ## Paralelizar tem teto em quem revisa, não em quantos agentes cabem
 Uma worktree por frente (`claude --worktree <nome>`), nunca duas sessões no

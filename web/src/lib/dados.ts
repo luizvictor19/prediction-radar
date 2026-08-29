@@ -333,6 +333,17 @@ export type Previsao = {
   precoMercado: number | null;
   precoMercadoEm: string | null;
   precoMercadoOutcome: string | null;
+  /**
+   * Which outcome the probability is about.
+   *
+   * Same value as `precoMercadoOutcome` on this screen, and a separate field
+   * on purpose: they are two different facts that happen to coincide. The
+   * price's side is whatever the last snapshot quoted; the probability's side
+   * is what the person was answering about. They only agree because the screen
+   * now names the side in the question, and the day the collector changes,
+   * one of the two moves and the other does not.
+   */
+  probSelfOutcome: string | null;
 };
 
 /**
@@ -355,6 +366,7 @@ export async function gravarPrevisao(p: Previsao): Promise<string> {
     preco_mercado: p.precoMercado,
     preco_mercado_em: p.precoMercadoEm,
     preco_mercado_outcome: p.precoMercadoOutcome,
+    prob_self_outcome: p.probSelfOutcome,
   };
   if (p.nota) {
     linha['thesis'] = p.nota;

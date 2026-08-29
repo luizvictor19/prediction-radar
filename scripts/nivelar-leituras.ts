@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { section, table } from './lib/probe-net.js';
 import { filtrarDigeriveis, resumoDoDescarte } from './lib/fila-digestao.js';
+import { vereditoDoNivelamento } from './lib/veredito-nivelamento.js';
 import { supabase } from '../src/lib/supabase.js';
 import { getSystemConfig } from '../src/lib/config.js';
 import {
@@ -610,26 +611,11 @@ function julgar(
     if (ganho > 0) ganharam += 1;
   }
 
-  // `null` e não 0 quando não havia nada antes: 0 → 5 não é "aumento de 0%",
-  // e imprimir 0% faria o critério dizer o contrário do que aconteceu.
-  const ganhoPct = antes > 0 ? ((depois - antes) / antes) * 100 : null;
-
-  let frase: string;
-  if (ganhoPct === null) {
-    frase = 'INCONCLUSIVO: não havia achado nenhum antes nestes textos, então não há razão a calcular.';
-  } else if (ganhoPct >= 30) {
-    frase =
-      'CONFIRMA: >= 30% de achados distintos a mais. O diagnóstico de recall vale também para os\n' +
-      '  textos únicos, e o nivelamento valeu o que custou.';
-  } else if (ganhoPct < 10) {
-    frase =
-      'ACHADO, NÃO FRACASSO: < 10% a mais. O recall baixo era propriedade dos textos REPETIDOS,\n' +
-      '  não uma lei geral — para regra única, uma leitura basta. O projeto passa a saber isso,\n' +
-      '  e o custo de descobrir foi o desta rodada.';
-  } else {
-    frase =
-      'INCONCLUSIVO: entre 10% e 30%. Não sustenta nem "o recall é geral" nem "uma leitura basta".';
-  }
+  // A decisão mora em `scripts/lib/veredito-nivelamento.ts`, que não toca rede
+  // e por isso tem teste. Aqui ficam os conjuntos; lá fica o critério.
+  const decidido = vereditoDoNivelamento(novasPorTexto.size, antes, depois);
+  const ganhoPct = decidido.ganhoPct;
+  const frase = decidido.frase;
 
   return {
     antes,

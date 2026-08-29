@@ -3,6 +3,7 @@ import type { BotContext, BotConversation } from '../index.js';
 import { supabase } from '../../lib/supabase.js';
 import { logEvent } from '../../lib/logger.js';
 import { normalizeOutcome } from '../../lib/outcome-normalizer.js';
+import { decideSide } from '../../lib/prob-self-outcome.js';
 import { adjustCash } from '../../lib/bankroll.js';
 import { formatarProb, lerProbabilidade } from '../../lib/prob-self.js';
 import { ladoDaLeg, type Origem } from '../../lib/lado-oposto.js';
@@ -382,6 +383,8 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   }
 
   // j. Inserir
+  const ladoUnico = decideSide({ kind: 'single_market', outcome });
+
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
@@ -390,6 +393,15 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
       thesis,
       thesis_type: 'manual',
       prob_self: probSelf,
+      // The side the probability is about: the leg's outcome, asked at step c
+      // and normalised against `events.outcomes.values` when the market
+      // matched. It is stored here, on the bet, and not left to be read off
+      // the leg, because scoring reads `my_bets` and because a bet can outlive
+      // the shape of its legs. `/edit` keeps the two in step.
+      //
+      // The choice goes through `decideSide` so the screen and the bot cannot
+      // answer it differently.
+      prob_self_outcome: ladoUnico.kind === 'label' ? ladoUnico.outcome : null,
       confidence_self: confidenceSelf,
       estrategia: ESTRATEGIA,
       domain_confidence: null,
@@ -548,6 +560,8 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
   }
 
   // i. Inserir
+  const ladoDaCesta = decideSide({ kind: 'basket' });
+
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
     .insert({
@@ -556,6 +570,13 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
       thesis,
       thesis_type: 'manual',
       prob_self: probSelf,
+      // Deliberately no side. A basket's probability is about the whole thesis
+      // across N markets, so there is none to name, and inventing one would be
+      // a label that scores against nothing. `decideSide` answers `no_label`
+      // here, which is a different answer from "unknown", and the constraint
+      // `my_bets_prob_self_tem_lado` allows it through the `event_id is null`
+      // branch, which is exactly this row.
+      prob_self_outcome: ladoDaCesta.kind === 'label' ? ladoDaCesta.outcome : null,
       confidence_self: confidenceSelf,
       estrategia: ESTRATEGIA,
       domain_confidence: null,
