@@ -1,0 +1,18 @@
+# Prettier also reads .gitignore; this file covers what is tracked or local
+# but is not source.
+
+# Probe output: data, not code. probes/compostos/casados.json alone is ~69 MB
+# and makes `prettier --check .` die with a heap crash.
+probes/
+
+# Generated or installed.
+node_modules/
+dist/
+coverage/
+web/dist/
+package-lock.json
+web/package-lock.json
+supabase/.temp/
+
+# Other worktrees of this repository, when the check runs from the main checkout.
+.claude/worktrees/
