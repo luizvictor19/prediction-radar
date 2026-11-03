@@ -15,11 +15,23 @@ supabase/.temp/
 .claude/settings.local.json
 CLAUDE.local.md
 
-probes/digest/degrau-3-v4.md
-probes/digest/degrau-3-v4.json
+# probes/ is ignored by default (issue 33). What probe scripts write is raw API
+# snapshots, caches and digest artifacts, regenerable by the script that wrote
+# them, and 99.7% of the 122 MB this directory used to commit. A new probe of
+# any shape now stays local unless someone re-includes it on purpose.
+#
+# Kept: markdown reports, which specs and migrations cite by path, and the
+# labels in rotulos.json, which a human wrote and no script can regenerate.
+# The `!probes/**/` line re-includes directories so the negations below can
+# reach files inside them.
+probes/**
+!probes/**/
+!probes/**/*.md
+!probes/compostos/rotulos.json
 
-# artefato do nivelamento (passo 2b): grande, e o dado que importa vai para o banco
-probes/digest/nivelamento-v4.json
+# A 2.5 MB report, already ignored before the rule above. It must stay after
+# the `*.md` negation, or that negation would track it again.
+probes/digest/degrau-3-v4.md
 
 # a tela (web/) — redundante com os padrões acima, explícito porque a
 # consequência de errar aqui é vazar a service key e com ela o banco inteiro

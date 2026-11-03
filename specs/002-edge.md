@@ -267,7 +267,9 @@ já distingue operador de usuário — falta confirmar se a autorização usa is
 
 - `SUPABASE_SERVICE_KEY` ignora RLS por definição. É a chave mais perigosa do
   repo e vive no Railway.
-- **`probes/` é commitado.** O snapshot da OddsPapi já exclui a chave de propósito
+- **`probes/` era commitado inteiro.** Desde a issue 45 o `.gitignore` deixa
+  entrar só relatório `.md` e `probes/compostos/rotulos.json`; o resto fica
+  local, mas um `.md` novo ainda entra sem ninguém decidir. O snapshot da OddsPapi já exclui a chave de propósito
   — isso vira **regra**, não gentileza: nenhum artefato de sonda pode conter
   credencial, e vale um teste que falhe se contiver.
 - `system_logs` já chegou a 2,7M linhas. Confirmar que nenhum caminho loga
