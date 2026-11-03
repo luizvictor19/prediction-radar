@@ -203,7 +203,7 @@ Três vezes até agora:
 - `f1ff37c` — a guarda lia a coluna declarada de um fixture onde ela não
   existia. O lookup dava `undefined`, a asserção era pulada, e trocar o extrator
   deixava tudo verde.
-- `f644879` (`spec-tela-regra.md` §4) — a primeira mutação do eixo de absorção
+- `f644879` (`docs/spec-tela-regra.md` §4) — a primeira mutação do eixo de absorção
   não derrubou teste nenhum, e o defeito era a mutação: no array ordenado do
   mais longo para o mais curto, o ramo que ela acrescentava nunca era alcançado.
 - `763f3f3` — o teste do cronômetro afirmava só o começo final e sobreviveu às

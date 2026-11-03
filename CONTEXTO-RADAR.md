@@ -47,7 +47,7 @@ Nada gasta e nada coleta hoje, fora heartbeat, alerta de saúde e bot.
 fica. `esports_slug_patterns()` devolve `{cs2-%,lol-%,dota2-%}` — o fallback
 embutido protege o histórico mesmo com a lista de prefixos vazia.
 
-**Próxima tarefa:** `prompt-livro-um-lado.md`.
+**Próxima tarefa:** `docs/prompts/prompt-livro-um-lado.md`.
 
 ---
 
