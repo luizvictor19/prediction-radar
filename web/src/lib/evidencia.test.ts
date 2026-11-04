@@ -45,18 +45,20 @@ const TODOS = [A, B, C, D, E];
 // ---------------------------------------------------------------------------
 
 test('a união cobre todo achado com trecho, e a interseção é vazia', () => {
-  const esquerda = TODOS.filter(a => mostraTrechoNaEsquerda(a, DESTACADOS)).map(a => a.achado_id);
-  const direita = TODOS.filter(a => DESTACADOS.has(a.achado_id)).map(a => a.achado_id);
+  const esquerda = TODOS.filter((a) => mostraTrechoNaEsquerda(a, DESTACADOS)).map(
+    (a) => a.achado_id,
+  );
+  const direita = TODOS.filter((a) => DESTACADOS.has(a.achado_id)).map((a) => a.achado_id);
 
   // Achado sem citação não participa: não há trecho para colocar em lugar
   // nenhum, e isso não é violação — é ausência de conteúdo, não de evidência.
-  const comTrecho = TODOS.filter(a => a.trecho !== null && a.trecho.trim() !== '')
-    .map(a => a.achado_id)
+  const comTrecho = TODOS.filter((a) => a.trecho !== null && a.trecho.trim() !== '')
+    .map((a) => a.achado_id)
     .sort();
 
   assert.deepEqual([...esquerda, ...direita].sort(), comTrecho, 'a união não cobre');
   assert.deepEqual(
-    esquerda.filter(id => direita.includes(id)),
+    esquerda.filter((id) => direita.includes(id)),
     [],
     'algum trecho aparece nos dois lados',
   );
@@ -93,7 +95,7 @@ test('sem nenhum destaque, tudo que tem trecho aparece à esquerda', () => {
   const vazio = new Set<string>();
 
   assert.deepEqual(
-    TODOS.filter(a => mostraTrechoNaEsquerda(a, vazio)).map(a => a.achado_id),
+    TODOS.filter((a) => mostraTrechoNaEsquerda(a, vazio)).map((a) => a.achado_id),
     ['armadilha-destacada', 'ambiguidade', 'boilerplate'],
   );
 });

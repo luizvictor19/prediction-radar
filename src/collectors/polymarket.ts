@@ -4,7 +4,12 @@ import { categorizeMarket, logCategorizerStats } from './categorizer.js';
 import { gammaToEvent } from '../lib/normalize.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent, logDisabled } from '../lib/logger.js';
-import { batchInsert, batchUpsert, DEFAULT_CHUNK_SIZE, EVENTS_CHUNK_SIZE } from '../lib/batch-write.js';
+import {
+  batchInsert,
+  batchUpsert,
+  DEFAULT_CHUNK_SIZE,
+  EVENTS_CHUNK_SIZE,
+} from '../lib/batch-write.js';
 import { CycleLock } from '../lib/cycle-lock.js';
 import { ColumnProbe } from '../lib/column-probe.js';
 import type { GammaMarket } from '../types/index.js';
@@ -40,7 +45,10 @@ interface UpsertedEvent {
   outcomes: { values?: string[] } | null;
 }
 
-function buildSnapshotPair(pending: PendingMarket, event: UpsertedEvent): Record<string, unknown>[] {
+function buildSnapshotPair(
+  pending: PendingMarket,
+  event: UpsertedEvent,
+): Record<string, unknown>[] {
   const outcomeNames = event.outcomes?.values ?? ['Yes', 'No'];
   const firstOutcome = outcomeNames[0] ?? 'Yes';
   const secondOutcome = outcomeNames[1] ?? 'No';
@@ -124,7 +132,9 @@ export async function collectAll(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[collector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[collector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: 'collector',
       status: 'partial',
@@ -166,7 +176,7 @@ export async function collectAll(): Promise<void> {
       .is('closed_at', null);
 
     const protectedEventIds = new Set(
-      (openLegs ?? []).map(l => l.event_id as string | null).filter(Boolean) as string[],
+      (openLegs ?? []).map((l) => l.event_id as string | null).filter(Boolean) as string[],
     );
 
     const { data: protectedEvents } = await supabase
@@ -175,7 +185,9 @@ export async function collectAll(): Promise<void> {
       .in('id', [...protectedEventIds]);
 
     const protectedPolymarketIds = new Set(
-      (protectedEvents ?? []).map(e => e.polymarket_id as string | null).filter(Boolean) as string[],
+      (protectedEvents ?? [])
+        .map((e) => e.polymarket_id as string | null)
+        .filter(Boolean) as string[],
     );
 
     // A same market can surface on two pages when the volume ranking shifts
@@ -192,24 +204,20 @@ export async function collectAll(): Promise<void> {
       // `game_start_time` vem de `gammaToEvent` (item 7) e sai de novo enquanto a
       // migration 20260806015533 não for aplicada: coluna inexistente no payload
       // derruba o chunk inteiro.
-      const eventRows = await gameStartTimeProbe.strip(batch.map(p => p.event));
+      const eventRows = await gameStartTimeProbe.strip(batch.map((p) => p.event));
 
-      const eventsResult = await batchUpsert<UpsertedEvent>(
-        'events',
-        eventRows,
-        {
-          onConflict: 'polymarket_id',
-          select: 'id, polymarket_id, outcomes',
-          chunkSize: EVENTS_CHUNK_SIZE,
-          label: 'collector',
-        },
-      );
+      const eventsResult = await batchUpsert<UpsertedEvent>('events', eventRows, {
+        onConflict: 'polymarket_id',
+        select: 'id, polymarket_id, outcomes',
+        chunkSize: EVENTS_CHUNK_SIZE,
+        label: 'collector',
+      });
 
       upserted += eventsResult.rows.length;
       errorsCount += eventsResult.failedRows;
       writeErrors.push(...eventsResult.errors);
 
-      const eventByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row]));
+      const eventByPolymarketId = new Map(eventsResult.rows.map((row) => [row.polymarket_id, row]));
 
       const snapshotRows: Record<string, unknown>[] = [];
       for (const p of batch) {
@@ -221,7 +229,9 @@ export async function collectAll(): Promise<void> {
 
       if (snapshotRows.length === 0) return;
 
-      const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'collector' });
+      const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, {
+        label: 'collector',
+      });
       snapshots += snapResult.written;
       errorsCount += snapResult.failedRows;
       writeErrors.push(...snapResult.errors);
@@ -321,7 +331,7 @@ export async function collectAll(): Promise<void> {
         offset += markets.length;
 
         if (pageCount % 5 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
         if (pageCount >= 100) {
@@ -370,7 +380,9 @@ export async function collectAll(): Promise<void> {
     // substituídas por consulta direta por `id=`.
     await logCategorizerStats();
 
-    console.log(`[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`);
+    console.log(
+      `[collector] Done. Scanned ${scanned}, upserted ${upserted} events, ${snapshots} snapshots.`,
+    );
   } catch (err) {
     // O .catch() do cron só faz console.error. Sem este log, um ciclo que morre
     // no meio não deixa rastro em system_logs — que é onde o diagnóstico é feito.

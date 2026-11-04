@@ -80,8 +80,8 @@ function distinctEventIds(legs: TrackInput['legs'], openOnly: boolean): string[]
   return [
     ...new Set(
       legs
-        .filter(l => (openOnly ? l.closed_at === null : true))
-        .map(l => l.event_id)
+        .filter((l) => (openOnly ? l.closed_at === null : true))
+        .map((l) => l.event_id)
         .filter((id): id is string => Boolean(id)),
     ),
   ];
@@ -192,7 +192,7 @@ function parseResolution(market: GammaMarket): ResolutionResult {
 
   if (prices[0] === '0.5' && prices[1] === '0.5') return { kind: 'void' };
 
-  const winnerIdx = prices.findIndex(p => p === '1');
+  const winnerIdx = prices.findIndex((p) => p === '1');
   if (winnerIdx === -1) return { kind: 'unresolved' };
 
   return { kind: 'win', winnerOutcome: outcomes[winnerIdx]! };
@@ -232,17 +232,17 @@ async function detectResolutionByPrice(eventId: string): Promise<ResolutionResul
 
   for (const candidateWinner of outcomes) {
     const winnerSnaps = byOutcome.get(candidateWinner)!;
-    const loser = outcomes.find(o => o !== candidateWinner)!;
+    const loser = outcomes.find((o) => o !== candidateWinner)!;
     const loserSnaps = byOutcome.get(loser)!;
 
     if (winnerSnaps.length < 3 || loserSnaps.length < 3) continue;
 
-    const winnerExtreme = winnerSnaps.every(s => {
+    const winnerExtreme = winnerSnaps.every((s) => {
       const bid = s.best_bid;
       return bid != null && bid >= 0.99;
     });
 
-    const loserExtreme = loserSnaps.every(s => {
+    const loserExtreme = loserSnaps.every((s) => {
       const ask = s.best_ask;
       return ask != null && ask <= 0.01;
     });
@@ -279,7 +279,9 @@ async function lookupByIds(ids: readonly string[], closed: boolean): Promise<Bat
       for (const market of markets) byId.set(market.id, market);
     } catch (err) {
       for (const id of chunk) failedIds.add(id);
-      console.error(`[resolved_detector] lote closed=${closed} falhou (${chunk.length} ids): ${String(err)}`);
+      console.error(
+        `[resolved_detector] lote closed=${closed} falhou (${chunk.length} ids): ${String(err)}`,
+      );
     }
   }
 
@@ -321,7 +323,7 @@ async function closeLegsForResolvedEvent(
       if (won) {
         result = 'win';
         resolutionPrice = 1.0;
-        const shares = leg.shares ?? (leg.stake_usd / leg.entry_price);
+        const shares = leg.shares ?? leg.stake_usd / leg.entry_price;
         pnlUsd = (1.0 - leg.entry_price) * shares;
         payout = shares * 1.0;
       } else {
@@ -382,10 +384,7 @@ async function closeLegsForResolvedEvent(
       .is('closed_at', null);
 
     if (openLegs === 0) {
-      await supabase
-        .from('my_bets')
-        .update({ closed_at: resolvedAt })
-        .eq('id', betId);
+      await supabase.from('my_bets').update({ closed_at: resolvedAt }).eq('id', betId);
     }
   }
 
@@ -424,7 +423,9 @@ export async function detectResolvedMarkets(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[resolved_detector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[resolved_detector] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: 'resolved_detector',
       status: 'partial',
@@ -438,7 +439,10 @@ export async function detectResolvedMarkets(): Promise<void> {
   const cyclePromise = _detectResolvedMarkets().finally(() => cycleLock.release(lockToken));
 
   const timeoutPromise = new Promise<void>((_, reject) =>
-    setTimeout(() => reject(new Error('resolved_detector timeout 120s')), RESOLVED_DETECTOR_TIMEOUT_MS),
+    setTimeout(
+      () => reject(new Error('resolved_detector timeout 120s')),
+      RESOLVED_DETECTOR_TIMEOUT_MS,
+    ),
   );
 
   try {
@@ -504,15 +508,15 @@ async function _detectResolvedMarkets(): Promise<void> {
 
   const priorityIds = new Set(
     tracks
-      .filter(t => t.priority)
-      .flatMap(t => rowsByTrack.get(t.name) ?? [])
-      .map(e => e.id),
+      .filter((t) => t.priority)
+      .flatMap((t) => rowsByTrack.get(t.name) ?? [])
+      .map((e) => e.id),
   );
 
   // Merge sem duplicar; o prioritário manda, porque é ele que habilita o
   // fallback por preço extremo — por isso entra por último.
   const byId = new Map<string, CandidateEvent>();
-  for (const track of [...tracks.filter(t => !t.priority), ...tracks.filter(t => t.priority)]) {
+  for (const track of [...tracks.filter((t) => !t.priority), ...tracks.filter((t) => t.priority)]) {
     for (const event of rowsByTrack.get(track.name) ?? []) byId.set(event.id, event);
   }
 
@@ -546,13 +550,13 @@ async function _detectResolvedMarkets(): Promise<void> {
   // já nascia falso para a maioria, porque a varredura só alcança as ~2000
   // primeiras posições e os candidatos aqui são justamente os mais antigos.
   // Agora a pergunta é direta, por id: 2 requisições por 100 candidatos.
-  const idsToCheck = [...new Set(candidates.map(e => e.polymarket_id))];
+  const idsToCheck = [...new Set(candidates.map((e) => e.polymarket_id))];
 
   const active = await lookupByIds(idsToCheck, false);
 
   // Ausente do lote `closed=false` = resolveu, foi deslistado, ou o chunk falhou.
   // Os que falharam saem da conta: ler falha de rede como resolução seria grave.
-  const absentIds = idsToCheck.filter(id => !active.byId.has(id) && !active.failedIds.has(id));
+  const absentIds = idsToCheck.filter((id) => !active.byId.has(id) && !active.failedIds.has(id));
 
   // O `closed=false` é default e silencioso no filtro por id — sem esta segunda
   // chamada, o market resolvido simplesmente não volta e nunca seria detectado.
@@ -560,7 +564,7 @@ async function _detectResolvedMarkets(): Promise<void> {
 
   const lookupFailedIds = new Set([...active.failedIds, ...resolved.failedIds]);
   const unknownIds = absentIds.filter(
-    id => !resolved.byId.has(id) && !resolved.failedIds.has(id),
+    (id) => !resolved.byId.has(id) && !resolved.failedIds.has(id),
   );
 
   let resolvedCount = 0;
@@ -573,140 +577,140 @@ async function _detectResolvedMarkets(): Promise<void> {
   let skippedDueToLimit = 0;
 
   for (const event of candidates) {
-      const market = resolved.byId.get(event.polymarket_id) ?? active.byId.get(event.polymarket_id);
+    const market = resolved.byId.get(event.polymarket_id) ?? active.byId.get(event.polymarket_id);
 
-      if (!market) {
-        // Sem resposta dos dois lados: nada a concluir neste ciclo. O contador
-        // de `unknownIds` já registra; um chunk que falhou nem isso conclui.
-        continue;
-      }
+    if (!market) {
+      // Sem resposta dos dois lados: nada a concluir neste ciclo. O contador
+      // de `unknownIds` já registra; um chunk que falhou nem isso conclui.
+      continue;
+    }
 
-      // O teto só vale para quem pode gerar escrita: mercado fechado (caminho de
-      // resolução) ou prioritário (caminho do preço extremo). Mercado aberto sem
-      // posição não escreve nada e não deve contar como adiado.
-      const mayWrite = market.closed || priorityEventIds.has(event.id);
-      if (mayWrite && appliedCount >= MAX_RESOLUTIONS_PER_CYCLE) {
-        skippedDueToLimit++;
-        continue;
-      }
+    // O teto só vale para quem pode gerar escrita: mercado fechado (caminho de
+    // resolução) ou prioritário (caminho do preço extremo). Mercado aberto sem
+    // posição não escreve nada e não deve contar como adiado.
+    const mayWrite = market.closed || priorityEventIds.has(event.id);
+    if (mayWrite && appliedCount >= MAX_RESOLUTIONS_PER_CYCLE) {
+      skippedDueToLimit++;
+      continue;
+    }
 
-      if (!market.closed) {
-        // For events with open legs, also check if resolved via sustained extreme price.
-        // Necessary because market groups with multi-resolutions never have closed=true
-        // on individual sub-markets until the entire group resolves.
-        const isPriority = priorityEventIds.has(event.id);
+    if (!market.closed) {
+      // For events with open legs, also check if resolved via sustained extreme price.
+      // Necessary because market groups with multi-resolutions never have closed=true
+      // on individual sub-markets until the entire group resolves.
+      const isPriority = priorityEventIds.has(event.id);
 
-        if (isPriority) {
-          const priceResolution = await detectResolutionByPrice(event.id);
-          if (priceResolution.kind === 'win') {
-            const resolvedAt = new Date().toISOString();
-            const updateData: Record<string, unknown> = {
-              status: 'resolved',
-              resolved_at: resolvedAt,
-              resolved_outcome: priceResolution.winnerOutcome,
-            };
+      if (isPriority) {
+        const priceResolution = await detectResolutionByPrice(event.id);
+        if (priceResolution.kind === 'win') {
+          const resolvedAt = new Date().toISOString();
+          const updateData: Record<string, unknown> = {
+            status: 'resolved',
+            resolved_at: resolvedAt,
+            resolved_outcome: priceResolution.winnerOutcome,
+          };
 
-            const { data: updated, error: updErr } = await supabase
-              .from('events')
-              .update(updateData)
-              .eq('id', event.id)
-              .in('status', ['active', 'closed_manual'])
-              .select('id')
-              .maybeSingle();
+          const { data: updated, error: updErr } = await supabase
+            .from('events')
+            .update(updateData)
+            .eq('id', event.id)
+            .in('status', ['active', 'closed_manual'])
+            .select('id')
+            .maybeSingle();
 
-            if (updErr || !updated) {
-              if (updErr) {
-                await logEvent({
-                  component: 'resolved_detector',
-                  status: 'error',
-                  message: `event update failed for ${event.id}: ${updErr.message}`,
-                });
-              }
-              continue;
+          if (updErr || !updated) {
+            if (updErr) {
+              await logEvent({
+                component: 'resolved_detector',
+                status: 'error',
+                message: `event update failed for ${event.id}: ${updErr.message}`,
+              });
             }
-
-            const { closed, payout_total } = await closeLegsForResolvedEvent(
-              event.id,
-              priceResolution,
-              resolvedAt,
-            );
-
-            resolvedCount++;
-            appliedCount++;
-            totalLegsClosed += closed;
-            totalPayout += payout_total;
-
-            await logEvent({
-              component: 'resolved_detector',
-              status: 'success',
-              message: `event ${event.id} (${event.title.slice(0, 60)}) detected as resolved by sustained extreme price: ${priceResolution.winnerOutcome}, closed ${closed} leg(s), payout $${payout_total.toFixed(2)}`,
-            });
             continue;
           }
-        }
 
-        // Mercado ainda aberto — hoje isso é um fato lido da API, não uma
-        // suspeita. O log `partial` de "sumiu do feed mas closed=false" saiu
-        // junto com o pré-filtro que o produzia: era artefato do teto de offset,
-        // dezenas por ciclo, e não dizia nada sobre o mercado.
-        stillOpenCount++;
-        continue;
-      }
+          const { closed, payout_total } = await closeLegsForResolvedEvent(
+            event.id,
+            priceResolution,
+            resolvedAt,
+          );
 
-      const resolution = parseResolution(market);
-      if (resolution.kind === 'unresolved') {
-        unresolvedCount++;
-        continue;
-      }
+          resolvedCount++;
+          appliedCount++;
+          totalLegsClosed += closed;
+          totalPayout += payout_total;
 
-      const umaEndDate = market.umaEndDate ?? new Date().toISOString();
-
-      const updateData: Record<string, unknown> = {
-        status: 'resolved',
-        resolved_at: umaEndDate,
-      };
-      if (resolution.kind === 'win') {
-        updateData['resolved_outcome'] = resolution.winnerOutcome;
-      }
-
-      const { data: updated, error: updErr } = await supabase
-        .from('events')
-        .update(updateData)
-        .eq('id', event.id)
-        .in('status', ['active', 'closed_manual'])
-        .select('id')
-        .maybeSingle();
-
-      if (updErr || !updated) {
-        if (updErr) {
           await logEvent({
             component: 'resolved_detector',
-            status: 'error',
-            message: `event update failed for ${event.id}: ${updErr.message}`,
+            status: 'success',
+            message: `event ${event.id} (${event.title.slice(0, 60)}) detected as resolved by sustained extreme price: ${priceResolution.winnerOutcome}, closed ${closed} leg(s), payout $${payout_total.toFixed(2)}`,
           });
+          continue;
         }
-        continue;
       }
 
-      const { closed, payout_total } = await closeLegsForResolvedEvent(
-        event.id,
-        resolution,
-        umaEndDate,
-      );
-
-      if (resolution.kind === 'void') voidCount++;
-      else resolvedCount++;
-
-      appliedCount++;
-      totalLegsClosed += closed;
-      totalPayout += payout_total;
-
-      await logEvent({
-        component: 'resolved_detector',
-        status: 'success',
-        message: `event ${event.id} (${event.title.slice(0, 60)}) resolved as ${resolution.kind === 'void' ? 'void' : resolution.winnerOutcome}, closed ${closed} leg(s), payout $${payout_total.toFixed(2)}`,
-      });
+      // Mercado ainda aberto — hoje isso é um fato lido da API, não uma
+      // suspeita. O log `partial` de "sumiu do feed mas closed=false" saiu
+      // junto com o pré-filtro que o produzia: era artefato do teto de offset,
+      // dezenas por ciclo, e não dizia nada sobre o mercado.
+      stillOpenCount++;
+      continue;
     }
+
+    const resolution = parseResolution(market);
+    if (resolution.kind === 'unresolved') {
+      unresolvedCount++;
+      continue;
+    }
+
+    const umaEndDate = market.umaEndDate ?? new Date().toISOString();
+
+    const updateData: Record<string, unknown> = {
+      status: 'resolved',
+      resolved_at: umaEndDate,
+    };
+    if (resolution.kind === 'win') {
+      updateData['resolved_outcome'] = resolution.winnerOutcome;
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from('events')
+      .update(updateData)
+      .eq('id', event.id)
+      .in('status', ['active', 'closed_manual'])
+      .select('id')
+      .maybeSingle();
+
+    if (updErr || !updated) {
+      if (updErr) {
+        await logEvent({
+          component: 'resolved_detector',
+          status: 'error',
+          message: `event update failed for ${event.id}: ${updErr.message}`,
+        });
+      }
+      continue;
+    }
+
+    const { closed, payout_total } = await closeLegsForResolvedEvent(
+      event.id,
+      resolution,
+      umaEndDate,
+    );
+
+    if (resolution.kind === 'void') voidCount++;
+    else resolvedCount++;
+
+    appliedCount++;
+    totalLegsClosed += closed;
+    totalPayout += payout_total;
+
+    await logEvent({
+      component: 'resolved_detector',
+      status: 'success',
+      message: `event ${event.id} (${event.title.slice(0, 60)}) resolved as ${resolution.kind === 'void' ? 'void' : resolution.winnerOutcome}, closed ${closed} leg(s), payout $${payout_total.toFixed(2)}`,
+    });
+  }
 
   const durationMs = Date.now() - startedAt;
 
@@ -718,7 +722,10 @@ async function _detectResolvedMarkets(): Promise<void> {
   const unaccounted = idsToCheck.length - accountedFor;
 
   const status =
-    candidateErrors.length > 0 || lookupFailedIds.size > 0 || unaccounted !== 0 || skippedDueToLimit > 0
+    candidateErrors.length > 0 ||
+    lookupFailedIds.size > 0 ||
+    unaccounted !== 0 ||
+    skippedDueToLimit > 0
       ? 'partial'
       : 'success';
 

@@ -29,13 +29,13 @@ mostre exemplos do que entrou e do que ficou de fora.
 
 ### Filtro quantitativo
 
-| filtro | valor | por quê |
-| --- | --- | --- |
-| resolve em | **7 a 120 dias** | o 28–56 anterior era arbitrário meu e cortou 3/4 do universo |
-| preço YES | 0,15–0,85 | fora disso não cabe reação de 2–4¢ |
-| volume 24h | **≥ 500 USD** | é o que faz a tese existir — sem negociação não há exagero |
-| liquidez | **≥ 1,5k USD** | opero pequeno; o 5k vinha de `analyst_min_liquidity_usd`, que servia a outra decisão |
-| book | dois lados, spread ≤ 0,10 | livro vazio tem mid 0,50 por aritmética, e 0,50 cai no meio da faixa |
+| filtro     | valor                     | por quê                                                                              |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| resolve em | **7 a 120 dias**          | o 28–56 anterior era arbitrário meu e cortou 3/4 do universo                         |
+| preço YES  | 0,15–0,85                 | fora disso não cabe reação de 2–4¢                                                   |
+| volume 24h | **≥ 500 USD**             | é o que faz a tese existir — sem negociação não há exagero                           |
+| liquidez   | **≥ 1,5k USD**            | opero pequeno; o 5k vinha de `analyst_min_liquidity_usd`, que servia a outra decisão |
+| book       | dois lados, spread ≤ 0,10 | livro vazio tem mid 0,50 por aritmética, e 0,50 cai no meio da faixa                 |
 
 Espelhos (mesmo evento, YES somando 0,97–1,03) → fica um, o de maior volume.
 Teto de **3 por assunto**, reaproveitando o agrupamento do `market-pairing`.

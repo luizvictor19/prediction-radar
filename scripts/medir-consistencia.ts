@@ -43,7 +43,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
   const args: Args = { arquivo: ARQUIVO_PADRAO };
   for (const arg of argv) {
     const match = /^--arquivo=(.+)$/.exec(arg);
-    if (match === null || match[1] === undefined) return { error: `argumento desconhecido: ${arg}` };
+    if (match === null || match[1] === undefined)
+      return { error: `argumento desconhecido: ${arg}` };
     args.arquivo = match[1];
   }
   return args;
@@ -99,7 +100,7 @@ const BLOCO =
   /<sub>`([^`]+)`[^`]*·\s*hash `([0-9a-f]+)`\s*·\s*(\d+) caracteres de regra<\/sub>\s*\n\n<details><summary>a regra, íntegra<\/summary>\s*\n\n```\n([\s\S]*?)\n```[\s\S]*?\*\*Resolve SIM:\*\*\s*\n\n- ([^\n]+)/g;
 
 function lerMd(texto: string): BlocoMd[] {
-  return [...texto.matchAll(BLOCO)].map(m => ({
+  return [...texto.matchAll(BLOCO)].map((m) => ({
     slug: m[1] ?? '',
     hash12: m[2] ?? '',
     caracteres: Number(m[3] ?? '0'),
@@ -169,10 +170,12 @@ function analisar(grupos: Map<string, Entrada[]>): Grupo[] {
     .map(([hash, membros]) => ({
       hash,
       membros,
-      divPeg: uniqN(membros.map(m => m.pegadinhas.length)).length > 1,
-      divAmb: uniqN(membros.map(m => m.ambiguidades.length)).length > 1,
-      divTipos: uniq(membros.map(m => uniq(m.ambiguidades.map(a => a.tipo)).join('+'))).length > 1,
-      divSev: uniq(membros.map(m => uniq(m.pegadinhas.map(p => p.severidade)).join('+'))).length > 1,
+      divPeg: uniqN(membros.map((m) => m.pegadinhas.length)).length > 1,
+      divAmb: uniqN(membros.map((m) => m.ambiguidades.length)).length > 1,
+      divTipos:
+        uniq(membros.map((m) => uniq(m.ambiguidades.map((a) => a.tipo)).join('+'))).length > 1,
+      divSev:
+        uniq(membros.map((m) => uniq(m.pegadinhas.map((p) => p.severidade)).join('+'))).length > 1,
     }));
 }
 
@@ -229,8 +232,8 @@ function conferirContradicoes(
   const fora: Conferencia[] = [];
 
   for (const g of analise) {
-    const acusadores = g.membros.filter(m =>
-      m.ambiguidades.some(a => a.tipo === 'contradicao_interna'),
+    const acusadores = g.membros.filter((m) =>
+      m.ambiguidades.some((a) => a.tipo === 'contradicao_interna'),
     );
     // só os grupos DIVIDIDOS: uns acusaram, outros não
     if (acusadores.length === 0 || acusadores.length === g.membros.length) continue;
@@ -244,10 +247,11 @@ function conferirContradicoes(
     if (regra === undefined) continue;
 
     for (const acusador of acusadores) {
-      for (const a of acusador.ambiguidades.filter(x => x.tipo === 'contradicao_interna')) {
+      for (const a of acusador.ambiguidades.filter((x) => x.tipo === 'contradicao_interna')) {
         fora.push({
           hash: g.hash.slice(0, 12),
-          slugAcusador: md.get(acusador.digest.event_id)?.slug ?? `event=${acusador.digest.event_id}`,
+          slugAcusador:
+            md.get(acusador.digest.event_id)?.slug ?? `event=${acusador.digest.event_id}`,
           tamanhoGrupo: g.membros.length,
           acusaram: acusadores.length,
           naoAcusaram: g.membros.length - acusadores.length,
@@ -287,7 +291,7 @@ async function main(): Promise<void> {
 
   // O `.md` declara o tamanho da regra. Conferir contra o que a regex extraiu é
   // o que separa "a citação não está no texto" de "eu li o texto errado".
-  const truncados = blocos.filter(b => b.regra.length !== b.caracteres);
+  const truncados = blocos.filter((b) => b.regra.length !== b.caracteres);
 
   // A regra por hash, com a premissa do agrupamento conferida em vez de
   // assumida: se dois blocos com o mesmo hash tivessem texto diferente, o
@@ -332,11 +336,14 @@ async function main(): Promise<void> {
         ['textos de regra distintos', String(grupos.size)],
         ['grupos com 2+ mercados', String(analise.length)],
         ['mercados nesses grupos', `${emGrupos} (${pct(emGrupos, entradas.length)})`],
-        ['grupos com saída divergente', `${divergentes.length} (${pct(divergentes.length, analise.length)})`],
-        ['  divergiu no nº de pegadinhas', String(analise.filter(g => g.divPeg).length)],
-        ['  divergiu no nº de ambiguidades', String(analise.filter(g => g.divAmb).length)],
-        ['  divergiu nos tipos de ambiguidade', String(analise.filter(g => g.divTipos).length)],
-        ['  divergiu nas severidades', String(analise.filter(g => g.divSev).length)],
+        [
+          'grupos com saída divergente',
+          `${divergentes.length} (${pct(divergentes.length, analise.length)})`,
+        ],
+        ['  divergiu no nº de pegadinhas', String(analise.filter((g) => g.divPeg).length)],
+        ['  divergiu no nº de ambiguidades', String(analise.filter((g) => g.divAmb).length)],
+        ['  divergiu nos tipos de ambiguidade', String(analise.filter((g) => g.divTipos).length)],
+        ['  divergiu nas severidades', String(analise.filter((g) => g.divSev).length)],
         ['mercados com a saída modal do grupo', `${naModa} (${pct(naModa, emGrupos)})`],
       ],
       [0],
@@ -344,13 +351,13 @@ async function main(): Promise<void> {
   );
 
   // volatilidade por tipo
-  const tipos = uniq(entradas.flatMap(e => e.ambiguidades.map(a => a.tipo)));
+  const tipos = uniq(entradas.flatMap((e) => e.ambiguidades.map((a) => a.tipo)));
   const volat = tipos
-    .map(t => {
+    .map((t) => {
       let todos = 0;
       let alguns = 0;
       for (const g of analise) {
-        const com = g.membros.filter(m => m.ambiguidades.some(a => a.tipo === t)).length;
+        const com = g.membros.filter((m) => m.ambiguidades.some((a) => a.tipo === t)).length;
         if (com === g.membros.length) todos += 1;
         else if (com > 0) alguns += 1;
       }
@@ -363,19 +370,21 @@ async function main(): Promise<void> {
   console.log(
     table(
       ['tipo', 'em todos', 'em alguns'],
-      volat.map(v => [v.t, String(v.todos), String(v.alguns)]),
+      volat.map((v) => [v.t, String(v.todos), String(v.alguns)]),
       [0],
     ),
   );
 
   // a conferência
   const conf = conferirContradicoes(analise, regraPorHash, md);
-  const gruposDivididos = new Set(conf.map(c => c.hash));
+  const gruposDivididos = new Set(conf.map((c) => c.hash));
   const literalOuEspaco = (a: Achado): boolean => a === 'literal' || a === 'espacamento';
   const ambosNoTexto = conf.filter(
-    c => literalOuEspaco(c.trecho) && (!c.temConflito || literalOuEspaco(c.conflito)),
+    (c) => literalOuEspaco(c.trecho) && (!c.temConflito || literalOuEspaco(c.conflito)),
   );
-  const algumFora = conf.filter(c => !literalOuEspaco(c.trecho) || (c.temConflito && !literalOuEspaco(c.conflito)));
+  const algumFora = conf.filter(
+    (c) => !literalOuEspaco(c.trecho) || (c.temConflito && !literalOuEspaco(c.conflito)),
+  );
 
   console.log(section('Contradição interna: recall ou precisão?'));
   console.log('  Só os grupos DIVIDIDOS — uns membros acusaram contradição, outros não.');
@@ -387,11 +396,32 @@ async function main(): Promise<void> {
       [
         ['grupos divididos', String(gruposDivididos.size)],
         ['acusações conferidas', String(conf.length)],
-        ['  com trecho_conflito citado', String(conf.filter(c => c.temConflito).length)],
-        ['ambos os trechos no texto → RECALL', `${ambosNoTexto.length} (${pct(ambosNoTexto.length, conf.length)})`],
-        ['    casamento literal', String(ambosNoTexto.filter(c => c.trecho === 'literal' && (!c.temConflito || c.conflito === 'literal')).length)],
-        ['    só depois de normalizar espaço', String(ambosNoTexto.length - ambosNoTexto.filter(c => c.trecho === 'literal' && (!c.temConflito || c.conflito === 'literal')).length)],
-        ['algum trecho fora do texto → PRECISÃO', `${algumFora.length} (${pct(algumFora.length, conf.length)})`],
+        ['  com trecho_conflito citado', String(conf.filter((c) => c.temConflito).length)],
+        [
+          'ambos os trechos no texto → RECALL',
+          `${ambosNoTexto.length} (${pct(ambosNoTexto.length, conf.length)})`,
+        ],
+        [
+          '    casamento literal',
+          String(
+            ambosNoTexto.filter(
+              (c) => c.trecho === 'literal' && (!c.temConflito || c.conflito === 'literal'),
+            ).length,
+          ),
+        ],
+        [
+          '    só depois de normalizar espaço',
+          String(
+            ambosNoTexto.length -
+              ambosNoTexto.filter(
+                (c) => c.trecho === 'literal' && (!c.temConflito || c.conflito === 'literal'),
+              ).length,
+          ),
+        ],
+        [
+          'algum trecho fora do texto → PRECISÃO',
+          `${algumFora.length} (${pct(algumFora.length, conf.length)})`,
+        ],
       ],
       [0],
     ),
@@ -411,7 +441,20 @@ async function main(): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });
   await writeFile(
     destino,
-    render(parsed.arquivo, entradas.length, grupos.size, analise, divergentes, emGrupos, naModa, volat, conf, ambosNoTexto, algumFora, md),
+    render(
+      parsed.arquivo,
+      entradas.length,
+      grupos.size,
+      analise,
+      divergentes,
+      emGrupos,
+      naModa,
+      volat,
+      conf,
+      ambosNoTexto,
+      algumFora,
+      md,
+    ),
     'utf8',
   );
   console.log(`\n  relatório: ${destino}`);
@@ -454,7 +497,7 @@ function render(
     '',
     '| tipo | em todos os membros | em ALGUNS |',
     '| --- | ---: | ---: |',
-    ...volat.map(v => `| \`${v.t}\` | ${v.todos} | ${v.alguns} |`),
+    ...volat.map((v) => `| \`${v.t}\` | ${v.todos} | ${v.alguns} |`),
     '',
     '## Contradição interna: recall ou precisão?',
     '',
@@ -479,7 +522,7 @@ function render(
       '| pegadinhas | ambiguidades | mercado |',
       '| ---: | ---: | --- |',
       ...g.membros.map(
-        m =>
+        (m) =>
           `| ${m.pegadinhas.length} | ${m.ambiguidades.length} | ${md.get(m.digest.event_id)?.slug ?? m.digest.event_id} |`,
       ),
       '',

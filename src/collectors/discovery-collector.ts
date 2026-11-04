@@ -146,7 +146,7 @@ export function hasMatchShape(slug: string, prefix: string): boolean {
 }
 
 export function matchedPrefix(slug: string, prefixes: readonly string[]): string | null {
-  return prefixes.find(p => slug.startsWith(p)) ?? null;
+  return prefixes.find((p) => slug.startsWith(p)) ?? null;
 }
 
 /**
@@ -398,7 +398,7 @@ async function fetchPendingEventSlugs(): Promise<string[] | null> {
     return null;
   }
 
-  return [...new Set((data ?? []).map(row => row.event_group_slug as string))];
+  return [...new Set((data ?? []).map((row) => row.event_group_slug as string))];
 }
 
 export async function collectDiscovery(): Promise<void> {
@@ -416,7 +416,9 @@ export async function collectDiscovery(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[discovery] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[discovery] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: 'discovery_collector',
       status: 'partial',
@@ -449,7 +451,7 @@ async function _collect(): Promise<void> {
   const startedAt = Date.now();
   const config = await getSystemConfig();
 
-  const prefixes = (config.discovery_slug_prefixes ?? []).filter(p => p.length > 0);
+  const prefixes = (config.discovery_slug_prefixes ?? []).filter((p) => p.length > 0);
   if (prefixes.length === 0) {
     // Lista vazia é o desligamento pela config, não um bug.
     await logEvent({
@@ -529,10 +531,10 @@ async function _collect(): Promise<void> {
     }
 
     eventsScanned += page.length;
-    const pageMarkets = page.flatMap(event => event.markets ?? []);
+    const pageMarkets = page.flatMap((event) => event.markets ?? []);
     scanned += pageMarkets.length;
 
-    const known = await fetchKnownIds(pageMarkets.map(m => m.id));
+    const known = await fetchKnownIds(pageMarkets.map((m) => m.id));
     let oldestOnPage: number | null = null;
 
     for (const event of page) {
@@ -540,7 +542,7 @@ async function _collect(): Promise<void> {
       // agora é o evento, e um evento sem market nenhum não diz nada sobre a
       // fronteira — não quebra a sequência nem a alimenta.
       const eventMarkets = event.markets ?? [];
-      if (eventMarkets.length > 0 && eventMarkets.every(m => known.has(m.id))) {
+      if (eventMarkets.length > 0 && eventMarkets.every((m) => known.has(m.id))) {
         knownEventStreak++;
       } else if (eventMarkets.length > 0) {
         knownEventStreak = 0;
@@ -616,7 +618,7 @@ async function _collect(): Promise<void> {
           const harvest = harvestEvents(events, prefixes, seenIds, capturedAtById, capturedAt);
           rejectedShape += harvest.rejectedShape;
 
-          const known = await fetchKnownIds(harvest.candidates.map(c => c.market.id));
+          const known = await fetchKnownIds(harvest.candidates.map((c) => c.market.id));
           absorb(harvest.candidates, known);
         } catch (err) {
           // Um lote que falha não derruba os outros nem o ciclo — mesma
@@ -628,8 +630,8 @@ async function _collect(): Promise<void> {
     }
   }
 
-  const prepared = dedupeByKey(candidates, c => c.market.id)
-    .map(c => prepareMarket(c.market, c.parent))
+  const prepared = dedupeByKey(candidates, (c) => c.market.id)
+    .map((c) => prepareMarket(c.market, c.parent))
     .filter((p): p is PreparedMarket => p !== null);
 
   const writeErrors: string[] = [];
@@ -665,7 +667,9 @@ async function _collect(): Promise<void> {
   };
   writeErrors.push(...eventsResult.errors);
 
-  const eventIdByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row.id]));
+  const eventIdByPolymarketId = new Map(
+    eventsResult.rows.map((row) => [row.polymarket_id, row.id]),
+  );
 
   const snapshotRows: EsportsSnapshotRow[] = [];
   for (const p of prepared) {
@@ -742,7 +746,11 @@ async function _collect(): Promise<void> {
     },
   });
 
-  await beat('discovery_collector', status, `${eventsScanned} eventos, ${scanned} markets, stop: ${stopReason}`);
+  await beat(
+    'discovery_collector',
+    status,
+    `${eventsScanned} eventos, ${scanned} markets, stop: ${stopReason}`,
+  );
 
   console.log(
     `[discovery] ${eventsScanned} events / ${scanned} scanned / ${candidatesNew} new esports markets / ` +

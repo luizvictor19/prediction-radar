@@ -92,12 +92,19 @@ export const SCHEMA_V1 = {
     },
     ambiguidades: {
       type: 'array',
-      description:
-        'Onde a regra admite mais de uma leitura: o trecho citado e as duas leituras.',
+      description: 'Onde a regra admite mais de uma leitura: o trecho citado e as duas leituras.',
       items: { type: 'string' },
     },
   },
-  required: ['resolve_sim', 'resolve_nao', 'fonte', 'anula_se', 'prazo', 'pegadinhas', 'ambiguidades'],
+  required: [
+    'resolve_sim',
+    'resolve_nao',
+    'fonte',
+    'anula_se',
+    'prazo',
+    'pegadinhas',
+    'ambiguidades',
+  ],
   additionalProperties: false,
 } as const;
 
@@ -192,7 +199,7 @@ function buildUser(input: DigestInput): string {
   ].join('\n');
 }
 
-const v1: PromptBuilder = input => ({ system: V1_SYSTEM, user: buildUser(input) });
+const v1: PromptBuilder = (input) => ({ system: V1_SYSTEM, user: buildUser(input) });
 
 // ---------------------------------------------------------------------------
 // v2 — severidade, tipo de ambiguidade, e a régua contra enchimento
@@ -372,15 +379,15 @@ export const SCHEMA_V2 = {
     },
     ambiguidades: {
       type: 'array',
-      description:
-        'Onde a regra admite mais de uma leitura. Lista vazia quando não houver.',
+      description: 'Onde a regra admite mais de uma leitura. Lista vazia quando não houver.',
       items: {
         type: 'object',
         properties: {
           tipo: {
             type: 'string',
             enum: [...TIPOS_AMBIGUIDADE_V2],
-            description: 'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
+            description:
+              'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
           },
           trecho: {
             type: 'string',
@@ -394,7 +401,15 @@ export const SCHEMA_V2 = {
       },
     },
   },
-  required: ['resolve_sim', 'resolve_nao', 'fonte', 'anula_se', 'prazo', 'pegadinhas', 'ambiguidades'],
+  required: [
+    'resolve_sim',
+    'resolve_nao',
+    'fonte',
+    'anula_se',
+    'prazo',
+    'pegadinhas',
+    'ambiguidades',
+  ],
   additionalProperties: false,
 } as const;
 
@@ -500,7 +515,7 @@ Nenhum conhecimento de fora. Nenhum "normalmente estes mercados...". Se a regra 
 
 Escreva em português. Nomes próprios ficam como a regra os escreve — não traduza o nome da fonte. Cada item é uma frase, no máximo duas.`;
 
-const v2: PromptBuilder = input => ({ system: V2_SYSTEM, user: buildUser(input) });
+const v2: PromptBuilder = (input) => ({ system: V2_SYSTEM, user: buildUser(input) });
 
 // ---------------------------------------------------------------------------
 // v3 — mecanismo no lugar de instrução
@@ -605,7 +620,8 @@ export const SCHEMA_V3 = {
           tipo: {
             type: 'string',
             enum: [...TIPOS_AMBIGUIDADE_V3],
-            description: 'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
+            description:
+              'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
           },
           trecho: {
             type: 'string',
@@ -619,7 +635,15 @@ export const SCHEMA_V3 = {
       },
     },
   },
-  required: ['resolve_sim', 'resolve_nao', 'fonte', 'anula_se', 'prazo', 'pegadinhas', 'ambiguidades'],
+  required: [
+    'resolve_sim',
+    'resolve_nao',
+    'fonte',
+    'anula_se',
+    'prazo',
+    'pegadinhas',
+    'ambiguidades',
+  ],
   additionalProperties: false,
 } as const;
 
@@ -738,7 +762,7 @@ Nenhum conhecimento de fora. Nenhum "normalmente estes mercados...". Se a regra 
 
 Escreva em português, exceto os trechos citados, que ficam na língua da regra. Nomes próprios ficam como a regra os escreve. Cada item é uma frase, no máximo duas.`;
 
-const v3: PromptBuilder = input => ({ system: V3_SYSTEM, user: buildUser(input) });
+const v3: PromptBuilder = (input) => ({ system: V3_SYSTEM, user: buildUser(input) });
 
 // ---------------------------------------------------------------------------
 // v4 — a lista fechada que fecha de verdade
@@ -835,7 +859,8 @@ export const SCHEMA_V4 = {
           tipo: {
             type: 'string',
             enum: [...TIPOS_AMBIGUIDADE_V4],
-            description: 'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
+            description:
+              'A categoria da ambiguidade. Use "outro" em vez de forçar uma que não descreve.',
           },
           trecho: {
             type: 'string',
@@ -854,7 +879,15 @@ export const SCHEMA_V4 = {
       },
     },
   },
-  required: ['resolve_sim', 'resolve_nao', 'fonte', 'anula_se', 'prazo', 'pegadinhas', 'ambiguidades'],
+  required: [
+    'resolve_sim',
+    'resolve_nao',
+    'fonte',
+    'anula_se',
+    'prazo',
+    'pegadinhas',
+    'ambiguidades',
+  ],
   additionalProperties: false,
 } as const;
 
@@ -998,7 +1031,7 @@ Nenhum conhecimento de fora. Nenhum "normalmente estes mercados...". Se a regra 
 
 Escreva em português, exceto os trechos citados, que ficam na língua da regra. Nomes próprios ficam como a regra os escreve. Cada item é uma frase, no máximo duas.`;
 
-const v4: PromptBuilder = input => ({ system: V4_SYSTEM, user: buildUser(input) });
+const v4: PromptBuilder = (input) => ({ system: V4_SYSTEM, user: buildUser(input) });
 
 // ---------------------------------------------------------------------------
 // Registro

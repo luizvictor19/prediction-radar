@@ -4,7 +4,12 @@ import { getSystemConfig } from '../../lib/config.js';
 import { getBankrollState } from '../../lib/bankroll.js';
 import { logEvent } from '../../lib/logger.js';
 import { formatSignal, getStakeCap } from '../format.js';
-import { signalKeyboard, calendarDrivenKeyboard, hypeRealityGapKeyboard, crossMarketInterKeyboard } from '../keyboards.js';
+import {
+  signalKeyboard,
+  calendarDrivenKeyboard,
+  hypeRealityGapKeyboard,
+  crossMarketInterKeyboard,
+} from '../keyboards.js';
 import { replyLongMessage } from '../message-utils.js';
 import type { SignalRow } from '../format.js';
 import type { CrossMarketInterSignalMetadata } from '../../types/index.js';
@@ -12,7 +17,10 @@ import { fetchActiveSignals, fetchOpenLegEventIds } from '../lib/signal-queries.
 import { pauseNotify } from '../lib/notify-pause.js';
 import { polymarketUrl } from '../../lib/polymarket-url.js';
 
-interface SlugEntry { event_group_slug?: string; slug?: string }
+interface SlugEntry {
+  event_group_slug?: string;
+  slug?: string;
+}
 
 async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, SlugEntry>> {
   const polymarketIds = signals
@@ -41,12 +49,12 @@ async function resolveSlugMap(signals: SignalRow[]): Promise<Map<string, SlugEnt
 }
 
 async function resolveEarliestEndMap(signals: SignalRow[]): Promise<Map<string, string | null>> {
-  const interSignals = signals.filter(s => s.signal_type === 'cross_market_inter');
+  const interSignals = signals.filter((s) => s.signal_type === 'cross_market_inter');
   if (interSignals.length === 0) return new Map();
 
-  const allIds = interSignals.flatMap(s => {
+  const allIds = interSignals.flatMap((s) => {
     const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
-    return members.map(m => m.polymarket_id).filter((id): id is string => Boolean(id));
+    return members.map((m) => m.polymarket_id).filter((id): id is string => Boolean(id));
   });
   if (allIds.length === 0) return new Map();
 
@@ -64,7 +72,7 @@ async function resolveEarliestEndMap(signals: SignalRow[]): Promise<Map<string, 
   for (const s of interSignals) {
     const members = ((s.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
     const sorted = members
-      .map(m => endDateById.get(m.polymarket_id))
+      .map((m) => endDateById.get(m.polymarket_id))
       .filter((d): d is string => Boolean(d))
       .sort();
     result.set(s.id, sorted[0] ?? null);
@@ -89,11 +97,14 @@ async function resolveCalendarDrivenUrl(eventId: string): Promise<string> {
     .limit(1)
     .maybeSingle();
 
-  return polymarketUrl(data?.slug as string | null, data?.event_group_slug as string | null) ?? HOME;
+  return (
+    polymarketUrl(data?.slug as string | null, data?.event_group_slug as string | null) ?? HOME
+  );
 }
 
 function buildPolymarketUrl(signal: SignalRow, slugMap: Map<string, SlugEntry>): string {
-  const members = ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
+  const members =
+    ((signal.metadata ?? {}) as Partial<CrossMarketInterSignalMetadata>).members ?? [];
   const firstId = members[0]?.polymarket_id;
   if (!firstId) return HOME;
 
@@ -105,7 +116,7 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
   pauseNotify(60 * 1000);
 
   try {
-    const filterRaw = (ctx.match as string | undefined ?? '').trim();
+    const filterRaw = ((ctx.match as string | undefined) ?? '').trim();
     const filter = filterRaw.length > 0 ? filterRaw.toLowerCase() : null;
 
     const config = await getSystemConfig();
@@ -120,7 +131,11 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
         freshWindowMinutes: config.dismiss_stale_cutoff_minutes,
       });
     } catch (err) {
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `signals query failed: ${String(err)}` });
+      await logEvent({
+        component: 'telegram_bot',
+        status: 'error',
+        message: `signals query failed: ${String(err)}`,
+      });
       await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
       return;
     }
@@ -131,7 +146,9 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
 
     if (filtered.length === 0) {
       if (filter) {
-        await ctx.reply(`Nenhum sinal ativo com "${filterRaw}".\nTotal ativos: ${signals.length}. Tenta /signals sem filtro.`);
+        await ctx.reply(
+          `Nenhum sinal ativo com "${filterRaw}".\nTotal ativos: ${signals.length}. Tenta /signals sem filtro.`,
+        );
       } else {
         await ctx.reply('Nenhum sinal ativo agora.');
       }
@@ -174,22 +191,39 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
     const displayedSignals: SignalRow[] = [];
     for (const signal of sorted) {
       try {
-        const usesEventId = (signal.signal_type === 'calendar_driven' || signal.signal_type === 'hype_reality_gap' || signal.signal_type === 'early_market') && signal.event_id;
+        const usesEventId =
+          (signal.signal_type === 'calendar_driven' ||
+            signal.signal_type === 'hype_reality_gap' ||
+            signal.signal_type === 'early_market') &&
+          signal.event_id;
         const polymarketUrl = usesEventId
           ? await resolveCalendarDrivenUrl(signal.event_id!)
           : buildPolymarketUrl(signal, slugMap);
         const stakeCap = getStakeCap(config, signal.signal_type);
-        const earliestEnd = signal.signal_type === 'cross_market_inter'
-          ? earliestEndMap.get(signal.id) ?? null
-          : null;
+        const earliestEnd =
+          signal.signal_type === 'cross_market_inter'
+            ? (earliestEndMap.get(signal.id) ?? null)
+            : null;
         const text = formatSignal(signal, bankroll, stakeCap, earliestEnd);
         let keyboard;
         if (signal.signal_type === 'calendar_driven') {
-          keyboard = calendarDrivenKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? null);
+          keyboard = calendarDrivenKeyboard(
+            signal.id,
+            polymarketUrl,
+            signal.events?.outcomes ?? null,
+          );
         } else if (signal.signal_type === 'hype_reality_gap') {
-          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+          keyboard = hypeRealityGapKeyboard(
+            signal.id,
+            polymarketUrl,
+            signal.events?.outcomes ?? {},
+          );
         } else if (signal.signal_type === 'early_market') {
-          keyboard = hypeRealityGapKeyboard(signal.id, polymarketUrl, signal.events?.outcomes ?? {});
+          keyboard = hypeRealityGapKeyboard(
+            signal.id,
+            polymarketUrl,
+            signal.events?.outcomes ?? {},
+          );
         } else if (signal.signal_type === 'cross_market_inter') {
           keyboard = crossMarketInterKeyboard(signal.id, polymarketUrl);
         } else {
@@ -227,7 +261,11 @@ export async function signalsHandler(ctx: BotContext): Promise<void> {
       await ctx.reply(`📊 Total: ${total} sinais\n${lines}`);
     }
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `signalsHandler error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `signalsHandler error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

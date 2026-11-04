@@ -13,9 +13,7 @@
  * traduzir toda vez que alguém for medir.
  */
 
-export type LeituraProb =
-  | { ok: true; prob: number; pct: number }
-  | { ok: false; motivo: string };
+export type LeituraProb = { ok: true; prob: number; pct: number } | { ok: false; motivo: string };
 
 /**
  * Lê "72", "72%", "72,5" ou "72.5" e devolve a probabilidade em 0–1.

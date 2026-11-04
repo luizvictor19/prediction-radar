@@ -169,7 +169,7 @@ test('cada fato é lido por no máximo uma opção', () => {
   // Duas opções sobre o mesmo fato são a mesma ordem com dois nomes — e o mais
   // provável é que uma delas tenha sido copiada e o `fato` não tenha sido
   // ajustado junto, que é exatamente o defeito que este arquivo caça.
-  const fatos = opcoes.map(o => o.fato);
+  const fatos = opcoes.map((o) => o.fato);
   assert.equal(new Set(fatos).size, fatos.length, `fato repetido em ${JSON.stringify(fatos)}`);
 });
 

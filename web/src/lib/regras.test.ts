@@ -2,12 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { juntarRadarComDigest, leiturasPorTexto, textosParaLer } from './regras.js';
-import type {
-  ContagemDigest,
-  LeituraRegra,
-  LinhaAchados,
-  MercadoRadar,
-} from './tipos.js';
+import type { ContagemDigest, LeituraRegra, LinhaAchados, MercadoRadar } from './tipos.js';
 
 /**
  * FIXTURE SINTÉTICO — não é caso observado.
@@ -111,7 +106,7 @@ test('dois mercados que compartilham o mesmo texto de regra recebem cada um o se
   const linhas = juntarRadarComDigest(radar, contagens);
 
   assert.deepEqual(
-    linhas.map(l => l.digests.map(d => d.event_id)),
+    linhas.map((l) => l.digests.map((d) => d.event_id)),
     [['e1'], ['e2']],
   );
 });
@@ -171,11 +166,11 @@ test('cada texto recebe só as suas leituras', () => {
   ]);
 
   assert.deepEqual(
-    porTexto.get('sha-antigo')?.map(l => l.leitura_n),
+    porTexto.get('sha-antigo')?.map((l) => l.leitura_n),
     [1, 2],
   );
   assert.deepEqual(
-    porTexto.get('sha-novo')?.map(l => l.leitura_n),
+    porTexto.get('sha-novo')?.map((l) => l.leitura_n),
     [1],
   );
 });

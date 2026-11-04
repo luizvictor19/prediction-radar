@@ -33,21 +33,27 @@ describe('filtrarDigeriveis', () => {
   it('tira da fila resolved e inactive, e SÓ eles', () => {
     const { digeriveis } = filtrarDigeriveis(ROSTER);
     assert.deepEqual(
-      digeriveis.map(m => m.eventId),
+      digeriveis.map((m) => m.eventId),
       ['a-active', 'c-closed-manual', 'e-nulo', 'f-desconhecido'],
     );
   });
 
   it('mantém closed_manual: o dono fechou a posição, o mercado segue aberto', () => {
     const { digeriveis } = filtrarDigeriveis([mercado('x', 'closed_manual')]);
-    assert.deepEqual(digeriveis.map(m => m.eventId), ['x']);
+    assert.deepEqual(
+      digeriveis.map((m) => m.eventId),
+      ['x'],
+    );
   });
 
   it('mantém status nulo e status desconhecido, porque o filtro REMOVE trabalho', () => {
     // A coluna é text sem NOT NULL e sem CHECK: um `status === active` mandaria
     // os dois para o lado descartado sem ninguém ver.
     const { digeriveis } = filtrarDigeriveis([mercado('n', null), mercado('q', 'quarantined')]);
-    assert.deepEqual(digeriveis.map(m => m.eventId), ['n', 'q']);
+    assert.deepEqual(
+      digeriveis.map((m) => m.eventId),
+      ['n', 'q'],
+    );
   });
 
   it('conta o descarte por status', () => {
@@ -61,7 +67,10 @@ describe('filtrarDigeriveis', () => {
   it('não descarta nada quando o roster inteiro está aberto', () => {
     const abertos = [mercado('a', 'active'), mercado('b', 'active')];
     const { digeriveis, descartados } = filtrarDigeriveis(abertos);
-    assert.deepEqual(digeriveis.map(m => m.eventId), ['a', 'b']);
+    assert.deepEqual(
+      digeriveis.map((m) => m.eventId),
+      ['a', 'b'],
+    );
     assert.equal(descartados.size, 0);
   });
 
@@ -69,7 +78,7 @@ describe('filtrarDigeriveis', () => {
     const invertido = [...ROSTER].reverse();
     const { digeriveis } = filtrarDigeriveis(invertido);
     assert.deepEqual(
-      digeriveis.map(m => m.eventId),
+      digeriveis.map((m) => m.eventId),
       ['f-desconhecido', 'e-nulo', 'c-closed-manual', 'a-active'],
     );
   });
@@ -79,7 +88,7 @@ describe('montarElegiveis', () => {
   it('aplica os dois filtros: excluído por artefato E com desfecho', () => {
     const { digeriveis } = montarElegiveis(ROSTER, new Set(['a-active']));
     assert.deepEqual(
-      digeriveis.map(m => m.eventId),
+      digeriveis.map((m) => m.eventId),
       ['c-closed-manual', 'e-nulo', 'f-desconhecido'],
     );
   });
@@ -96,8 +105,8 @@ describe('montarElegiveis', () => {
     const comMontar = montarElegiveis(ROSTER, new Set());
     const comFiltrar = filtrarDigeriveis(ROSTER);
     assert.deepEqual(
-      comMontar.digeriveis.map(m => m.eventId),
-      comFiltrar.digeriveis.map(m => m.eventId),
+      comMontar.digeriveis.map((m) => m.eventId),
+      comFiltrar.digeriveis.map((m) => m.eventId),
     );
   });
 });
@@ -108,7 +117,12 @@ describe('resumoDoDescarte', () => {
   });
 
   it('soma o total e detalha por status, do maior para o menor', () => {
-    const linha = resumoDoDescarte(new Map([['inactive', 2], ['resolved', 7]]));
+    const linha = resumoDoDescarte(
+      new Map([
+        ['inactive', 2],
+        ['resolved', 7],
+      ]),
+    );
     assert.equal(linha, '9 mercados fora da fila por já terem desfecho (resolved: 7, inactive: 2)');
   });
 

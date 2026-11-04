@@ -92,11 +92,11 @@ defeito que este projeto mais pagou para aprender.
 
 **Não rode os 673 de uma vez.** Três degraus, e eu aprovo entre eles:
 
-| # | o quê | custo estimado |
-| --- | --- | --- |
-| 1 | **10 mercados**, só `deepseek-v4-flash` | ~US$ 0,003 |
-| 2 | **50 mercados**, Flash + Claude Sonnet lado a lado | ~US$ 1,46 |
-| 3 | o resto, no vencedor | ~US$ 0,16 no Flash |
+| #   | o quê                                              | custo estimado     |
+| --- | -------------------------------------------------- | ------------------ |
+| 1   | **10 mercados**, só `deepseek-v4-flash`            | ~US$ 0,003         |
+| 2   | **50 mercados**, Flash + Claude Sonnet lado a lado | ~US$ 1,46          |
+| 3   | o resto, no vencedor                               | ~US$ 0,16 no Flash |
 
 **Pare no degrau 1** e me mostre a saída. Só sigo depois de ler.
 

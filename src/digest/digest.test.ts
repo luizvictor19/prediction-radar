@@ -39,9 +39,7 @@ const REGRA_BOA = {
     'Vazamento à imprensa antes do comunicado parece contar e não conta: a regra exige o comunicado oficial.',
     'Corte anunciado em reunião extraordinária não conta — a regra nomeia a reunião de setembro.',
   ],
-  ambiguidades: [
-    '"pelo menos 0,25 ponto" não diz se corte de 0,125 arredondado para cima conta.',
-  ],
+  ambiguidades: ['"pelo menos 0,25 ponto" não diz se corte de 0,125 arredondado para cima conta.'],
 };
 
 function outputFrom(raw: Record<string, unknown>): DigestOutput {
@@ -255,9 +253,7 @@ test('v2 recusa severidade fora da lista fechada', () => {
 test('v2 recusa tipo de ambiguidade fora da lista fechada', () => {
   const forjada = {
     ...REGRA_V2,
-    ambiguidades: [
-      { tipo: 'confuso', trecho: 'x', leitura_a: 'a', leitura_b: 'b' },
-    ],
+    ambiguidades: [{ tipo: 'confuso', trecho: 'x', leitura_a: 'a', leitura_b: 'b' }],
   };
   assert.throws(
     () => parseDigest(forjada, 'v2'),
@@ -338,7 +334,8 @@ const PEGADINHA_BOA = {
   texto: 'Fechamento exatamente em US$ 76.000 resolve NÃO — a regra diz "higher than".',
   trecho: 'higher than $76,000',
   severidade: 'muda_resultado',
-  cenario: 'Se o fechamento for exatamente US$ 76.000, quem leu o título espera SIM e a regra dá NÃO.',
+  cenario:
+    'Se o fechamento for exatamente US$ 76.000, quem leu o título espera SIM e a regra dá NÃO.',
 };
 
 test('v3 mantém a pegadinha cujo trecho está na regra', () => {
@@ -429,7 +426,7 @@ test('a poda preserva a ordem original das que sobrevivem', () => {
 
   const parsed = parseDigest(comPegadinhas([primeira, morta, ultima]), 'v3', REGRA_TEXTO);
   assert.deepEqual(
-    parsed.output.pegadinhas.map(p => p.texto),
+    parsed.output.pegadinhas.map((p) => p.texto),
     ['Primeira.', 'Última.'],
   );
 });
@@ -444,7 +441,11 @@ test('momento_ambiguo vale na v3 e NÃO vale na v2', () => {
     leitura_b: 'um horário de referência global.',
   };
 
-  const naV3 = parseDigest({ ...REGRA_BOA, pegadinhas: [], ambiguidades: [amb] }, 'v3', REGRA_TEXTO);
+  const naV3 = parseDigest(
+    { ...REGRA_BOA, pegadinhas: [], ambiguidades: [amb] },
+    'v3',
+    REGRA_TEXTO,
+  );
   assert.equal(naV3.output.ambiguidades[0]?.tipo, 'momento_ambiguo');
 
   assert.throws(

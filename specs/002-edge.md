@@ -2,7 +2,7 @@
 
 > **Pré-requisito:** specs 000 e 001 concluídas. O eval existe e mediu.
 > **Estado que motiva esta spec:** o agente não bate o preço (skill −0,045, n=131).
-> A melhor faixa empata (+0,002) contra o *mid*, e opera-se contra o *ask*.
+> A melhor faixa empata (+0,002) contra o _mid_, e opera-se contra o _ask_.
 >
 > Esta spec não é sobre melhorar o agente. É sobre descobrir **se existe algum
 > recorte operável**, com ou sem ele.
@@ -41,8 +41,8 @@ Três consequências que valem como regra:
 O eval mede **qualidade de previsão**. Um backtest mede **P&L**. São artefatos
 diferentes e hoje só existe o primeiro.
 
-A distinção não é acadêmica. Skill positivo contra o *mid* pode ser P&L negativo
-contra o *ask*; e uma regra que dispara três vezes por mês não é estratégia,
+A distinção não é acadêmica. Skill positivo contra o _mid_ pode ser P&L negativo
+contra o _ask_; e uma regra que dispara três vezes por mês não é estratégia,
 é anedota — mesmo com skill excelente nas três.
 
 ### `scripts/backtest-strategy.ts`
@@ -69,23 +69,23 @@ Regra = {
 2. **Taxas descontadas** via `fees.ts`. Se houver taxa de saque ou de resolução,
    entra também.
 3. **Dimensionamento em duas passadas:** Kelly fracionário (1/4) e stake fixo.
-   A diferença entre as duas separa *edge* de *dimensionamento* — um resultado
+   A diferença entre as duas separa _edge_ de _dimensionamento_ — um resultado
    que só existe com Kelly é um resultado sobre variância, não sobre vantagem.
 
 **O relatório:**
 
-| campo | por que |
-| --- | --- |
-| apostas disparadas | regra que dispara 5 vezes não é estratégia |
-| EV por aposta | o número central |
-| EV total e curva | o final esconde o caminho |
-| drawdown máximo | é o que decide se dá para aguentar operando |
-| taxa de acerto | **informativa, nunca alvo** — ver Parte F |
-| n de partidas distintas | não de apostas |
+| campo                   | por que                                     |
+| ----------------------- | ------------------------------------------- |
+| apostas disparadas      | regra que dispara 5 vezes não é estratégia  |
+| EV por aposta           | o número central                            |
+| EV total e curva        | o final esconde o caminho                   |
+| drawdown máximo         | é o que decide se dá para aguentar operando |
+| taxa de acerto          | **informativa, nunca alvo** — ver Parte F   |
+| n de partidas distintas | não de apostas                              |
 
 **Critério de aceitação do script:** varrer pelo menos 50 combinações de regra e
 imprimir o mapa completo, não só a melhor. **A melhor regra de um varredor é
-sempre boa por construção** — o que interessa é se existe uma *região* de regras
+sempre boa por construção** — o que interessa é se existe uma _região_ de regras
 com EV positivo, ou se só existe um pico solitário, que é overfit com outro nome.
 
 ### Critério de morte
@@ -106,7 +106,7 @@ Ordenados por custo. Cada um traz o critério de morte.
 **A ideia.** O eval tem três previsores: agente, mercado, moeda. Falta o quarto —
 a linha da Pinnacle, **sem vig**, como previsor independente.
 
-Se ela bate o *mid* do Polymarket na mesma amostra, o edge não precisa de LLM:
+Se ela bate o _mid_ do Polymarket na mesma amostra, o edge não precisa de LLM:
 é discordância entre um book afiado (dinheiro em risco, limites altos) e um venue
 de fluxo retail. É a estrutura de edge mais confiável que existe em aposta, e o
 projeto construiu toda a infraestrutura para ela sem nunca testá-la.
@@ -178,7 +178,7 @@ paga 2% de spread não é edge.
 ### C5. LoL e Dota são menos eficientes que CS2?
 
 **A ideia.** Já coletados como órfãos. Resolver essas partidas e rodar **só o
-baseline de mercado** responde se existe mercado mais fraco onde o *mesmo* agente
+baseline de mercado** responde se existe mercado mais fraco onde o _mesmo_ agente
 teria skill positivo.
 
 Isso testa outro **mercado**, não um agente melhor — e é a hipótese mais barata
@@ -283,7 +283,7 @@ e é irreversível.**
 
 Se o sistema passar a executar ordens, isso deixa de ser um projeto com
 credenciais e passa a ser um projeto com custódia. As perguntas mudam: onde a
-chave vive, quem pode assinar, existe teto por ordem no código *e* no
+chave vive, quem pode assinar, existe teto por ordem no código _e_ no
 dispositivo, e o que acontece se o processo do Railway for comprometido.
 
 **Regra desta spec:** nenhuma execução automática de ordem sem uma spec própria
@@ -306,14 +306,14 @@ publicável para sempre. O conteúdo de "onde exatamente o mercado erra" não é
 
 **O agente não faz o que está na coluna do humano.**
 
-| # | Item | Momento |
-| --- | --- | --- |
-| H1 | Decidir se o projeto opera com capital, e com qual teto | antes de C1–C7 virarem estratégia |
-| H2 | Confirmar a autorização do bot do Telegram (D2) | antes de qualquer coisa |
-| H3 | Aplicar migrations, se alguma surgir | quando surgir |
-| H4 | Decidir sobre a Liquipedia à luz de D1 | antes de ligar a flag |
-| H5 | Definir o procedimento de rotação de segredo (D3) | antes de operar |
-| H6 | Julgar cada critério de morte — o agente reporta, não decide | a cada experimento |
+| #   | Item                                                         | Momento                           |
+| --- | ------------------------------------------------------------ | --------------------------------- |
+| H1  | Decidir se o projeto opera com capital, e com qual teto      | antes de C1–C7 virarem estratégia |
+| H2  | Confirmar a autorização do bot do Telegram (D2)              | antes de qualquer coisa           |
+| H3  | Aplicar migrations, se alguma surgir                         | quando surgir                     |
+| H4  | Decidir sobre a Liquipedia à luz de D1                       | antes de ligar a flag             |
+| H5  | Definir o procedimento de rotação de segredo (D3)            | antes de operar                   |
+| H6  | Julgar cada critério de morte — o agente reporta, não decide | a cada experimento                |
 
 ### Escopo do agente
 
@@ -353,7 +353,7 @@ resposta correta para "quanto", e só depois de haver edge.
 observações.
 
 **Escolher pelo resultado.** O piso de liquidez subiu para US$ 20.000 em 11/08
-*porque* a faixa 5k–20k foi mal numa amostra. Isso é hipótese, não conserto — e
+_porque_ a faixa 5k–20k foi mal numa amostra. Isso é hipótese, não conserto — e
 tem que ser testada para frente, não confirmada no mesmo dado que a originou.
 
 **Ausência de garantia não é defeito conhecido.** Vale para

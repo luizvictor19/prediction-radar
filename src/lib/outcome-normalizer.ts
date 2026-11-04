@@ -16,7 +16,7 @@ export async function normalizeOutcome(
   }
 
   const inputLower = rawInput.trim().toLowerCase();
-  const match = values.find(v => v.toLowerCase() === inputLower);
+  const match = values.find((v) => v.toLowerCase() === inputLower);
 
   if (match) {
     return { ok: true, outcome: match };

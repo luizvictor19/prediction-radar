@@ -48,32 +48,32 @@ registra que está desligado.
 
 ## Os dois processos
 
-| Processo | Comando | O que roda |
-|---|---|---|
-| Motor | `npm start` (`src/index.ts`) | todos os coletores, detectores e jobs abaixo |
-| Bot | `npm run bot` (`src/bot/index.ts`) | Telegram + loop de notificação (60s) |
+| Processo | Comando                            | O que roda                                   |
+| -------- | ---------------------------------- | -------------------------------------------- |
+| Motor    | `npm start` (`src/index.ts`)       | todos os coletores, detectores e jobs abaixo |
+| Bot      | `npm run bot` (`src/bot/index.ts`) | Telegram + loop de notificação (60s)         |
 
 ---
 
 ## Tabela mestra — o que dispara, quando, e se está ligado
 
-| Componente | Cron | Estado | Flag |
-|---|---|---|---|
-| `open_legs_collector` | `*/10 * * * * *` (10s) | **ligado** | — |
-| `resolved_detector` | `*/5 * * * *` + start | **ligado** | — |
-| `watchlist_collector` | `*/5 * * * * *` (5s) + start | **DESLIGADO** | `discovery_slug_prefixes` vazio |
-| `discovery_collector` | `*/3 * * * *` + start | **DESLIGADO** | `discovery_slug_prefixes` vazio |
-| `esports_resolver` (+ recompute + match_outcome) | `*/10 * * * *`, `0 4 * * 0`, `5-59/10 * * * *` | **DESLIGADO** | `esports_resolver_enabled = false` |
-| `esports_enricher` | `*/5 * * * *` | **DESLIGADO** | `esports_enricher_enabled = false` |
-| `esports_analyst` | `*/5 * * * *` | **DESLIGADO** | `esports_analyst_enabled = false` |
-| `detector_runner` | `*/15 * * * *` | **ligado** (só manutenção) | `generic_detectors_enabled` |
-| `retention_job` | `0 3 * * *` + start | **ligado** | — |
-| `radar_collector` | `*/5 * * * *` | **DESLIGADO** | `radar_collector_enabled = false` |
-| `esports_partitions` | `30 2 * * *` + start | **ligado** (poda a série antiga) | — |
-| `collector` (varredura por volume) | `*/3 * * * *` + start | **DESLIGADO** | `volume_scan_enabled = false` |
-| `early_markets_collector` | `*/10 * * * *` + start | **DESLIGADO** | `early_markets_enabled = false` |
-| 5 detectores genéricos | dentro do runner, 15min | **DESLIGADOS** | `generic_detectors_enabled = false` |
-| notify loop (Telegram) | `setInterval` 60s | **ligado** (processo do bot) | — |
+| Componente                                       | Cron                                           | Estado                           | Flag                                |
+| ------------------------------------------------ | ---------------------------------------------- | -------------------------------- | ----------------------------------- |
+| `open_legs_collector`                            | `*/10 * * * * *` (10s)                         | **ligado**                       | —                                   |
+| `resolved_detector`                              | `*/5 * * * *` + start                          | **ligado**                       | —                                   |
+| `watchlist_collector`                            | `*/5 * * * * *` (5s) + start                   | **DESLIGADO**                    | `discovery_slug_prefixes` vazio     |
+| `discovery_collector`                            | `*/3 * * * *` + start                          | **DESLIGADO**                    | `discovery_slug_prefixes` vazio     |
+| `esports_resolver` (+ recompute + match_outcome) | `*/10 * * * *`, `0 4 * * 0`, `5-59/10 * * * *` | **DESLIGADO**                    | `esports_resolver_enabled = false`  |
+| `esports_enricher`                               | `*/5 * * * *`                                  | **DESLIGADO**                    | `esports_enricher_enabled = false`  |
+| `esports_analyst`                                | `*/5 * * * *`                                  | **DESLIGADO**                    | `esports_analyst_enabled = false`   |
+| `detector_runner`                                | `*/15 * * * *`                                 | **ligado** (só manutenção)       | `generic_detectors_enabled`         |
+| `retention_job`                                  | `0 3 * * *` + start                            | **ligado**                       | —                                   |
+| `radar_collector`                                | `*/5 * * * *`                                  | **DESLIGADO**                    | `radar_collector_enabled = false`   |
+| `esports_partitions`                             | `30 2 * * *` + start                           | **ligado** (poda a série antiga) | —                                   |
+| `collector` (varredura por volume)               | `*/3 * * * *` + start                          | **DESLIGADO**                    | `volume_scan_enabled = false`       |
+| `early_markets_collector`                        | `*/10 * * * *` + start                         | **DESLIGADO**                    | `early_markets_enabled = false`     |
+| 5 detectores genéricos                           | dentro do runner, 15min                        | **DESLIGADOS**                   | `generic_detectors_enabled = false` |
+| notify loop (Telegram)                           | `setInterval` 60s                              | **ligado** (processo do bot)     | —                                   |
 
 "+ start" = também roda uma vez no boot, para um deploy no meio do intervalo não
 deixar buraco.
@@ -86,21 +86,23 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 
 ## Os que estão ligados
 
-### Watchlist collector — tick de 5s, cadência por faixa  *(DESLIGADO em ago/2026)*
+### Watchlist collector — tick de 5s, cadência por faixa _(DESLIGADO em ago/2026)_
+
 > Desligado com a saída de esports (`discovery_slug_prefixes` vazio). A descrição
 > abaixo é do comportamento quando ligado — o código continua no deploy.
+
 - Refresca por `id=` em lote os mercados de esports ativos (até 1000, ordenados
   pelo horário da partida). Sem paginação, sem teto de offset.
 - **O tick de 5s não é a cadência de coleta.** Quem decide o que é refrescado é a
   faixa de cada mercado, e a faixa sai da distância até `events.game_start_time`
   (o horário real do jogo, não o `end_date` — que cai ~6h depois da partida).
 
-  | Estado | Mercado da série | Derivados |
-  |---|---|---|
-  | falta > 6h para o jogo | 5 min | 25 min |
-  | falta < 6h | 1 min | 5 min |
-  | partida rolando | **12 s** | 60 s |
-  | passou de 6h rolando sem resolver | 5 min | 25 min |
+  | Estado                            | Mercado da série | Derivados |
+  | --------------------------------- | ---------------- | --------- |
+  | falta > 6h para o jogo            | 5 min            | 25 min    |
+  | falta < 6h                        | 1 min            | 5 min     |
+  | partida rolando                   | **12 s**         | 60 s      |
+  | passou de 6h rolando sem resolver | 5 min            | 25 min    |
 
 - Derivado = tudo que não é o moneyline da série (handicap, total, por game,
   first blood). É o multiplicador que segura o volume: ~231k linhas/dia em vez de
@@ -111,8 +113,10 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
   `occupancy_by_bucket` (quantos mercados em cada faixa agora),
   `null_game_start_time` (sem âncora = presos na faixa lenta), `anchor_column`.
 
-### Discovery collector — a cada 3min  *(DESLIGADO em ago/2026)*
+### Discovery collector — a cada 3min _(DESLIGADO em ago/2026)_
+
 > Desligado com a saída de esports (`discovery_slug_prefixes` vazio).
+
 - Pagina `order=startDate` desc e persiste o que bate os prefixos de slug.
   Encontra o mercado de esports no minuto em que ele abre, com volume 0 e
   liquidez ~US$ 17 — que é exatamente o que a varredura por volume nunca via.
@@ -122,6 +126,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 - Código: `src/collectors/discovery-collector.ts` — Logs: `discovery_collector`
 
 ### Open legs collector — a cada 10s
+
 - Coleta preço APENAS dos mercados onde tu tem leg aberta, para `/positions` e
   `/status` nunca mostrarem preço velho.
 - Escreve em `polymarket_snapshots` (não em `esports_snapshots`), porque é de lá
@@ -131,6 +136,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 - Código: `src/collectors/open-legs-collector.ts` — Logs: `open_legs_collector`
 
 ### Auto-resolver (resolved_detector) — a cada 5min
+
 - Fecha tua leg quando o mercado resolve no Polymarket: atualiza cash, registra
   PnL, marca o event como resolved.
 - **Mudou:** antes era chamado no fim do `collectAll`. Virou componente próprio,
@@ -140,6 +146,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 - Código: `src/collectors/resolved-detector.ts` — Logs: `resolved_detector`
 
 ### Detector runner — a cada 15min
+
 - Hoje roda só a manutenção: `cleanup_stale_signals` e, no fim,
   `dismissStaleSignals`. Os 5 detectores estão atrás da flag.
 - A manutenção fica FORA da flag de propósito: com os detectores parados, ninguém
@@ -148,6 +155,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
 - Código: `src/detectors/runner.ts` — Logs: `detector_runner`
 
 ### Esports partitions — 1x/dia às 02:30 UTC + no start
+
 - **Cuida das DUAS tabelas particionadas**, apesar do nome: cria a partição de
   `esports_snapshots` dos próximos dias (e dropa as vencidas) e as de MÊS de
   `polymarket_snapshots` (e nunca dropa — lá a série do radar é isenta da
@@ -165,6 +173,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
   dia (o job ficou parado, ou chegou `captured_at` com data absurda).
 
 ### Retention job — 1x/dia às 03:00 UTC + no start
+
 - Deleta de `polymarket_snapshots`: mais velho que `snapshot_retention_days`, e
   tudo de event finalizado (sem filtro de idade).
 - Deleta `system_logs` mais velho que `system_logs_retention_days`.
@@ -177,6 +186,7 @@ campos (a que começa com `*/5` ou `*/10` e tem um campo a mais): o primeiro cam
   legada. Protegida, mas no lugar errado.
 
 ### Notify loop — a cada 60s (processo do bot)
+
 - Envia signals com `alerted=false` pro Telegram, filtrando por
   `notify_min_edge_pct`. Marca `alerted=true` depois de enviar.
 - Código: `src/bot/notify.ts` (`startNotifyLoop`)
@@ -190,9 +200,10 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 6h — sem isso seriam milhares de linhas/dia dizendo a mesma coisa.
 
 ### `radar_collector_enabled = false` — coletor do radar
+
 - Coleta BURRA: série de preço de tudo que é viável e estável, sem opinião
   dentro do coletor. O princípio é `filtra na coleta o que NÃO muda, filtra na
-  view o que muda` — preço, volume e assunto são COLUNAS, não portas. O contexto
+view o que muda` — preço, volume e assunto são COLUNAS, não portas. O contexto
   é o pipeline de esports: construído em cima de uma tese, a tese morreu, e nada
   daquilo serviu para outra coisa.
 - Critérios de coleta, e são só seis: aberto e ativo; livro dos dois lados;
@@ -225,6 +236,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
   Logs: `radar_collector`
 
 ### `discovery_slug_prefixes = {}` — descoberta e watchlist de esports
+
 - CS2, LoL e Dota saíram da coleta por decisão (migration `20260814000233`). Os
   dois componentes leem a mesma lista e saem na primeira linha quando ela está
   vazia; o resolver, a propagação de desfecho e o enricher saíram junto por
@@ -235,9 +247,10 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
   fallback `{cs2-%,lol-%,dota2-%}` quando a config está vazia — foi escrito
   assim porque lista vazia autorizaria a retenção a apagar tudo.
 - Religar: `update system_config set discovery_slug_prefixes = '{cs2-,lol-}',
-  esports_resolver_enabled = true, esports_enricher_enabled = true where id = 1;`
+esports_resolver_enabled = true, esports_enricher_enabled = true where id = 1;`
 
 ### `volume_scan_enabled = false` — varredura por volume (`collector`)
+
 - Era `GET /markets?order=volume24hr` paginado até o teto de offset 2000.
 - Por que saiu: numa hora de produção trouxe 1 mercado de esports contra 60 da
   descoberta — e esse 1 era derivado de uma partida que a descoberta já tinha
@@ -248,6 +261,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
   com não-esports — ou seja, volta a encher o que a poda existe para esvaziar.
 
 ### `early_markets_enabled = false` — early-markets collector
+
 - Nunca alcançava a própria janela de 24h (teto de offset), e o piso de liquidez
   de US$ 500 excluía por construção o mercado de esports recém-nascido (~US$ 17).
 - **Efeito colateral que o nome da flag não diz:** ele é o único escritor de
@@ -256,8 +270,10 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 - Religar: `update system_config set early_markets_enabled = true where id = 1;`
 
 ### `generic_detectors_enabled = false` — os 5 detectores genéricos
+
 `cross_market_intra`, `cross_market_inter`, `calendar_driven`,
 `hype_reality_gap`, `early_market`.
+
 - Todos leem `events` + `polymarket_snapshots`. Com a varredura desligada, o lado
   não-esports dessas tabelas parou de receber dado novo: rodavam a cada 15min
   sobre uma foto congelada. A série que ainda cresce mora em `esports_snapshots`,
@@ -267,6 +283,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
   Só faz sentido junto com `volume_scan_enabled`, senão continuam sem entrada.
 
 ### `discovery_slug_prefixes` vazio — descoberta + watchlist
+
 - Não é booleano, mas é a chave de desligamento das duas: lista vazia = a
   vertical inteira para. Default: `{cs2-,lol-,dota2-}`.
 - A retenção NÃO usa essa lista como autorização para apagar: se ela vier vazia,
@@ -278,6 +295,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 ## Cadeia de dependências (causa → efeito)
 
 ### Um mercado de esports, do nascimento à resolução
+
 ```
 1. Partida entra no calendário; Polymarket cria ~7 mercados (1 série + derivados)
    ↓
@@ -301,6 +319,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 ```
 
 ### Quando tu opera uma posição
+
 ```
 1. Track no Telegram → conversation pede stake
    ↓
@@ -314,6 +333,7 @@ O cron continua disparando. O componente sai na primeira linha, escreve `[nome]
 ```
 
 ### Quando um signal é gerado
+
 ```
 Hoje só sinais que já existiam continuam vivos — nenhum detector cria signal
 novo enquanto generic_detectors_enabled = false. O runner de 15min roda a
@@ -326,32 +346,39 @@ estiver com alerted=false.
 ## Pontos de falha cascata
 
 **Watchlist quebra:**
+
 - A série de esports para. É o dado que o backtest e o agente analista vão usar,
   e o buraco não é recuperável depois — o preço passado não volta.
 - `/positions` não é afetado (quem serve preço de posição é o open_legs).
 
 **Discovery quebra:**
+
 - Mercado novo de esports não entra em `events`, então a watchlist não o vê.
 - O buraco é da janela em que ficou parado: o teto de offset só alcança ~36min
   para trás, então mais que isso não é recuperável na volta.
 
 **Open legs collector quebra:**
+
 - `/positions` e `/status` ficam com preço velho. Operações continuam.
 
 **Auto-resolver quebra:**
+
 - Legs continuam abertas mesmo após resolver. Cash não atualiza. Fechar via
   `/close`. Mercado resolvido também não sai da watchlist.
 
 **Job de partições quebra:**
+
 - Por 2 dias não dá nada (a folga cria partições à frente). Depois disso, todo
   snapshot cai na partição default — que nada esvazia, e onde o dado fica sem
   prazo. `default_rows_at_least` > 0 é o aviso.
 
 **Retention quebra:**
+
 - `polymarket_snapshots` e `system_logs` crescem. Foi o que inflou um índice para
   1492 MB sobre 80 MB de dado real.
 
 **Notify loop quebra:**
+
 - Signals criados mas não enviados. Dá para ver com `/signals`.
 
 ---
@@ -389,6 +416,7 @@ SELECT * FROM system_config WHERE id = 1;
 ```
 
 Flags de liga/desliga:
+
 ```
 volume_scan_enabled            (false — varredura por volume)
 early_markets_enabled          (false — early-markets collector)
@@ -397,6 +425,7 @@ discovery_slug_prefixes        ({cs2-,lol-,dota2-} — vazio desliga descoberta+
 ```
 
 Cadência da watchlist:
+
 ```
 watchlist_interval_live_seconds        (12)
 watchlist_interval_soon_seconds        (60)
@@ -409,6 +438,7 @@ discovery_lookback_minutes             (20)
 ```
 
 Retenção:
+
 ```
 esports_snapshot_retention_days  (365 — DROP PARTITION; piso de 30 na função)
 snapshot_retention_days          (1   — DELETE em polymarket_snapshots)
@@ -416,6 +446,7 @@ system_logs_retention_days       (30)
 ```
 
 Sinais e operação (sem mudança):
+
 ```
 max_stake_pct                 (3% do bankroll por trade)
 cross_market_max_stake_pct    (10% pra basket)
@@ -430,9 +461,11 @@ collector_min_liquidity       (20k — idem)
 ```
 
 Pra mudar:
+
 ```sql
 UPDATE system_config SET <campo> = <valor> WHERE id = 1;
 ```
+
 Cache de 60s.
 
 ---
@@ -442,15 +475,15 @@ Cache de 60s.
 Tudo em `src/index.ts`:
 
 ```typescript
-cron.schedule('*/10 * * * * *', () => collectOpenLegMarkets());  // 10s
-cron.schedule('*/5 * * * * *',  () => collectWatchlist());       // 5s (tick, não cadência)
-cron.schedule('*/3 * * * *',    () => collectDiscovery());       // 3min
-cron.schedule('*/3 * * * *',    () => collectAll());             // 3min — desligado por flag
-cron.schedule('*/5 * * * *',    () => detectResolvedMarkets());  // 5min
-cron.schedule('*/10 * * * *',   () => collectEarlyMarkets());    // 10min — desligado por flag
-cron.schedule('*/15 * * * *',   () => runAllDetectors());        // 15min
-cron.schedule('30 2 * * *',     () => runEsportsPartitionJob()); // 02:30 UTC
-cron.schedule('0 3 * * *',      () => runRetentionJob());        // 03:00 UTC
+cron.schedule('*/10 * * * * *', () => collectOpenLegMarkets()); // 10s
+cron.schedule('*/5 * * * * *', () => collectWatchlist()); // 5s (tick, não cadência)
+cron.schedule('*/3 * * * *', () => collectDiscovery()); // 3min
+cron.schedule('*/3 * * * *', () => collectAll()); // 3min — desligado por flag
+cron.schedule('*/5 * * * *', () => detectResolvedMarkets()); // 5min
+cron.schedule('*/10 * * * *', () => collectEarlyMarkets()); // 10min — desligado por flag
+cron.schedule('*/15 * * * *', () => runAllDetectors()); // 15min
+cron.schedule('30 2 * * *', () => runEsportsPartitionJob()); // 02:30 UTC
+cron.schedule('0 3 * * *', () => runRetentionJob()); // 03:00 UTC
 ```
 
 No processo do bot: `setInterval` de 60s no notify loop (`src/bot/notify.ts`).
@@ -475,14 +508,14 @@ No processo do bot: `setInterval` de 60s no notify loop (`src/bot/notify.ts`).
 O deploy do código é automático; a migration é aplicada por ti. No intervalo, o
 código sobe e degrada em vez de quebrar. Onde isso aparece:
 
-| Log | Campo | O que significa |
-|---|---|---|
-| `discovery_collector` | `snapshot_table = 'polymarket_snapshots'` | `esports_snapshots` ainda não existe — a série está indo para a tabela legada |
-| `discovery_collector` | `stamped_game_start_time = false` | coluna `events.game_start_time` ainda não existe |
-| `watchlist_collector` | `anchor_column = false` | idem — tudo cai na faixa lenta de 5min |
-| `watchlist_collector` | `null_game_start_time` alto e estável | coluna existe, mas o backfill não rodou (`npm run backfill:game-start-time`) |
-| `esports_partitions` | mensagem "manage_esports_partitions ainda não existe" | migration das partições não aplicada |
-| `retention_job` | `legacy_esports_events = null` | função de sondagem do item 8 não aplicada |
+| Log                   | Campo                                                 | O que significa                                                               |
+| --------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `discovery_collector` | `snapshot_table = 'polymarket_snapshots'`             | `esports_snapshots` ainda não existe — a série está indo para a tabela legada |
+| `discovery_collector` | `stamped_game_start_time = false`                     | coluna `events.game_start_time` ainda não existe                              |
+| `watchlist_collector` | `anchor_column = false`                               | idem — tudo cai na faixa lenta de 5min                                        |
+| `watchlist_collector` | `null_game_start_time` alto e estável                 | coluna existe, mas o backfill não rodou (`npm run backfill:game-start-time`)  |
+| `esports_partitions`  | mensagem "manage_esports_partitions ainda não existe" | migration das partições não aplicada                                          |
+| `retention_job`       | `legacy_esports_events = null`                        | função de sondagem do item 8 não aplicada                                     |
 
 ---
 

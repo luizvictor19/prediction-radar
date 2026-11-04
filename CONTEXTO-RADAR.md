@@ -18,13 +18,13 @@ mercados do Polymarket e o dono julga; o sistema não decide nada.
 agente analista deu skill −0,029 sobre n=167 — ele não bate o preço. O README
 tem a lista das oito com o número que matou cada uma.
 
-**A tese nova:** *o mercado precifica a MANCHETE e resolve pela REGRA.* A
+**A tese nova:** _o mercado precifica a MANCHETE e resolve pela REGRA._ A
 diferença entre as duas é onde o dono opera. Isso é **leitura**, não previsão —
 não exige ser mais esperto que o mercado, exige ler o regulamento que quase
 ninguém lê (mediana de 1.262 caracteres, preenchido em 100% dos mercados).
 
 **O produto da fase atual:** série de preço acumulando, para o dono olhar no fim
-de semana, anotar a probabilidade dele *antes* do desfecho, e em ~2 meses medir
+de semana, anotar a probabilidade dele _antes_ do desfecho, e em ~2 meses medir
 o Brier dele contra o do mercado. A máquina de medição já existe (`src/eval/`) —
 ela não liga se a previsão veio de um modelo ou de uma pessoa.
 
@@ -145,8 +145,7 @@ repete o erro de amarrar previsão a operação.
 `src/bot/format.ts:52`, dentro de `calcStake`. A guarda `if (bankroll === null)`
 da linha 50 cobre "leg aberta sem preço" — não cobre "carteira nunca
 configurada": sem nenhuma leg aberta, `bankroll.ts:79-88,113` devolve o objeto
-vazio com `bankroll = cash`, e `cash_usd` ausente vira `0` pelo `?? 0` da linha
-77. Aí `calcStake(0, …)` devolve **$0,50 fabricado**, com cara de conta.
+vazio com `bankroll = cash`, e `cash_usd` ausente vira `0` pelo `?? 0` da linha 77. Aí `calcStake(0, …)` devolve **$0,50 fabricado**, com cara de conta.
 Importa agora porque a tela do radar grava previsão sem leg: "zero legs no
 banco" deixa de ser estado excepcional e vira o normal. O irmão sem piso,
 `calcCalendarDrivenStake` (`src/lib/format-helpers.ts:63-71`), devolve 0.

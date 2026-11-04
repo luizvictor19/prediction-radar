@@ -31,10 +31,14 @@ export function signalKeyboard(signalId: string, polymarketUrl: string): InlineK
 
 export function crossMarketInterKeyboard(signalId: string, polymarketUrl: string): InlineKeyboard {
   return new InlineKeyboard()
-    .url('Ver no Polymarket ↗', polymarketUrl).row()
-    .text('Track basket', `track:${signalId}`).row()
-    .text('✏️ Tese própria', `track_custom:${signalId}`).row()
-    .text('🧠 Analisar', `analyze_ai:${signalId}`).row()
+    .url('Ver no Polymarket ↗', polymarketUrl)
+    .row()
+    .text('Track basket', `track:${signalId}`)
+    .row()
+    .text('✏️ Tese própria', `track_custom:${signalId}`)
+    .row()
+    .text('🧠 Analisar', `analyze_ai:${signalId}`)
+    .row()
     .text('Dismiss', `dismiss:${signalId}`);
 }
 
@@ -51,7 +55,7 @@ export function calendarDrivenKeyboard(
 
   const [emoji0, emoji1] = getOutcomeEmojis(values, prices);
   const label0 = isLiteralYesNo ? `${emoji0} Track YES` : `${emoji0} Track ${truncate(v0, 25)}`;
-  const label1 = isLiteralYesNo ? `${emoji1} Track NO`  : `${emoji1} Track ${truncate(v1, 25)}`;
+  const label1 = isLiteralYesNo ? `${emoji1} Track NO` : `${emoji1} Track ${truncate(v1, 25)}`;
 
   return new InlineKeyboard()
     .url('Ver no Polymarket ↗', polymarketUrl)
@@ -74,9 +78,13 @@ export function hypeRealityGapKeyboard(
   const out1 = values[1] ?? 'No';
 
   return new InlineKeyboard()
-    .url('Ver no Polymarket ↗', polymarketUrl).row()
-    .text(`Track ${out0}`, `track_yes:${signalId}`).text(`Track ${out1}`, `track_no:${signalId}`).row()
-    .text('🧠 Analisar', `analyze_ai:${signalId}`).row()
+    .url('Ver no Polymarket ↗', polymarketUrl)
+    .row()
+    .text(`Track ${out0}`, `track_yes:${signalId}`)
+    .text(`Track ${out1}`, `track_no:${signalId}`)
+    .row()
+    .text('🧠 Analisar', `analyze_ai:${signalId}`)
+    .row()
     .text('Dismiss', `dismiss:${signalId}`);
 }
 

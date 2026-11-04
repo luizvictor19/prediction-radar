@@ -140,11 +140,7 @@ export function formatTimeSinceOpen(startDateIso: string): string {
   return `${days}d ${remainingHours}h`;
 }
 
-export function calcMinBankroll(
-  legs: number,
-  cap: number,
-  modifier: number,
-): number {
+export function calcMinBankroll(legs: number, cap: number, modifier: number): number {
   const fraction = cap * modifier;
   if (fraction <= 0) return Infinity;
   return Math.ceil((legs * 1.0) / fraction);

@@ -20,16 +20,22 @@ export async function editHandler(ctx: BotContext): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('my_bet_legs')
-      .select(`
+      .select(
+        `
         id, bet_id, outcome, entry_price, stake_usd, shares,
         my_bets!inner ( thesis, polymarket_category ),
         events ( title )
-      `)
+      `,
+      )
       .is('closed_at', null)
       .order('created_at', { ascending: true });
 
     if (error) {
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `edit query failed: ${error.message}` });
+      await logEvent({
+        component: 'telegram_bot',
+        status: 'error',
+        message: `edit query failed: ${error.message}`,
+      });
       await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
       return;
     }
@@ -80,7 +86,11 @@ export async function editHandler(ctx: BotContext): Promise<void> {
       }
     }
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `editHandler error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `editHandler error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }
@@ -125,7 +135,10 @@ export async function editConversation(
       await ctx.reply('Novo valor a receber se ganhar (USD) ou skip:');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
-      if (raw === 'skip') { await ctx.reply('Sem alterações.'); return; }
+      if (raw === 'skip') {
+        await ctx.reply('Sem alterações.');
+        return;
+      }
       const newToWin = parseFloat(raw);
       if (isNaN(newToWin) || newToWin <= 0) {
         await ctx.reply('Valor inválido. Operação cancelada.');
@@ -134,18 +147,27 @@ export async function editConversation(
       const stakeUsd = (leg as { stake_usd: number }).stake_usd;
       const newPrice = stakeUsd / newToWin;
       if (newPrice <= 0 || newPrice > 1) {
-        await ctx.reply(`Preço calculado inválido (${newPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`);
+        await ctx.reply(
+          `Preço calculado inválido (${newPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`,
+        );
         return;
       }
       const newShares = newToWin;
-      await supabase.from('my_bet_legs').update({ entry_price: newPrice, shares: newShares }).eq('id', id);
-      await ctx.reply(`✅ Leg atualizada. Preço (calc): ${newPrice.toFixed(4)}, shares: ${newShares.toFixed(1)}.`);
-
+      await supabase
+        .from('my_bet_legs')
+        .update({ entry_price: newPrice, shares: newShares })
+        .eq('id', id);
+      await ctx.reply(
+        `✅ Leg atualizada. Preço (calc): ${newPrice.toFixed(4)}, shares: ${newShares.toFixed(1)}.`,
+      );
     } else if (field === 'edit:stake') {
       await ctx.reply('Novo stake em USD (ou skip):');
       const inputCtx = await conversation.waitFor('message:text');
       const raw = inputCtx.message.text.trim();
-      if (raw === 'skip') { await ctx.reply('Sem alterações.'); return; }
+      if (raw === 'skip') {
+        await ctx.reply('Sem alterações.');
+        return;
+      }
       const newStake = parseFloat(raw);
       if (isNaN(newStake) || newStake <= 0) {
         await ctx.reply('Stake inválido. Operação cancelada.');
@@ -154,28 +176,37 @@ export async function editConversation(
       const oldStake = (leg as { stake_usd: number }).stake_usd;
       const stakeDelta = newStake - oldStake;
       const newShares = newStake / (leg as { entry_price: number }).entry_price;
-      await supabase.from('my_bet_legs').update({ stake_usd: newStake, shares: newShares }).eq('id', id);
+      await supabase
+        .from('my_bet_legs')
+        .update({ stake_usd: newStake, shares: newShares })
+        .eq('id', id);
       await adjustCash(-stakeDelta);
-      const cashMsg = stakeDelta !== 0
-        ? `\nCash ajustado: ${stakeDelta > 0 ? '-' : '+'}$${Math.abs(stakeDelta).toFixed(2)}`
-        : '';
-      await ctx.reply(`✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).${cashMsg}`);
-
+      const cashMsg =
+        stakeDelta !== 0
+          ? `\nCash ajustado: ${stakeDelta > 0 ? '-' : '+'}$${Math.abs(stakeDelta).toFixed(2)}`
+          : '';
+      await ctx.reply(
+        `✅ Leg atualizada. Novo stake: $${newStake.toFixed(2)}, novas shares: ${newShares.toFixed(4)} (recalculado).${cashMsg}`,
+      );
     } else if (field === 'edit:outcome') {
       const currentOutcome = (leg as { outcome: string }).outcome;
-      await ctx.reply(`Outcome atual: \`${currentOutcome}\`\nDigite o novo outcome (texto livre):`, { parse_mode: 'Markdown' });
+      await ctx.reply(
+        `Outcome atual: \`${currentOutcome}\`\nDigite o novo outcome (texto livre):`,
+        { parse_mode: 'Markdown' },
+      );
       const inputCtx = await conversation.waitFor('message:text');
       const rawOutcome = inputCtx.message.text.trim();
-      if (!rawOutcome) { await ctx.reply('Sem alterações.'); return; }
+      if (!rawOutcome) {
+        await ctx.reply('Sem alterações.');
+        return;
+      }
 
       const eventId = (leg as { event_id: string | null }).event_id;
       let newOutcome: string;
       if (eventId) {
         const norm = await normalizeOutcome(eventId, rawOutcome);
         if (!norm.ok) {
-          await ctx.reply(
-            `Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`,
-          );
+          await ctx.reply(`Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`);
           return;
         }
         newOutcome = norm.outcome;
@@ -227,7 +258,11 @@ export async function editConversation(
           .eq('id', betId)
           .not('prob_self', 'is', null);
         if (betErr) {
-          await logEvent({ component: 'telegram_bot', status: 'error', message: `edit prob_self_outcome update failed: ${betErr.message}` });
+          await logEvent({
+            component: 'telegram_bot',
+            status: 'error',
+            message: `edit prob_self_outcome update failed: ${betErr.message}`,
+          });
           await ctx.reply(
             '⚠️ Outcome da leg atualizado, mas o lado da probabilidade NÃO acompanhou. ' +
               'A linha ficou com a probabilidade rotulada do lado antigo. Avisa antes de pontuar.',
@@ -236,8 +271,9 @@ export async function editConversation(
         }
       }
 
-      await ctx.reply(`✅ Outcome atualizado: \`${currentOutcome}\` → \`${newOutcome}\``, { parse_mode: 'Markdown' });
-
+      await ctx.reply(`✅ Outcome atualizado: \`${currentOutcome}\` → \`${newOutcome}\``, {
+        parse_mode: 'Markdown',
+      });
     } else if (field === 'edit:notes') {
       await ctx.reply('Notas (texto livre, ou skip pra apagar):');
       const inputCtx = await conversation.waitFor('message:text');
@@ -247,7 +283,11 @@ export async function editConversation(
       await ctx.reply('✅ Notas atualizadas.');
     }
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `editConversation error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `editConversation error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

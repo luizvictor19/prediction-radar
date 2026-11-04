@@ -24,12 +24,7 @@ import {
   readMarketsToDigest,
   type MarketToDigest,
 } from '../src/digest/store.js';
-import {
-  getPrompt,
-  promptVersions,
-  SEVERIDADES,
-  tiposDe,
-} from '../src/digest/prompts.js';
+import { getPrompt, promptVersions, SEVERIDADES, tiposDe } from '../src/digest/prompts.js';
 import type { Ambiguidade, DigestOutput, Pegadinha } from '../src/digest/digest.js';
 
 /**
@@ -160,7 +155,9 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
       continue;
     }
 
-    const match = /^--(degrau|model|prompt|comparar|amostra-de|excluir-de|seed|limit)=(.+)$/.exec(arg);
+    const match = /^--(degrau|model|prompt|comparar|amostra-de|excluir-de|seed|limit)=(.+)$/.exec(
+      arg,
+    );
     if (match === null) return { error: `argumento desconhecido: ${arg}` };
     const [, key, value = ''] = match;
 
@@ -177,14 +174,19 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
       continue;
     }
     if (key === 'excluir-de') {
-      args.excluirDe = value.split(',').map(v => v.trim()).filter(v => v !== '');
+      args.excluirDe = value
+        .split(',')
+        .map((v) => v.trim())
+        .filter((v) => v !== '');
       continue;
     }
     if (key === 'comparar') {
-      const partes = value.split(',').map(p => p.trim());
+      const partes = value.split(',').map((p) => p.trim());
       const [a, b] = partes;
       if (partes.length !== 2 || a === undefined || b === undefined || a === '' || b === '') {
-        return { error: '--comparar espera duas versões separadas por vírgula, ex: --comparar=v1,v2' };
+        return {
+          error: '--comparar espera duas versões separadas por vírgula, ex: --comparar=v1,v2',
+        };
       }
       args.comparar = [a, b];
       continue;
@@ -198,7 +200,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     }
 
     const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return { error: `--${key}=${value} não é um número positivo` };
+    if (!Number.isFinite(n) || n <= 0)
+      return { error: `--${key}=${value} não é um número positivo` };
     if (key === 'seed') args.seed = Math.trunc(n);
     else args.limit = Math.trunc(n);
   }
@@ -423,7 +426,7 @@ function mediana(values: readonly number[]): number | null {
 
 function lista(titulo: string, items: readonly string[]): string {
   if (items.length === 0) return `**${titulo}:** —\n`;
-  return `**${titulo}:**\n\n${items.map(i => `- ${i}`).join('\n')}\n`;
+  return `**${titulo}:**\n\n${items.map((i) => `- ${i}`).join('\n')}\n`;
 }
 
 /**
@@ -436,7 +439,7 @@ function lista(titulo: string, items: readonly string[]): string {
 function listaPegadinhas(items: readonly Pegadinha[]): string {
   if (items.length === 0) return '**Pegadinhas:** nenhuma (a regra é direta)\n';
 
-  const linhas = items.map(p => {
+  const linhas = items.map((p) => {
     const cabeca = p.severidade === null ? `- ${p.texto}` : `- \`${p.severidade}\`: ${p.texto}`;
     const detalhes = [
       p.trecho === null ? null : `  - trecho: *"${p.trecho}"*`,
@@ -451,7 +454,7 @@ function listaPegadinhas(items: readonly Pegadinha[]): string {
 function listaAmbiguidades(items: readonly Ambiguidade[]): string {
   if (items.length === 0) return '**Ambiguidades:** nenhuma\n';
 
-  const linhas = items.map(a => {
+  const linhas = items.map((a) => {
     if (a.tipo === null) return `- ${a.leituraA}`;
     return [
       `- \`${a.tipo}\`, trecho: *"${a.trecho ?? '—'}"*`,
@@ -738,9 +741,9 @@ function markdownDistribuicao(
   chaves: readonly string[],
   total: number,
 ): string {
-  const extras = [...contagem.keys()].filter(k => !chaves.includes(k)).sort();
+  const extras = [...contagem.keys()].filter((k) => !chaves.includes(k)).sort();
   const linhas = [...chaves, ...extras]
-    .map(k => {
+    .map((k) => {
       const n = contagem.get(k) ?? 0;
       return `| \`${k}\` | ${n} | ${total > 0 ? ((n / total) * 100).toFixed(1) + '%' : '—'} |`;
     })
@@ -754,8 +757,8 @@ function tabelaDistribuicao(
   chaves: readonly string[],
   total: number,
 ): string {
-  const extras = [...contagem.keys()].filter(k => !chaves.includes(k)).sort();
-  const linhas = [...chaves, ...extras].map(k => {
+  const extras = [...contagem.keys()].filter((k) => !chaves.includes(k)).sort();
+  const linhas = [...chaves, ...extras].map((k) => {
     const n = contagem.get(k) ?? 0;
     return [k, String(n), total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '—'];
   });
@@ -774,7 +777,7 @@ interface MetricaModelo {
 }
 
 function metricas(saidas: readonly Saida[], model: string): MetricaModelo {
-  const doModelo = saidas.filter(s => s.model === model);
+  const doModelo = saidas.filter((s) => s.model === model);
   const ok = doModelo.filter((s): s is Sucesso => s.ok);
 
   return {
@@ -783,14 +786,14 @@ function metricas(saidas: readonly Saida[], model: string): MetricaModelo {
     validas: ok.length,
     invalidas: doModelo.length - ok.length,
     custoTotal: ok.reduce((acc, s) => acc + (s.result.costUsd ?? 0), 0),
-    latenciaMediana: mediana(ok.map(s => s.result.latencyMs)),
-    pegadinhasMediana: mediana(ok.map(s => s.result.output.pegadinhas.length)),
-    ambiguidadesMediana: mediana(ok.map(s => s.result.output.ambiguidades.length)),
+    latenciaMediana: mediana(ok.map((s) => s.result.latencyMs)),
+    pegadinhasMediana: mediana(ok.map((s) => s.result.output.pegadinhas.length)),
+    ambiguidadesMediana: mediana(ok.map((s) => s.result.output.ambiguidades.length)),
   };
 }
 
 function tabelaMetricas(saidas: readonly Saida[], models: readonly string[]): string {
-  const linhas = models.map(m => {
+  const linhas = models.map((m) => {
     const x = metricas(saidas, m);
     const porMercado = x.validas > 0 ? x.custoTotal / x.validas : 0;
     return [
@@ -829,7 +832,7 @@ function markdownMetricas(saidas: readonly Saida[], models: readonly string[]): 
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n';
 
   const linhas = models
-    .map(m => {
+    .map((m) => {
       const x = metricas(saidas, m);
       const porMercado = x.validas > 0 ? x.custoTotal / x.validas : 0;
       return (
@@ -870,11 +873,10 @@ function renderRelatorio(
     porMercado.set(s.market.eventId, arr);
   }
 
-  const validos = saidas.filter((s): s is Sucesso => s.ok).map(s => s.result.output);
+  const validos = saidas.filter((s): s is Sucesso => s.ok).map((s) => s.result.output);
   const dist = distribuir(validos);
   const descartes = somarDescartes(saidas);
-  const podado =
-    descartes.trechoInexistente + descartes.trechoRepetido + descartes.trechoCurto;
+  const podado = descartes.trechoInexistente + descartes.trechoRepetido + descartes.trechoCurto;
   const podadasContradicao =
     descartes.contradicaoSemSegundoTrecho + descartes.contradicaoNaoAncorada;
 
@@ -891,7 +893,7 @@ function renderRelatorio(
     // without anyone seeing it.
     `- **rodou em:** ${new Date().toISOString()}`,
     `- **mercados:** ${amostra.length}`,
-    `- **modelos:** ${degrau.models.map(m => `\`${m}\``).join(', ')}`,
+    `- **modelos:** ${degrau.models.map((m) => `\`${m}\``).join(', ')}`,
     `- **prompt:** \`${promptVersion}\``,
     `- **chamadas:** ${saidas.length}`,
     `- **amostra:** aleatória, semente fixa \`${seed}\` (reprodutível: mesma semente, mesma lista)`,
@@ -928,7 +930,8 @@ function renderRelatorio(
                 '<details><summary>o que foi podado</summary>',
                 '',
                 ...descartes.amostras.map(
-                  a => `- \`${a.motivo}\`: ${a.texto}${a.trecho === '' ? '' : `  \n  trecho citado: *"${a.trecho}"*`}`,
+                  (a) =>
+                    `- \`${a.motivo}\`: ${a.texto}${a.trecho === '' ? '' : `  \n  trecho citado: *"${a.trecho}"*`}`,
                 ),
                 '',
                 '</details>',
@@ -948,7 +951,7 @@ function renderRelatorio(
           '<details><summary>as contradições que não se sustentaram</summary>',
           '',
           ...descartes.amostrasAmbiguidade.map(
-            a => `- \`${a.motivo}\`: ${a.texto}  \n  trechos citados: *"${a.trecho}"*`,
+            (a) => `- \`${a.motivo}\`: ${a.texto}  \n  trechos citados: *"${a.trecho}"*`,
           ),
           '',
           '</details>',
@@ -980,10 +983,12 @@ function renderRelatorio(
     .map((market, i) => {
       const doMercado = porMercado.get(market.eventId) ?? [];
       const blocos = degrau.models
-        .map(model => {
-          const saida = doMercado.find(s => s.model === model);
+        .map((model) => {
+          const saida = doMercado.find((s) => s.model === model);
           const titulo = degrau.models.length > 1 ? `#### \`${model}\`\n\n` : '';
-          return titulo + (saida === undefined ? '> não rodou (teto de gasto)\n' : renderDigest(saida));
+          return (
+            titulo + (saida === undefined ? '> não rodou (teto de gasto)\n' : renderDigest(saida))
+          );
         })
         .join('\n');
 
@@ -1072,7 +1077,7 @@ async function lerArtefato(path: string, version: string): Promise<Artefato> {
       fonte: (digest['fonte'] as string | null) ?? null,
       anulaSe: (digest['anula_se'] as string[]) ?? [],
       prazo: (digest['prazo'] as string | null) ?? null,
-      pegadinhas: pegRaw.map(p =>
+      pegadinhas: pegRaw.map((p) =>
         typeof p === 'string'
           ? { texto: p, severidade: null, trecho: null, cenario: null }
           : {
@@ -1083,7 +1088,7 @@ async function lerArtefato(path: string, version: string): Promise<Artefato> {
               cenario: ((p as Record<string, unknown>)['cenario'] ?? null) as string | null,
             },
       ),
-      ambiguidades: ambRaw.map(a =>
+      ambiguidades: ambRaw.map((a) =>
         typeof a === 'string'
           ? { tipo: null, trecho: null, trechoConflito: null, leituraA: a, leituraB: null }
           : {
@@ -1113,7 +1118,7 @@ function ancorar(
   artefato: Artefato,
   todos: readonly MarketToDigest[],
 ): { amostra: MarketToDigest[]; sumiram: number } {
-  const porId = new Map(todos.map(m => [m.eventId, m]));
+  const porId = new Map(todos.map((m) => [m.eventId, m]));
   const amostra: MarketToDigest[] = [];
   let sumiram = 0;
 
@@ -1134,11 +1139,7 @@ function ancorar(
  * são as duas saídas inteiras e as duas distribuições — o material da decisão,
  * não a decisão.
  */
-function renderComparacao(
-  amostra: readonly MarketToDigest[],
-  a: Artefato,
-  b: Artefato,
-): string {
+function renderComparacao(amostra: readonly MarketToDigest[], a: Artefato, b: Artefato): string {
   const distA = distribuir([...a.porMercado.values()]);
   const distB = distribuir([...b.porMercado.values()]);
 
@@ -1195,11 +1196,15 @@ function renderComparacao(
         '',
         `### \`${a.version}\``,
         '',
-        outA === undefined ? '> não há saída válida desta versão para este mercado\n' : renderOutput(outA, ''),
+        outA === undefined
+          ? '> não há saída válida desta versão para este mercado\n'
+          : renderOutput(outA, ''),
         '',
         `### \`${b.version}\``,
         '',
-        outB === undefined ? '> não há saída válida desta versão para este mercado\n' : renderOutput(outB, ''),
+        outB === undefined
+          ? '> não há saída válida desta versão para este mercado\n'
+          : renderOutput(outB, ''),
       ].join('\n');
     })
     .join('\n---\n\n');
@@ -1253,18 +1258,24 @@ async function main(): Promise<void> {
     await writeFile(destino, renderComparacao(amostraCmp, artefatoA, artefatoB), 'utf8');
 
     console.log(section(`Comparação ${va} × ${vb} — degrau ${degrau.numero}`));
-    console.log(`  ${artefatoA.porMercado.size} digestões em ${va}, ${artefatoB.porMercado.size} em ${vb}`);
+    console.log(
+      `  ${artefatoA.porMercado.size} digestões em ${va}, ${artefatoB.porMercado.size} em ${vb}`,
+    );
     console.log(`  nenhuma chamada foi feita: este modo só lê os artefatos em disco.`);
     console.log(`\n  ${destino}`);
     return;
   }
 
   console.log(
-    section(`Digestão de regras — degrau ${degrau.numero} (${parsed.dryRun ? 'DRY RUN, nada é chamado' : 'CORRIDA REAL'})`),
+    section(
+      `Digestão de regras — degrau ${degrau.numero} (${parsed.dryRun ? 'DRY RUN, nada é chamado' : 'CORRIDA REAL'})`,
+    ),
   );
   console.log(`  ${degrau.descricao}`);
   console.log(`  mercados com regra no radar: ${todos.length}`);
-  console.log(`  prompt: ${promptVersion}  |  teto do dia: ${usd(teto)}  |  timeout: ${config.digest_timeout_ms} ms`);
+  console.log(
+    `  prompt: ${promptVersion}  |  teto do dia: ${usd(teto)}  |  timeout: ${config.digest_timeout_ms} ms`,
+  );
 
   // Modelo sem preço não roda — a conferência é aqui e não no meio do laço.
   for (const model of degrau.models) {
@@ -1327,7 +1338,7 @@ async function main(): Promise<void> {
   // A garantia, conferida e não presumida: nenhum mercado da amostra está no
   // conjunto excluído. Se a asserção cair, a régua do prompt contém respostas
   // dos mercados que estão sendo medidos — e a medição não vale.
-  const vazamento = amostra.filter(m => excluidos.has(m.eventId));
+  const vazamento = amostra.filter((m) => excluidos.has(m.eventId));
   if (vazamento.length > 0) {
     console.error(
       `[${LABEL}] ${vazamento.length} mercados da amostra estão no conjunto excluído. Parando.`,
@@ -1384,7 +1395,9 @@ async function main(): Promise<void> {
     ),
   );
   if (semEstimativa > 0) {
-    console.log(`\n  AVISO: ${semEstimativa} chamadas sem estimativa (modelo ou prompt desconhecido).`);
+    console.log(
+      `\n  AVISO: ${semEstimativa} chamadas sem estimativa (modelo ou prompt desconhecido).`,
+    );
   }
   console.log(
     '\n  A estimativa usa 4 caracteres/token na entrada e 12.000 tokens de saída — este último\n' +
@@ -1394,10 +1407,12 @@ async function main(): Promise<void> {
   );
 
   // ---- A conferência do nome do modelo, de graça ----
-  if (degrau.models.some(m => providerFor(m) === 'deepseek')) {
+  if (degrau.models.some((m) => providerFor(m) === 'deepseek')) {
     try {
       const disponiveis = await listDeepseekModels();
-      const faltando = degrau.models.filter(m => providerFor(m) === 'deepseek' && !disponiveis.includes(m));
+      const faltando = degrau.models.filter(
+        (m) => providerFor(m) === 'deepseek' && !disponiveis.includes(m),
+      );
       console.log(`\n  modelos que a conta DeepSeek enxerga: ${disponiveis.join(', ')}`);
       if (faltando.length > 0) {
         console.error(
@@ -1482,7 +1497,7 @@ async function main(): Promise<void> {
   }
 
   // ---- As distribuições, que é o que a v2 existe para tornar contável ----
-  const validos = corrida.saidas.filter((s): s is Sucesso => s.ok).map(s => s.result.output);
+  const validos = corrida.saidas.filter((s): s is Sucesso => s.ok).map((s) => s.result.output);
   const dist = distribuir(validos);
 
   console.log(
@@ -1490,10 +1505,20 @@ async function main(): Promise<void> {
       `mercados com ZERO: ${dist.mercadosComZeroPegadinhas}`,
   );
   console.log(
-    tabelaDistribuicao('\n  Severidade das pegadinhas:', dist.porSeveridade, SEVERIDADES, dist.totalPegadinhas),
+    tabelaDistribuicao(
+      '\n  Severidade das pegadinhas:',
+      dist.porSeveridade,
+      SEVERIDADES,
+      dist.totalPegadinhas,
+    ),
   );
   console.log(
-    tabelaDistribuicao('\n  Tipo das ambiguidades:', dist.porTipo, tiposDe(promptVersion), dist.totalAmbiguidades),
+    tabelaDistribuicao(
+      '\n  Tipo das ambiguidades:',
+      dist.porTipo,
+      tiposDe(promptVersion),
+      dist.totalAmbiguidades,
+    ),
   );
   if (dist.taxaOutro !== null) {
     const pct = (dist.taxaOutro * 100).toFixed(1);
@@ -1531,7 +1556,7 @@ async function main(): Promise<void> {
     );
     console.log(
       `\n  ${totalPodado} de ${totalPodado + dist.totalPegadinhas} pegadinhas foram podadas ` +
-        `(${(((totalPodado) / Math.max(1, totalPodado + dist.totalPegadinhas)) * 100).toFixed(1)}%)  |  ` +
+        `(${((totalPodado / Math.max(1, totalPodado + dist.totalPegadinhas)) * 100).toFixed(1)}%)  |  ` +
         `severidades rebaixadas por falta de cenário: ${descartes.severidadeRebaixada}`,
     );
     for (const a of descartes.amostras.slice(0, 5)) {
@@ -1599,7 +1624,7 @@ async function main(): Promise<void> {
   // rodada seguinte não consegue repetir a amostra: ancorar num artefato que só
   // guarda sucesso perde exatamente os mercados que a nova versão existe para
   // consertar.
-  const linhas = corrida.saidas.map(s =>
+  const linhas = corrida.saidas.map((s) =>
     s.ok
       ? buildDigestRows(s.market, s.result, promptVersion, s.model)
       : {

@@ -110,9 +110,9 @@ export function Operar({
         </button>
         <h1>{mercado.pergunta}</h1>
         <p className="erro">
-          Este mercado ainda não tem lado: nenhuma foto do livro chegou. Sem
-          saber de que desfecho é a probabilidade, ela não pode ser pontuada
-          depois, então a tela não grava. Tenta de novo quando o radar capturar.
+          Este mercado ainda não tem lado: nenhuma foto do livro chegou. Sem saber de que desfecho é
+          a probabilidade, ela não pode ser pontuada depois, então a tela não grava. Tenta de novo
+          quando o radar capturar.
         </p>
       </div>
     );
@@ -158,8 +158,8 @@ export function Operar({
               autoFocus
               value={bruto}
               placeholder="ex: 72"
-              onChange={e => setBruto(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && conferir()}
+              onChange={(e) => setBruto(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && conferir()}
             />
           </label>
           {erro && <p className="erro">{erro}</p>}
@@ -167,7 +167,7 @@ export function Operar({
           {mostrarNota ? (
             <label className="nota">
               nota (opcional)
-              <input value={nota} onChange={e => setNota(e.target.value)} />
+              <input value={nota} onChange={(e) => setNota(e.target.value)} />
             </label>
           ) : (
             <button className="link" onClick={() => setMostrarNota(true)}>
@@ -279,18 +279,19 @@ function DepoisDeOperar({ betId, mercado }: { betId: string; mercado: MercadoNaL
   return (
     <div className="leg">
       <p className="explica">
-        O preço de entrada <strong>não</strong> é o preço de mercado: entrada tem taxa e
-        slippage dentro. A linha de base já foi gravada com a previsão.
+        O preço de entrada <strong>não</strong> é o preço de mercado: entrada tem taxa e slippage
+        dentro. A linha de base já foi gravada com a previsão.
       </p>
       <label>
-        lado <input value={outcome} onChange={e => setOutcome(e.target.value)} />
+        lado <input value={outcome} onChange={(e) => setOutcome(e.target.value)} />
       </label>
       <label>
         preço de entrada (0–1){' '}
-        <input value={entrada} onChange={e => setEntrada(e.target.value)} placeholder="0.62" />
+        <input value={entrada} onChange={(e) => setEntrada(e.target.value)} placeholder="0.62" />
       </label>
       <label>
-        stake (US$) <input value={stake} onChange={e => setStake(e.target.value)} placeholder="25" />
+        stake (US$){' '}
+        <input value={stake} onChange={(e) => setStake(e.target.value)} placeholder="25" />
       </label>
       {erro && <p className="erro">{erro}</p>}
       <button onClick={salvar}>gravar a operação</button>

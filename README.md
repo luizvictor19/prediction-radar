@@ -13,12 +13,12 @@ markets in the roster across 7 subjects; **1,033** markets digested into
 **267** distinct rule texts; **78.1%** of them carry a `veredito`. The weekly
 human judgement loop is next.
 
-*Roster and digestion measured 24/08/2026; `veredito` coverage 22/08/2026.*
+_Roster and digestion measured 24/08/2026; `veredito` coverage 22/08/2026._
 
 ![The rule screen: a verdict contrasting headline and rule, the traps that change the outcome, an internal contradiction, and the rule text with each quoted passage highlighted where it sits.](docs/imagens/tela-regra.png)
 
-*The rule screen, 24/08/2026: the headline asks about warships, the rule counts
-cargo ships. What it shows and why is in [The rule screen](#the-rule-screen).*
+_The rule screen, 24/08/2026: the headline asks about warships, the rule counts
+cargo ships. What it shows and why is in [The rule screen](#the-rule-screen)._
 
 ---
 
@@ -102,19 +102,19 @@ The domain nouns stay in Portuguese. Each one is also a database column and a
 word in the spec that defines it, and translating a single link breaks a chain
 that runs unbroken from spec to screen to `select`.
 
-| term | meaning |
-| --- | --- |
-| `regra` | the market's rule text, the thing that decides resolution |
-| `manchete` | the market's title, the thing the price reacts to |
-| `leitura` | one reading of a `regra` by the model; the same text is read several times |
-| `achado` | one defect found in a `regra` |
-| `pegadinha` | a trap; the worst kind changes who wins (`muda_resultado`) |
-| `ambiguidade` | the rule can be read two ways |
-| `contradicao` | two passages of the rule disagree |
-| `trecho` | the exact words quoted from the rule; never translated, never rewritten |
-| `acusado` | the model read THIS market and found it |
-| `herdado` | the model read a sibling market with the same rule text |
-| `veredito` | the headline-versus-rule statement at the top of the screen |
+| term          | meaning                                                                    |
+| ------------- | -------------------------------------------------------------------------- |
+| `regra`       | the market's rule text, the thing that decides resolution                  |
+| `manchete`    | the market's title, the thing the price reacts to                          |
+| `leitura`     | one reading of a `regra` by the model; the same text is read several times |
+| `achado`      | one defect found in a `regra`                                              |
+| `pegadinha`   | a trap; the worst kind changes who wins (`muda_resultado`)                 |
+| `ambiguidade` | the rule can be read two ways                                              |
+| `contradicao` | two passages of the rule disagree                                          |
+| `trecho`      | the exact words quoted from the rule; never translated, never rewritten    |
+| `acusado`     | the model read THIS market and found it                                    |
+| `herdado`     | the model read a sibling market with the same rule text                    |
+| `veredito`    | the headline-versus-rule statement at the top of the screen                |
 
 ---
 
@@ -183,7 +183,7 @@ when we learned it. Replay filters on `observed_at`, never `as_of`.
 
 **`observed_at` is not forgeable.** A `BEFORE INSERT` trigger stamps it with the
 server clock, overwriting whatever the client sends. The residual error has a
-known direction and it is the harmless one: replay considers *less* than we knew.
+known direction and it is the harmless one: replay considers _less_ than we knew.
 
 **The context store is append-only, enforced by the database.** The same trigger
 raises on `UPDATE`, which catches `UPSERT` too, the most likely way the mistake
@@ -307,11 +307,11 @@ Six rules, each learned by breaking something.
 
 **1. Filter at collection only what does not change; filter in the view what
 does.** Category doesn't change → belongs in collection. Price changes → does
-not, because filtering by price drops a market from the roster *exactly when it
-moves*, which is the event being studied.
+not, because filtering by price drops a market from the roster _exactly when it
+moves_, which is the event being studied.
 
 **2. `radar_tracked` is a protection mark and only grows.** Never unmark. A
-market leaves the roster *because it resolved*, and unmarking hands its series
+market leaves the roster _because it resolved_, and unmarking hands its series
 to the retention job's `finalized` branch, which deletes without an age
 condition, at the moment the outcome makes the data valuable. This is why the
 mark stands at 1,201 while the active roster is 1,021: the 180 resolved markets
@@ -375,7 +375,7 @@ the list-to-decision stopwatch is not yet persisted, so no series of it exists
 already have an outcome (#4, #5).
 
 The question this answers is the one the project has been circling since the
-start: *is there edge here, and is it mine or the market's?*
+start: _is there edge here, and is it mine or the market's?_
 
 This is a personal research project, built solo, as the practical component of a
 postgraduate program in applied AI engineering. It has no users, no revenue, and

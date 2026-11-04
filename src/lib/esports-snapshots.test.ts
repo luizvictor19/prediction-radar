@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { toLegacySnapshotRow, gammaLiquidity, gammaVolume24h } = await import('./esports-snapshots.js');
+const { toLegacySnapshotRow, gammaLiquidity, gammaVolume24h } =
+  await import('./esports-snapshots.js');
 
 const row = {
   event_id: 'ev1',

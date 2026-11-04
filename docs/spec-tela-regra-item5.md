@@ -39,7 +39,7 @@ Elas resumem **o mercado**, não a coluna esquerda — por isso não podem morar
 
 1. Armadilhas que mudam o resultado (só acusadas, ordenadas por concordância, teto de 5 visíveis)
 2. Contradições internas acusadas
-3. Dobras fechadas: *A regra, lida* · *Comuns a quase todos os regulamentos* · *Herdados do mesmo texto de regra* · *As 3 leituras, lado a lado*
+3. Dobras fechadas: _A regra, lida_ · _Comuns a quase todos os regulamentos_ · _Herdados do mesmo texto de regra_ · _As 3 leituras, lado a lado_
 
 **Direita**: o regulamento inteiro, em monoespaçada, com o trecho de cada achado **destacado dentro do texto** em vez de recortado.
 
@@ -81,12 +81,12 @@ E o cabeçalho do bloco recolhido nomeia o que carrega, incluindo contradições
 
 Cada um diz uma coisa diferente e **nenhum pode ser omissão da seção**:
 
-| Situação | O que a tela diz |
-| --- | --- |
-| Lido, nenhuma armadilha | *3 leituras, nenhuma armadilha que mude o resultado.* |
-| Lido, nenhuma contradição acusada, N herdadas | o texto da seção 4 acima |
-| Lido, nenhuma contradição de nenhum tipo | *Nenhuma contradição interna.* |
-| Sem digestão | *Este mercado ainda não foi digerido.* — sem seções de achado |
+| Situação                                      | O que a tela diz                                              |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| Lido, nenhuma armadilha                       | _3 leituras, nenhuma armadilha que mude o resultado._         |
+| Lido, nenhuma contradição acusada, N herdadas | o texto da seção 4 acima                                      |
+| Lido, nenhuma contradição de nenhum tipo      | _Nenhuma contradição interna._                                |
+| Sem digestão                                  | _Este mercado ainda não foi digerido._ — sem seções de achado |
 
 "Lido e limpo" é informação diferente de "não lido". A distinção já existe no `somaDigest` retornando `null` em vez de `0`; a tela tem que honrar.
 
@@ -104,7 +104,7 @@ O **N do cabeçalho é o tamanho do bloco**, nunca `ContagemDigest.achados_herda
 
 ## 7. Frequência do gate
 
-Sempre com denominador: *"aparece em 42% dos 267 regulamentos lidos"*, nunca *"42%"*. Fração sem denominador é a armadilha do `1/1` por outro caminho.
+Sempre com denominador: _"aparece em 42% dos 267 regulamentos lidos"_, nunca _"42%"_. Fração sem denominador é a armadilha do `1/1` por outro caminho.
 
 As três consultas disparam em paralelo com o carregamento do mercado. Enquanto o índice é `null`, tudo aparece e nada recolhe — o achado se mostra de qualquer jeito, só ainda não sabe se é padrão da casa.
 

@@ -84,15 +84,15 @@ interface Contagem {
 }
 
 function contar(linhas: readonly Linha[]): Contagem {
-  const ambos = linhas.filter(l => l.slug !== null && l.event_group_slug !== null);
+  const ambos = linhas.filter((l) => l.slug !== null && l.event_group_slug !== null);
   return {
     total: linhas.length,
-    comSlug: linhas.filter(l => l.slug !== null).length,
-    comGrupo: linhas.filter(l => l.event_group_slug !== null).length,
+    comSlug: linhas.filter((l) => l.slug !== null).length,
+    comGrupo: linhas.filter((l) => l.event_group_slug !== null).length,
     ambos: ambos.length,
-    iguais: ambos.filter(l => l.slug === l.event_group_slug).length,
-    divergentes: ambos.filter(l => l.slug !== l.event_group_slug).length,
-    semNenhum: linhas.filter(l => l.slug === null && l.event_group_slug === null).length,
+    iguais: ambos.filter((l) => l.slug === l.event_group_slug).length,
+    divergentes: ambos.filter((l) => l.slug !== l.event_group_slug).length,
+    semNenhum: linhas.filter((l) => l.slug === null && l.event_group_slug === null).length,
   };
 }
 
@@ -136,7 +136,9 @@ async function tipoNaGamma(slug: string): Promise<{ evento: boolean; mercado: bo
  * 956 divergent markets, and lands on a multi-outcome event listing twenty
  * other markets -- opening is not the same as arriving.
  */
-async function mercadoNaGamma(slug: string): Promise<{ pai: string | null; pergunta: string | null }> {
+async function mercadoNaGamma(
+  slug: string,
+): Promise<{ pai: string | null; pergunta: string | null }> {
   const resposta = await fetch(`${GAMMA}/markets?slug=${encodeURIComponent(slug)}`);
   if (!resposta.ok) return { pai: null, pergunta: null };
   const corpo = (await resposta.json()) as Array<{
@@ -150,7 +152,8 @@ async function mercadoNaGamma(slug: string): Promise<{ pai: string | null; pergu
 }
 
 /** The title every Polymarket page falls back to when the slug addresses nothing. */
-const TITULO_GENERICO = /The World&#x27;s Largest Prediction Market|The World's Largest Prediction Market/;
+const TITULO_GENERICO =
+  /The World&#x27;s Largest Prediction Market|The World's Largest Prediction Market/;
 
 /**
  * Whether a Polymarket page exists, and what it is called.
@@ -188,7 +191,7 @@ async function abre(url: string): Promise<{ ok: boolean; titulo: string; texto: 
 
 async function main(): Promise<void> {
   const todas = await lerRoster();
-  const ativas = todas.filter(l => l.status === 'active');
+  const ativas = todas.filter((l) => l.status === 'active');
 
   console.log('# Cobertura de slug no roster');
   imprimir('radar_tracked — sem filtro de status', contar(todas));
@@ -205,14 +208,17 @@ async function main(): Promise<void> {
   }
 
   // A amostra sai do recorte de v_radar, que e o que a tela le.
-  const ambos = ativas.filter(l => l.slug !== null && l.event_group_slug !== null);
-  const divergentes = ambos.filter(l => l.slug !== l.event_group_slug);
-  const iguais = ambos.filter(l => l.slug === l.event_group_slug);
+  const ambos = ativas.filter((l) => l.slug !== null && l.event_group_slug !== null);
+  const divergentes = ambos.filter((l) => l.slug !== l.event_group_slug);
+  const iguais = ambos.filter((l) => l.slug === l.event_group_slug);
 
   // Os divergentes sao o caso que se suspeita quebrado; os iguais entram porque
   // e onde o palpite acerta, e uma correcao que nao distingue os dois quebraria
   // justamente esse.
-  const amostra = [...divergentes.slice(0, AMOSTRA_DIVERGENTES), ...iguais.slice(0, AMOSTRA_IGUAIS)];
+  const amostra = [
+    ...divergentes.slice(0, AMOSTRA_DIVERGENTES),
+    ...iguais.slice(0, AMOSTRA_IGUAIS),
+  ];
 
   console.log('\n# Amostra: as quatro formas de URL em cada slug');
 
@@ -224,8 +230,13 @@ async function main(): Promise<void> {
   //   fallback  o segundo ramo de src/bot, nunca exercido porque
   //             event_group_slug esta em 100% das linhas
   const placar = {
-    tela: 0, telaIguais: 0, telaDivergentes: 0,
-    grupo: 0, completa: 0, completaNoMercadoCerto: 0, fallback: 0,
+    tela: 0,
+    telaIguais: 0,
+    telaDivergentes: 0,
+    grupo: 0,
+    completa: 0,
+    completaNoMercadoCerto: 0,
+    fallback: 0,
   };
 
   for (const linha of amostra) {
@@ -242,7 +253,10 @@ async function main(): Promise<void> {
       fallback: `https://polymarket.com/market/${slug}`,
     };
     const [tela, grupoR, completa, fallback] = await Promise.all([
-      abre(urls.tela), abre(urls.grupo), abre(urls.completa), abre(urls.fallback),
+      abre(urls.tela),
+      abre(urls.grupo),
+      abre(urls.completa),
+      abre(urls.fallback),
     ]);
 
     if (tela.ok) {
@@ -256,8 +270,10 @@ async function main(): Promise<void> {
 
     // Abrir nao basta: a pergunta do mercado tem que estar no titulo, senao a
     // URL caiu na lista do evento em vez do mercado que a regra descreve.
-    const chegou = completa.ok && mercado.pergunta !== null
-      && normalizar(completa.titulo) === normalizar(mercado.pergunta);
+    const chegou =
+      completa.ok &&
+      mercado.pergunta !== null &&
+      normalizar(completa.titulo) === normalizar(mercado.pergunta);
     if (chegou) placar.completaNoMercadoCerto++;
 
     console.log(`\n  ${linha.id}  [${igual ? 'iguais' : 'divergentes'}]`);
@@ -266,7 +282,9 @@ async function main(): Promise<void> {
     console.log(`      Gamma: e mercado?       ${tipo.mercado}`);
     console.log(`      pergunta do mercado     ${mercado.pergunta ?? '(nenhuma)'}`);
     console.log(`    events.event_group_slug   ${grupo}`);
-    console.log(`      bate com o pai da API?  ${mercado.pai === grupo ? 'sim' : `NAO (API diz ${mercado.pai ?? 'nenhum'})`}`);
+    console.log(
+      `      bate com o pai da API?  ${mercado.pai === grupo ? 'sim' : `NAO (API diz ${mercado.pai ?? 'nenhum'})`}`,
+    );
     console.log(`    tela      /event/<slug>            ${tela.texto}`);
     console.log(`    bot       /event/<grupo>           ${grupoR.texto}`);
     console.log(`    completa  /event/<grupo>/<slug>    ${completa.texto}`);
@@ -276,13 +294,17 @@ async function main(): Promise<void> {
 
   const nDiv = Math.min(AMOSTRA_DIVERGENTES, divergentes.length);
   const nIgu = Math.min(AMOSTRA_IGUAIS, iguais.length);
-  console.log(`\n# Placar da amostra (${amostra.length} mercados: ${nDiv} divergentes, ${nIgu} iguais)`);
+  console.log(
+    `\n# Placar da amostra (${amostra.length} mercados: ${nDiv} divergentes, ${nIgu} iguais)`,
+  );
   console.log(`  tela      /event/<slug>          abriu ${placar.tela}/${amostra.length}`);
   console.log(`              dos divergentes            ${placar.telaDivergentes}/${nDiv}`);
   console.log(`              dos iguais                 ${placar.telaIguais}/${nIgu}`);
   console.log(`  bot       /event/<grupo>         abriu ${placar.grupo}/${amostra.length}`);
   console.log(`  completa  /event/<grupo>/<slug>  abriu ${placar.completa}/${amostra.length}`);
-  console.log(`              e no mercado certo         ${placar.completaNoMercadoCerto}/${amostra.length}`);
+  console.log(
+    `              e no mercado certo         ${placar.completaNoMercadoCerto}/${amostra.length}`,
+  );
   console.log(`  fallback  /market/<slug>         abriu ${placar.fallback}/${amostra.length}`);
 }
 
@@ -296,7 +318,7 @@ function normalizar(texto: string): string {
     .toLowerCase();
 }
 
-main().catch(erro => {
+main().catch((erro) => {
   console.error(`medicao falhou: ${(erro as Error).message}`);
   process.exit(1);
 });

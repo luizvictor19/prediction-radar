@@ -82,7 +82,9 @@ export async function runEsportsPartitionJob(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[esports_partitions] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[esports_partitions] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: COMPONENT,
       status: 'partial',
@@ -127,7 +129,8 @@ async function _run(): Promise<void> {
     // Antes de a migration ser aplicada a função não existe. Isso não é falha do
     // job: nesse intervalo a série ainda está indo para `polymarket_snapshots`
     // (ver src/lib/esports-snapshots.ts) e não há partição a manter.
-    const notDeployed = error.code === 'PGRST202' || /manage_esports_partitions/.test(error.message);
+    const notDeployed =
+      error.code === 'PGRST202' || /manage_esports_partitions/.test(error.message);
 
     await logEvent({
       component: COMPONENT,

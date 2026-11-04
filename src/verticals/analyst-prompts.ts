@@ -87,13 +87,11 @@ export const ANALYSIS_SCHEMA = {
     },
     probability: {
       type: ['number', 'null'],
-      description:
-        'P(time A vence a série), entre 0 e 1. null quando abstain = true.',
+      description: 'P(time A vence a série), entre 0 e 1. null quando abstain = true.',
     },
     confidence: {
       type: ['number', 'null'],
-      description:
-        'Confiança na própria probabilidade, entre 0 e 1. null quando abstain = true.',
+      description: 'Confiança na própria probabilidade, entre 0 e 1. null quando abstain = true.',
     },
     thesis: {
       type: ['string', 'null'],

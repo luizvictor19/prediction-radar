@@ -35,6 +35,7 @@
 Sistema **pessoal e privado** pra detectar oportunidades em prediction markets do Polymarket. Sem produto público, sem clientes, sem marca. Apenas eu (Luiz) usando.
 
 **Modelo operacional:** instrumentação ampla, decisão filtrada.
+
 - Sistema monitora **todas as categorias** com volume e liquidez relevantes
 - Detectores trabalham em qualquer market, agnósticos a categoria
 - Sinais são ranqueados por **edge líquido** (em mai/2026 fees são zero na prática, então edge bruto = edge líquido)
@@ -51,6 +52,7 @@ Sistema **pessoal e privado** pra detectar oportunidades em prediction markets d
 ## Realidade regulatória (Brasil, 2026)
 
 CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela Anatel. Operação pessoal continua viável via VPN + USDC/Polygon, mas:
+
 - Sistema é puramente pessoal, sem distribuição
 - Sem comercialização enquanto regulação BR for desfavorável
 - Tracking fiscal cuidadoso
@@ -79,6 +81,7 @@ CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela An
 ## Estado atual do sistema (v7)
 
 ### Tabelas
+
 - `events` — markets do Polymarket, com `sports_market_type`, `line`, `is_new_market`, `start_date`, `resolved_at`
 - `polymarket_snapshots` — preços ao longo do tempo, ambos outcomes
 - `detected_signals` — sinais com flags `alerted`, `acted_on`, `dismissed`, `user_dismissed_at`, `user_action_type`
@@ -89,6 +92,7 @@ CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela An
 - `ai_analyses` — infra IA pronta (vazia, Fase 5)
 
 ### Detectores ativos (6)
+
 1. **calendar_driven** — sinal de atenção (mercado calmo + perto de resolver)
 2. **cross_market_inter** — basket multi-outcome com soma ≠ 1.0
 3. **cross_market_intra** — versão dentro do mesmo neg_risk_market (raramente flagged em produção)
@@ -97,12 +101,14 @@ CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela An
 6. **cleanup_stale_signals** — manutenção interna
 
 ### Coletores ativos
+
 - **collector geral** (3min) — todos os markets ativos do Polymarket (~46k → ~1300 persistidos)
 - **open_legs_collector** (10s) — preços frescos das legs abertas
 - **early_markets_collector** (5min) — mercados recém-abertos
 - **resolved_detector** (no fim do collector geral) — auto-fecha legs quando UMA resolve
 
 ### Comandos do bot
+
 - `/signals [filtro]` — sinais ativos
 - `/positions` — bets abertas com "to win", valor atual, mercado eliminado mostra ~$0.00
 - `/status` — bankroll dinâmico, bets fechadas, último detector com BRT
@@ -113,10 +119,12 @@ CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela An
 - `/help` — ajuda
 
 ### Botões em /positions
+
 - **Single leg:** "Fechar posição"
 - **Basket:** "Fechar tudo" + "Fechar leg específica" (NOVO)
 
 ### Botões em /signals
+
 - **calendar_driven:** Track Yes / Track No / 🧠 Analisar / Dismiss
 - **cross_market_inter:** Track basket / ✏️ Tese própria / 🧠 Analisar / Dismiss
 - **hype_reality_gap, early_market:** Track Yes / Track No / 🧠 Analisar / Dismiss
@@ -124,6 +132,7 @@ CMN baniu prediction markets via Resolução 5.298. Polymarket bloqueado pela An
 ### Auto-resolver (validado em produção)
 
 Detecta quando event sai do feed do Polymarket OU events com leg aberta, fetcha API direto, fecha legs se UMA confirmou resolução. Valida em 3 cenários:
+
 - ✅ Win com payout (Bitcoin May 7 = +$10.44)
 - ✅ Loss sem payout (Forest UEFA = -$5.22)
 - ✅ Win com payout (Braga UEFA = +$0.40)
@@ -131,11 +140,13 @@ Detecta quando event sai do feed do Polymarket OU events com leg aberta, fetcha 
 Ajusta cash automaticamente, marca event como `resolved`, leg como `closed_at` preenchido.
 
 ### Cash/Bankroll dinâmico
+
 - `cash_usd` persistido em system_config (decremento/incremento automático)
 - `portfolio_value_usd` calculado on-the-fly (snapshots × shares)
 - `bankroll = cash + portfolio_value` calculado on-the-fly
 
 ### Schema usa numeric (precisão exata)
+
 - Banco em `numeric(10,2)` pra dinheiro, `numeric(5,4)` pra preços
 - Float em memória mas banco coage pra numeric ao salvar
 - Sem acúmulo de erro de centavos
@@ -174,6 +185,7 @@ Cache de 60s. Mudanças refletem em ~1min sem deploy.
 ## Resumo da sessão anterior (8/maio)
 
 ### Bugs corrigidos
+
 1. **Auto-resolver — closed=true em seenPolymarketIds**: collector geral marcava markets fechados como "vistos", auto-resolver ignorava. Fix: só marca como visto markets com `closed=false`.
 2. **Auto-resolver — limit 500 sem priorização**: events com leg aberta podiam ficar fora dos 500 candidatos. Fix: busca em 2 etapas, prioritários sempre incluídos.
 3. **Cleanup truncation — Supabase limita 1000 rows**: query buscava todos snapshots da última 1h, batia limit, dispensava 70% dos signals erroneamente. Fix: verificação por event individual em batches paralelos.
@@ -181,11 +193,13 @@ Cache de 60s. Mudanças refletem em ~1min sem deploy.
 5. **Cross_market_intra — Invalid time value**: campo `cross_market_dedup_window_minutes` ausente em system_config. Fix: migration + fallback.
 
 ### Features novas
+
 - Botão "Fechar leg específica" em basket
 - Mercado eliminado mostra "~$0.00 (mercado eliminado)" no /positions
 - Padronização do formato de data no early_market (`Aberto há 8h 19min · UTC (BRT)`)
 
 ### Refactors
+
 - Retention usa `snapshot_retention_days` do banco (era hardcoded 24h)
 - Defaults sincronizados com banco
 - 4 hardcodes (TTL, cooldown, thresholds) viraram configuráveis no banco
@@ -193,6 +207,7 @@ Cache de 60s. Mudanças refletem em ~1min sem deploy.
 - Limpeza histórica do banco (DELETE em signals dismissed > 7 dias)
 
 ### Estado operacional pós-sessão
+
 - Spam de notificações duplicadas: parou
 - Detectores: 6 ativos, ratio dispensados 0% (era 70%)
 - Auto-resolver: validado em produção em 3 cenários
@@ -201,19 +216,24 @@ Cache de 60s. Mudanças refletem em ~1min sem deploy.
 ## Roadmap
 
 ### 🚀 Em standby — refactor futuro
+
 - **Migrar valores monetários pra inteiros em centavos**: padrão da indústria, imunidade total a imprecisão. Mas refactor pesado (~20-30 arquivos). Hoje sistema usa numeric, está protegido. Aplicar quando volume crescer ou tiver tempo livre.
 
 ### 🧪 Pendentes — esperando acontecer
+
 - Acompanhar early_market detector ao longo de dias (validar qualidade dos sinais)
 
 ### 📋 Pendentes — depende de operar
+
 - **Operar volume real**: 30+ trades pra baseline estatística com variedade de signal_types
 
 ### 🔧 Pequenos itens cosméticos
+
 - Comando `/report` agregado (PnL/win-rate por categoria, signal_type, CLV) — vale só com 30+ trades
 - Investigar `daily_report_hour` (campo no banco mas possivelmente sem uso no código)
 
 ### ⏳ Futuro próximo
+
 - **Camada IA real (Fase 5)** — implementar callback "Analisar com IA" usando `buildSignalContext`. Fundações em `src/lib/signal-context.ts` prontas.
 - **Sync Polymarket pra yields** — Polymarket paga ~4% APR sobre cash, sistema não conta hoje
 - **cash_ledger** — auditoria de cada ajuste de cash
@@ -222,6 +242,7 @@ Cache de 60s. Mudanças refletem em ~1min sem deploy.
 ## Decisão honesta — semana 8
 
 Avaliar:
+
 1. CLV agregado em 30-50 operações é positivo?
 2. Em qual categoria do Polymarket tenho melhor performance?
 3. Os detectores ajudam ou geram ruído?
@@ -233,11 +254,13 @@ Avaliar:
 **Operar volume real.** Sistema sólido após sessão de fixes. Próximo ganho está em dados próprios.
 
 30+ trades nas próximas semanas, com variedade de signal_types (não só Bitcoin/UEFA). Mede:
+
 - Win rate por categoria
 - PnL agregado por signal_type
 - CLV — entry vs preço de fechamento
 
 Com dados, decide:
+
 - Quais categorias/signal_types valem manter
 - Calibrar thresholds
 - Vale adicionar IA fundamentalista?

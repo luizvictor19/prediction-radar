@@ -3,10 +3,10 @@
  * Returns stake as a fraction of bankroll (e.g., 0.02 = 2%).
  */
 export function kelly(params: {
-  probability: number;   // our estimated edge probability (0-1)
-  marketPrice: number;   // current market price = implied probability (0-1)
-  fraction: number;      // Kelly fraction to apply (e.g., 0.25 = quarter Kelly)
-  maxStakePct: number;   // hard cap (e.g., 0.03 = 3%)
+  probability: number; // our estimated edge probability (0-1)
+  marketPrice: number; // current market price = implied probability (0-1)
+  fraction: number; // Kelly fraction to apply (e.g., 0.25 = quarter Kelly)
+  maxStakePct: number; // hard cap (e.g., 0.03 = 3%)
 }): number {
   const { probability, marketPrice, fraction, maxStakePct } = params;
 

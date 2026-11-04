@@ -206,7 +206,7 @@ interface CallCounter {
   clob: number;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function espacar(): Promise<void> {
   const wait = SPACING_MS - (Date.now() - lastCallAt);
@@ -214,7 +214,11 @@ async function espacar(): Promise<void> {
   lastCallAt = Date.now();
 }
 
-async function chamar<T>(host: keyof CallCounter, calls: CallCounter, fn: () => Promise<T>): Promise<T> {
+async function chamar<T>(
+  host: keyof CallCounter,
+  calls: CallCounter,
+  fn: () => Promise<T>,
+): Promise<T> {
   await espacar();
   calls[host] += 1;
   try {
@@ -264,7 +268,9 @@ export function readTemas(config: SystemConfig): Array<{ tema: string; tags: str
   const out: Array<{ tema: string; tags: string[] }> = [];
 
   for (const [tema, tags] of Object.entries(bruto)) {
-    const limpas = Array.isArray(tags) ? tags.filter(t => typeof t === 'string' && t.length > 0) : [];
+    const limpas = Array.isArray(tags)
+      ? tags.filter((t) => typeof t === 'string' && t.length > 0)
+      : [];
     if (limpas.length === 0) {
       console.warn(`[radar] tema "${tema}" sem tag — ignorado`);
       continue;
@@ -360,7 +366,12 @@ async function baixarTag(
     } catch (err) {
       // 422 no teto de offset é fim de paginação, não falha (ver GammaHttpError).
       if (err instanceof GammaHttpError && err.status === 422) {
-        return { markets, acabou: true, proximaPagina: page, menorLiquidezLida: menorLiquidez(markets) };
+        return {
+          markets,
+          acabou: true,
+          proximaPagina: page,
+          menorLiquidezLida: menorLiquidez(markets),
+        };
       }
       throw err;
     }
@@ -368,7 +379,12 @@ async function baixarTag(
     markets.push(...lote);
     // Página curta é fim de lista.
     if (lote.length < 100) {
-      return { markets, acabou: true, proximaPagina: page + 1, menorLiquidezLida: menorLiquidez(markets) };
+      return {
+        markets,
+        acabou: true,
+        proximaPagina: page + 1,
+        menorLiquidezLida: menorLiquidez(markets),
+      };
     }
   }
 
@@ -486,7 +502,14 @@ export async function renovarRoster(
     if (faltando.length === 0) break;
 
     for (const [slug, estado] of faltando) {
-      const leitura = await baixarTag(estado.tagId, rules, nowMs, calls, estado.proximaPagina, passo);
+      const leitura = await baixarTag(
+        estado.tagId,
+        rules,
+        nowMs,
+        calls,
+        estado.proximaPagina,
+        passo,
+      );
       porTag.set(slug, {
         ...estado,
         markets: [...estado.markets, ...leitura.markets],
@@ -505,7 +528,12 @@ export async function renovarRoster(
   const tagsTruncadasAcimaDoCorte: string[] = [];
   for (const [slug, estado] of porTag) {
     const corte = resultado.porCategoria[estado.tema]?.liquidezDoCorte ?? null;
-    if (!estado.acabou && corte !== null && estado.menorLiquidezLida !== null && estado.menorLiquidezLida > corte) {
+    if (
+      !estado.acabou &&
+      corte !== null &&
+      estado.menorLiquidezLida !== null &&
+      estado.menorLiquidezLida > corte
+    ) {
       tagsTruncadasAcimaDoCorte.push(
         `${slug} (leu até ${Math.round(estado.menorLiquidezLida)}, corte em ${Math.round(corte)})`,
       );
@@ -515,7 +543,7 @@ export async function renovarRoster(
   const universo = [...porTag.values()].reduce((n, e) => n + e.markets.length, 0);
 
   const entries = opts.dryRun
-    ? resultado.roster.map(c => paraEntrada(c, c.market.id))
+    ? resultado.roster.map((c) => paraEntrada(c, c.market.id))
     : await persistirRoster(resultado.roster);
 
   const errosDeEscrita = opts.dryRun ? [] : ultimosErrosDeEscrita;
@@ -608,9 +636,9 @@ async function persistirRoster(candidatos: readonly RadarCandidate[]): Promise<R
   // `radar_tracked` da 20260813210119 (aplicada) e as duas do radar da migration
   // do coletor. Mandar coluna que não existe derruba o CHUNK inteiro do upsert.
   const payload = await radarSubjectProbe.strip(
-    await radarTrackedProbe.strip(dedupeByKey(linhas, row => String(row['polymarket_id']))),
+    await radarTrackedProbe.strip(dedupeByKey(linhas, (row) => String(row['polymarket_id']))),
   );
-  const semTema = payload.map(row => {
+  const semTema = payload.map((row) => {
     const copia = { ...row };
     if (!('radar_subject' in copia)) delete copia['radar_tema'];
     return copia;
@@ -657,7 +685,7 @@ export async function conferirPayload(
 
   const colunas = new Set(Object.keys(amostra));
   const linha = linhaDeEvento(candidatos[0]!);
-  return { colunasFaltando: Object.keys(linha).filter(k => !colunas.has(k)) };
+  return { colunasFaltando: Object.keys(linha).filter((k) => !colunas.has(k)) };
 }
 
 /**
@@ -690,7 +718,7 @@ async function lerMarcados(): Promise<Set<string>> {
     return new Set();
   }
 
-  return new Set((data ?? []).map(row => (row as { polymarket_id: string }).polymarket_id));
+  return new Set((data ?? []).map((row) => (row as { polymarket_id: string }).polymarket_id));
 }
 
 /**
@@ -731,7 +759,10 @@ export interface FotoStats {
   amostra: RadarSnapshotRow[];
 }
 
-export async function fotografar(entradas: readonly RosterEntry[], opts: Opcoes): Promise<FotoStats> {
+export async function fotografar(
+  entradas: readonly RosterEntry[],
+  opts: Opcoes,
+): Promise<FotoStats> {
   const calls: CallCounter = { gamma: 0, clob: 0 };
   const stats: FotoStats = {
     pedidos: entradas.length,
@@ -749,12 +780,14 @@ export async function fotografar(entradas: readonly RosterEntry[], opts: Opcoes)
   // 1. Gamma, por id: é de onde vem `volume_24h` e a confirmação de que o
   //    mercado ainda está aberto. 2 chamadas para um roster de 150.
   const porId = new Map<string, GammaMarket>();
-  const ids = entradas.map(e => e.polymarketId);
+  const ids = entradas.map((e) => e.polymarketId);
 
   for (let i = 0; i < ids.length; i += MAX_IDS_PER_REQUEST) {
     const chunk = ids.slice(i, i + MAX_IDS_PER_REQUEST);
     try {
-      const markets = await chamar('gamma', calls, () => fetchMarketsByIds(chunk, { closed: false }));
+      const markets = await chamar('gamma', calls, () =>
+        fetchMarketsByIds(chunk, { closed: false }),
+      );
       for (const m of markets) porId.set(m.id, m);
     } catch (err) {
       // Um chunk que falha não derruba os outros: tratar falha de rede como
@@ -765,7 +798,7 @@ export async function fotografar(entradas: readonly RosterEntry[], opts: Opcoes)
 
   // 2. CLOB, por token: é de onde vem o livro — bid, ask e a PROFUNDIDADE, que
   //    a Gamma não publica. 3 chamadas para 150 mercados.
-  const vivas = entradas.filter(e => {
+  const vivas = entradas.filter((e) => {
     const m = porId.get(e.polymarketId);
     if (m === undefined) {
       stats.ausentes += 1;
@@ -786,7 +819,7 @@ export async function fotografar(entradas: readonly RosterEntry[], opts: Opcoes)
     const chunk = vivas.slice(i, i + MAX_TOKENS_PER_BOOK_REQUEST);
     let livros;
     try {
-      livros = await chamar('clob', calls, () => fetchBooks(chunk.map(e => e.tokenYes)));
+      livros = await chamar('clob', calls, () => fetchBooks(chunk.map((e) => e.tokenYes)));
     } catch (err) {
       console.error(`[radar] lote de ${chunk.length} livros falhou: ${String(err)}`);
       continue;
@@ -795,7 +828,7 @@ export async function fotografar(entradas: readonly RosterEntry[], opts: Opcoes)
     // Carimbado por lote, no instante da resposta: um timestamp único no fim do
     // ciclo empilharia várias requisições no mesmo ponto da série.
     const capturedAt = new Date().toISOString();
-    const porToken = new Map(livros.map(l => [l.asset_id, l]));
+    const porToken = new Map(livros.map((l) => [l.asset_id, l]));
 
     for (const entrada of chunk) {
       const livro = porToken.get(entrada.tokenYes);

@@ -111,7 +111,7 @@ test('dois containers do mesmo trecho continuam dois achados', () => {
   // junta os três num componente cujo sobrevivente (A) não contém o C.
   assert.equal(saida.length, 2);
   assert.deepEqual(
-    saida.map(x => x.trecho),
+    saida.map((x) => x.trecho),
     ['on December 31, 2026 at 12:00 PM ET', 'December 31, 2026 at 12:00 PM ET.'],
   );
 });
@@ -125,16 +125,16 @@ test('o sobrevivente contém literalmente todo trecho que absorveu', () => {
     [C, B],
   ]) {
     const saida = fundirPorAbsorcao(entrada);
-    const absorvidos = entrada.filter(x => !saida.some(s => s.achado_id === x.achado_id));
+    const absorvidos = entrada.filter((x) => !saida.some((s) => s.achado_id === x.achado_id));
     for (const sumiu of absorvidos) {
-      const dono = saida.find(s => contemTrecho(s.trecho ?? '', sumiu.trecho ?? ''));
+      const dono = saida.find((s) => contemTrecho(s.trecho ?? '', sumiu.trecho ?? ''));
       assert.ok(dono !== undefined, `nada no resultado contém ${JSON.stringify(sumiu.trecho)}`);
     }
   }
 });
 
 test('C sobrevive intacto: não herda leitura nem subtipo de quem não o contém', () => {
-  const c = fundirPorAbsorcao([A, B, C]).find(x => x.trecho === C.trecho);
+  const c = fundirPorAbsorcao([A, B, C]).find((x) => x.trecho === C.trecho);
 
   assert.deepEqual(c?.leituras, ['l02', 'l13']);
   assert.equal(c?.origem, 'herdado');
@@ -155,7 +155,7 @@ test('a contagem de leituras do fundido é a UNIÃO, não o máximo', () => {
 test('leitura que apontou os dois trechos conta UMA vez', () => {
   // `l02` está em A e em C. Soma daria 13 e inflaria a concordância — que é
   // exatamente a mudança de contagem que a seção 11 proíbe.
-  const fundido = fundirPorAbsorcao([A, C, B]).find(x => x.trecho === A.trecho);
+  const fundido = fundirPorAbsorcao([A, C, B]).find((x) => x.trecho === A.trecho);
 
   assert.equal(fundido?.leituras.length, 12);
   assert.equal(new Set(fundido?.leituras).size, 12);
@@ -214,7 +214,11 @@ test('tipos diferentes de ambiguidade não fundem, mesmo com um trecho dentro do
 });
 
 test('classes diferentes não fundem', () => {
-  const peg = achado({ trecho: 'resolves at 12:00 PM ET sharp', classe: 'pegadinha', subtipos: ['muda_resultado'] });
+  const peg = achado({
+    trecho: 'resolves at 12:00 PM ET sharp',
+    classe: 'pegadinha',
+    subtipos: ['muda_resultado'],
+  });
   const amb = achado({ trecho: '12:00 PM ET', classe: 'ambiguidade', subtipos: ['fuso_ausente'] });
 
   assert.equal(fundirPorAbsorcao([peg, amb]).length, 2);
@@ -242,7 +246,10 @@ test('severidade fica FORA da chave: pegadinhas do mesmo trecho fundem e unem os
 // ---------------------------------------------------------------------------
 
 test('o fundido é acusado se QUALQUER um dos fundidos for acusado', () => {
-  const fundido = fundirPorAbsorcao([{ ...A, origem: 'herdado' }, { ...B, origem: 'acusado' }]).at(0);
+  const fundido = fundirPorAbsorcao([
+    { ...A, origem: 'herdado' },
+    { ...B, origem: 'acusado' },
+  ]).at(0);
 
   assert.equal(fundido?.origem, 'acusado');
 });
@@ -266,7 +273,12 @@ test('a prosa vem do de maior concordância ENTRE OS QUE TÊM prosa', () => {
 });
 
 test('entre duas prosas, vence a de maior concordância', () => {
-  const fraca = { ...B, descricao: 'a fraca', cenario: 'cenário fraco', origem: 'acusado' as const };
+  const fraca = {
+    ...B,
+    descricao: 'a fraca',
+    cenario: 'cenário fraco',
+    origem: 'acusado' as const,
+  };
   const forte = { ...A, descricao: 'a forte', cenario: 'cenário forte' };
 
   assert.equal(fundirPorAbsorcao([fraca, forte]).at(0)?.descricao, 'a forte');
@@ -353,12 +365,15 @@ test('empate de comprimento resolve pelo trecho normalizado, não pela chegada',
   const um = fundirPorAbsorcao([zzz, aaa, curto]);
   const outro = fundirPorAbsorcao([curto, aaa, zzz]);
 
-  assert.deepEqual(um.map(x => x.trecho), outro.map(x => x.trecho));
+  assert.deepEqual(
+    um.map((x) => x.trecho),
+    outro.map((x) => x.trecho),
+  );
   assert.equal(um.length, 2);
   // O curto foi para o `aaa`, que ganha o desempate lexicográfico — e é ele,
   // não o `zzz`, que fica com a leitura absorvida.
-  assert.equal(um.find(x => x.leituras.length === 2)?.trecho, aaa.trecho);
-  assert.deepEqual(um.find(x => x.trecho === zzz.trecho)?.leituras, ['l1']);
+  assert.equal(um.find((x) => x.leituras.length === 2)?.trecho, aaa.trecho);
+  assert.deepEqual(um.find((x) => x.trecho === zzz.trecho)?.leituras, ['l1']);
 });
 
 // ---------------------------------------------------------------------------
@@ -379,7 +394,7 @@ test('achado sem trecho não é fundido nem some', () => {
   const saida = fundirPorAbsorcao([nulo, outro]);
 
   assert.equal(saida.length, 2);
-  assert.ok(saida.some(x => x.trecho === null));
+  assert.ok(saida.some((x) => x.trecho === null));
 });
 
 test('a entrada não é modificada', () => {

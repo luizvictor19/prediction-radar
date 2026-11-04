@@ -98,7 +98,10 @@ test('OR só parentiza quando há mais de um termo', () => {
 
 test('AND ignora termo vazio em vez de produzir "X AND "', () => {
   assert.equal(and(eq('opponent', 'A'), ''), '[[opponent::A]]');
-  assert.equal(and(eq('opponent', 'A'), eq('opponent', 'B')), '[[opponent::A]] AND [[opponent::B]]');
+  assert.equal(
+    and(eq('opponent', 'A'), eq('opponent', 'B')),
+    '[[opponent::A]] AND [[opponent::B]]',
+  );
 });
 
 test('a data da condição é UTC e sem hora', () => {
@@ -116,11 +119,14 @@ test('aceita a envelopagem em `result` e a lista crua', () => {
 });
 
 test('resposta sem lista vira erro nomeado, não exceção de acesso a campo', () => {
-  assert.throws(() => extractRows({ error: 'nope' }, 'team'), (err: unknown) => {
-    assert.ok(err instanceof LiquipediaError);
-    assert.equal((err as InstanceType<typeof LiquipediaError>).kind, 'shape');
-    return true;
-  });
+  assert.throws(
+    () => extractRows({ error: 'nope' }, 'team'),
+    (err: unknown) => {
+      assert.ok(err instanceof LiquipediaError);
+      assert.equal((err as InstanceType<typeof LiquipediaError>).kind, 'shape');
+      return true;
+    },
+  );
 });
 
 test('linha que não é objeto é descartada, não derruba a resposta', () => {

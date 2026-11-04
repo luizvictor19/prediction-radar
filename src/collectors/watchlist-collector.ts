@@ -142,12 +142,16 @@ async function lookupByIds(
       const markets = await fetchMarketsByIds(chunk, { closed });
       for (const market of markets) byId.set(market.id, market);
       if (markets.length !== chunk.length) {
-        divergences.push(`closed=${closed} chunk ${i}: enviados ${chunk.length}, recebidos ${markets.length}`);
+        divergences.push(
+          `closed=${closed} chunk ${i}: enviados ${chunk.length}, recebidos ${markets.length}`,
+        );
       }
       onChunk?.(markets);
     } catch (err) {
       for (const id of chunk) failedIds.add(id);
-      console.error(`[watchlist] lote closed=${closed} falhou (${chunk.length} ids): ${String(err)}`);
+      console.error(
+        `[watchlist] lote closed=${closed} falhou (${chunk.length} ids): ${String(err)}`,
+      );
     }
   }
 
@@ -370,7 +374,11 @@ export function bucketOf(entry: WatchlistEvent, nowMs: number, cadence: Cadence)
 export function intervalMsFor(bucket: BucketKey, cadence: Cadence): number {
   const [band, klass] = bucket.split(':') as [Band, 'primary' | 'derived'];
   const base =
-    band === 'live' ? cadence.liveSeconds : band === 'soon' ? cadence.soonSeconds : cadence.farSeconds;
+    band === 'live'
+      ? cadence.liveSeconds
+      : band === 'soon'
+        ? cadence.soonSeconds
+        : cadence.farSeconds;
 
   return base * 1000 * (klass === 'primary' ? 1 : cadence.derivedMultiplier);
 }
@@ -473,7 +481,9 @@ export async function collectWatchlist(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[watchlist] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[watchlist] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: COMPONENT,
       status: 'partial',
@@ -546,7 +556,7 @@ async function ensureRoster(prefixes: string[], nowMs: number): Promise<string |
 
   // O `select` é montado em runtime, então o parser de tipos do PostgREST não
   // tem o que inferir aqui — a forma da linha é conferida na projeção abaixo.
-  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map(row => ({
+  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
     id: row['id'] as string,
     polymarket_id: row['polymarket_id'] as string,
     end_date: (row['end_date'] as string | null) ?? null,
@@ -564,7 +574,7 @@ async function ensureRoster(prefixes: string[], nowMs: number): Promise<string |
   // Sem âncora não há faixa rápida. Antes do apply da migration é o roster
   // inteiro; depois do backfill tem que cair para perto de zero, e só voltar a
   // subir se a Gamma parar de mandar `gameStartTime`.
-  rosterNullGameStart = roster.filter(entry => entry.game_start_time === null).length;
+  rosterNullGameStart = roster.filter((entry) => entry.game_start_time === null).length;
 
   // Mede a premissa do comentário acima em vez de confiar nela: se um dia
   // aparecer esports ativo sem `end_date`, ele está fora da watchlist e este é
@@ -594,7 +604,7 @@ interface BucketRefresh {
 }
 
 async function refreshBucket(entries: WatchlistEvent[]): Promise<BucketRefresh> {
-  const eventIdByPolymarketId = new Map(entries.map(e => [e.polymarket_id, e.id]));
+  const eventIdByPolymarketId = new Map(entries.map((e) => [e.polymarket_id, e.id]));
   const idsToCheck = [...eventIdByPolymarketId.keys()];
 
   const snapshotRows: EsportsSnapshotRow[] = [];
@@ -623,7 +633,7 @@ async function refreshBucket(entries: WatchlistEvent[]): Promise<BucketRefresh> 
 
   const open = await lookupByIds(idsToCheck, false, collectFromChunk);
 
-  const absentIds = idsToCheck.filter(id => !open.byId.has(id) && !open.failedIds.has(id));
+  const absentIds = idsToCheck.filter((id) => !open.byId.has(id) && !open.failedIds.has(id));
   const closed = await lookupByIds(absentIds, true);
 
   const reconciled = reconcile(idsToCheck, open, closed);
@@ -810,7 +820,7 @@ async function _collect(): Promise<void> {
 
   // Prioridade por prazo: o ao vivo é atendido antes de a faixa lenta gastar
   // requisições, porque o lock é um só e o atraso dela cairia em cima dele.
-  const due = BUCKET_ORDER.filter(bucket => {
+  const due = BUCKET_ORDER.filter((bucket) => {
     const entries = grouped.get(bucket);
     return (
       entries !== undefined &&

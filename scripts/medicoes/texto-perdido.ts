@@ -122,7 +122,7 @@ type Balde = 'guardado' | 'recuperavel' | 'perdido';
 
 async function medir() {
   const pares = await lerPares();
-  const ids = [...new Set(pares.map(p => p.eventId))];
+  const ids = [...new Set(pares.map((p) => p.eventId))];
   const guardados = await lerGuardados();
   const descricoes = await lerDescricoes(ids);
 
@@ -133,19 +133,29 @@ async function medir() {
   for (const t of plano.toStore) balde.set(t.descriptionSha256, 'recuperavel');
   for (const t of plano.unrecoverable) balde.set(t.descriptionSha256, 'perdido');
 
-  const conta = (quais: Balde) => [...balde.values()].filter(b => b === quais).length;
+  const conta = (quais: Balde) => [...balde.values()].filter((b) => b === quais).length;
   const total = balde.size;
   const frac = (n: number, de: number) => (de === 0 ? '—' : `${((100 * n) / de).toFixed(1)}%`);
 
   if (guardados === null) {
-    console.log('market_rule_texts NÃO EXISTE no banco: a migration 20260823190031 não foi aplicada.');
-    console.log('Os números abaixo medem o mundo sem ela — nenhum texto guardado, por ausência de tabela.\n');
+    console.log(
+      'market_rule_texts NÃO EXISTE no banco: a migration 20260823190031 não foi aplicada.',
+    );
+    console.log(
+      'Os números abaixo medem o mundo sem ela — nenhum texto guardado, por ausência de tabela.\n',
+    );
   }
 
   console.log(`textos de regra distintos digeridos: ${total}`);
-  console.log(`  guardado em market_rule_texts:  ${conta('guardado')} (${frac(conta('guardado'), total)})`);
-  console.log(`  ainda recuperável de events:    ${conta('recuperavel')} (${frac(conta('recuperavel'), total)})`);
-  console.log(`  TEXTO PERDIDO:                  ${conta('perdido')} (${frac(conta('perdido'), total)})`);
+  console.log(
+    `  guardado em market_rule_texts:  ${conta('guardado')} (${frac(conta('guardado'), total)})`,
+  );
+  console.log(
+    `  ainda recuperável de events:    ${conta('recuperavel')} (${frac(conta('recuperavel'), total)})`,
+  );
+  console.log(
+    `  TEXTO PERDIDO:                  ${conta('perdido')} (${frac(conta('perdido'), total)})`,
+  );
 
   // The (market, text) pair is still reported because it is the unit the rule
   // screen draws: one block per pair. A lost text shared by ten markets is one
@@ -164,16 +174,26 @@ async function medir() {
 
   const totalPares = distintos.size;
   console.log(`\npares (mercado, texto) digeridos: ${totalPares}`);
-  console.log(`  guardado:                       ${porBalde.guardado} (${frac(porBalde.guardado, totalPares)})`);
-  console.log(`  ainda recuperável:              ${porBalde.recuperavel} (${frac(porBalde.recuperavel, totalPares)})`);
-  console.log(`  TEXTO PERDIDO:                  ${porBalde.perdido} (${frac(porBalde.perdido, totalPares)})`);
-  console.log(`mercados distintos com ao menos um texto perdido: ${mercadosPerdidos.size} de ${ids.length}`);
+  console.log(
+    `  guardado:                       ${porBalde.guardado} (${frac(porBalde.guardado, totalPares)})`,
+  );
+  console.log(
+    `  ainda recuperável:              ${porBalde.recuperavel} (${frac(porBalde.recuperavel, totalPares)})`,
+  );
+  console.log(
+    `  TEXTO PERDIDO:                  ${porBalde.perdido} (${frac(porBalde.perdido, totalPares)})`,
+  );
+  console.log(
+    `mercados distintos com ao menos um texto perdido: ${mercadosPerdidos.size} de ${ids.length}`,
+  );
 
   if (plano.unrecoverable.length > 0) {
     console.log('\nos textos perdidos, um por linha — nada os traz de volta:');
     for (const t of plano.unrecoverable) {
       const motivo = t.reason === 'edited' ? 'descrição editada' : 'sem descrição';
-      console.log(`  ${t.descriptionSha256.slice(0, 8)}  ${motivo}  ${t.markets.length} mercado(s)`);
+      console.log(
+        `  ${t.descriptionSha256.slice(0, 8)}  ${motivo}  ${t.markets.length} mercado(s)`,
+      );
     }
   }
 
@@ -185,7 +205,7 @@ async function medir() {
   }
 }
 
-medir().catch(e => {
+medir().catch((e) => {
   console.error(e);
   process.exitCode = 1;
 });

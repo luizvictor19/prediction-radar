@@ -139,7 +139,7 @@ const DEFAULTS: SystemConfig = {
   // são o vocabulário da Gamma, e é ele que a API entende.
   radar_temas: {
     'ia-e-tecnologia': ['ai', 'tech'],
-    'brasil': ['brazil'],
+    brasil: ['brazil'],
     'macro-e-mercados': ['economy', 'finance', 'business', 'crypto'],
     'geopolitica-e-conflitos': ['geopolitics', 'world'],
     // As duas que entraram na revisão. `elections`+`politics` porque eleição que

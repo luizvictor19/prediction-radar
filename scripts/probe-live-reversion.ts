@@ -182,7 +182,9 @@ interface PageResult {
   error: { message: string } | null;
 }
 
-async function paginate(page: (from: number, to: number) => PromiseLike<PageResult>): Promise<Row[]> {
+async function paginate(
+  page: (from: number, to: number) => PromiseLike<PageResult>,
+): Promise<Row[]> {
   const rows: Row[] = [];
 
   for (let offset = 0; ; offset += PAGE) {
@@ -1066,7 +1068,8 @@ function renderBaseline(analysis: Analysis): string {
  * quando os baldes que a DECIDEM têm amostra — não basta a tabela estar cheia.
  */
 function renderVerdict(analysis: Analysis, args: Args): string {
-  const matchesOf = (stats: { matches: Set<string> } | undefined): number => stats?.matches.size ?? 0;
+  const matchesOf = (stats: { matches: Set<string> } | undefined): number =>
+    stats?.matches.size ?? 0;
   const shortest = args.horizons[0];
 
   const sustained: string[] = [];
@@ -1109,7 +1112,9 @@ function renderVerdict(analysis: Analysis, args: Args): string {
   } else if (quiet < MIN_MATCHES_FOR_SIGNAL || loud < MIN_MATCHES_FOR_SIGNAL) {
     not.push(`confiabilidade (|d| quieto com ${quiet} partidas, |d| grande com ${loud})`);
   } else {
-    not.push('confiabilidade (nenhuma faixa de tempo tem os dois extremos de |d| — sem controle pelo relógio)');
+    not.push(
+      'confiabilidade (nenhuma faixa de tempo tem os dois extremos de |d| — sem controle pelo relógio)',
+    );
   }
 
   // Saída 3: passa quando toda faixa de tempo com dado tem amostra.
@@ -1118,7 +1123,9 @@ function renderVerdict(analysis: Analysis, args: Args): string {
     return stats !== undefined && stats.matches.size < MIN_MATCHES_FOR_SIGNAL;
   }).map((band) => band.key);
 
-  const populated = TIME_BANDS.filter((band) => analysis.baseline.get(band.key) !== undefined).length;
+  const populated = TIME_BANDS.filter(
+    (band) => analysis.baseline.get(band.key) !== undefined,
+  ).length;
   if (populated > 0 && thin.length === 0) sustained.push('baseline');
   else if (populated === 0) not.push('baseline (sem amostra)');
   else not.push(`baseline (faixas curtas: ${thin.join(', ')})`);

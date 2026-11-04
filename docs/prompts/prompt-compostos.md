@@ -37,8 +37,8 @@ estratos, se ajudar.
 Sobre mercados **abertos**, casando texto da pergunta e da `description`:
 
 1. **Conte quantos batem em padrão de composto.** Sugestões de padrão — ajuste
-   se achar melhor, e **diga quais usou**: ` and `, `both `, ` before `,
-   ` after `, ` without `, ` while `, `same day`, `sweep`.
+   se achar melhor, e **diga quais usou**: `and`, `both `, `before`,
+   `after`, `without`, `while`, `same day`, `sweep`.
 
 2. **Meça a precisão do seu casador.** Sorteie **50** dos que bateram, imprima a
    pergunta inteira de cada um, e classifique à mão quantos são compostos DE

@@ -37,11 +37,7 @@ export interface FetchActiveSignalsOptions {
 }
 
 const DEFAULT_FRESH_WINDOW_MINUTES = 15;
-const DEFAULT_EDGE_EXEMPT_TYPES = [
-  'calendar_driven',
-  'hype_reality_gap',
-  'early_market',
-];
+const DEFAULT_EDGE_EXEMPT_TYPES = ['calendar_driven', 'hype_reality_gap', 'early_market'];
 
 /**
  * Select padronizado de events para sinais.
@@ -130,9 +126,7 @@ export async function fetchActiveSignals(
  * Busca os event_ids onde o usuário tem leg aberta.
  * Helper conveniente para preencher openLegEventIds em FetchActiveSignalsOptions.
  */
-export async function fetchOpenLegEventIds(
-  supabase: SupabaseClient,
-): Promise<string[]> {
+export async function fetchOpenLegEventIds(supabase: SupabaseClient): Promise<string[]> {
   const { data, error } = await supabase
     .from('my_bet_legs')
     .select('event_id')

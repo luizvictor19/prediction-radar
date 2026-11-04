@@ -61,10 +61,10 @@ export interface GuessedRole {
 function maskCodes(suffix: string, codes: readonly string[]): string {
   if (codes.length === 0) return suffix;
 
-  const wanted = new Set(codes.filter(c => c.length > 0));
+  const wanted = new Set(codes.filter((c) => c.length > 0));
   return suffix
     .split('-')
-    .map(segment => (wanted.has(segment) ? '{code}' : segment))
+    .map((segment) => (wanted.has(segment) ? '{code}' : segment))
     .join('-');
 }
 
@@ -125,12 +125,28 @@ interface Rule {
 
 const RULES: Rule[] = [
   // Formas por game, medidas no dry-run de 2026-08-06.
-  { test: /^round-total\b/, role: (_, g) => (g === null ? null : `round_over_under_game_${g}`), confidence: 0.6 },
-  { test: /^round-handicap\b/, role: (_, g) => (g === null ? null : `round_handicap_game_${g}`), confidence: 0.6 },
+  {
+    test: /^round-total\b/,
+    role: (_, g) => (g === null ? null : `round_over_under_game_${g}`),
+    confidence: 0.6,
+  },
+  {
+    test: /^round-handicap\b/,
+    role: (_, g) => (g === null ? null : `round_handicap_game_${g}`),
+    confidence: 0.6,
+  },
 
   // Formas que já trazem o número no próprio sufixo.
-  { test: /^round-over-under-game-(\d+)\b/, role: m => `round_over_under_game_${m[1]}`, confidence: 0.5 },
-  { test: /^round-handicap-game-(\d+)\b/, role: m => `round_handicap_game_${m[1]}`, confidence: 0.5 },
+  {
+    test: /^round-over-under-game-(\d+)\b/,
+    role: (m) => `round_over_under_game_${m[1]}`,
+    confidence: 0.5,
+  },
+  {
+    test: /^round-handicap-game-(\d+)\b/,
+    role: (m) => `round_handicap_game_${m[1]}`,
+    confidence: 0.5,
+  },
 
   // Formas de série (valem com ou sem prefixo de game).
   { test: /^total-games?\b/, role: () => 'totals', confidence: 0.6 },

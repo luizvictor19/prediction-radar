@@ -68,7 +68,7 @@ async function lerRodada(caminho: string): Promise<Rodada> {
   // The two files are independent records of one run. If their code histograms
   // disagree, one is not the sibling of the other and every number below would
   // be a blend of two runs.
-  const conflito = divergencias(histograma(codigosDoJson), histograma(falhas.map(f => f.codigo)));
+  const conflito = divergencias(histograma(codigosDoJson), histograma(falhas.map((f) => f.codigo)));
   if (conflito.length > 0) {
     throw new Error(
       `${basename(caminho)} e ${basename(caminhoMd)} não são da mesma corrida — ${conflito.join('; ')}`,
@@ -76,7 +76,14 @@ async function lerRodada(caminho: string): Promise<Rodada> {
   }
 
   const { linhas: cabecalho, rodouEm } = cabecalhoDoMd(md);
-  return { artefato: caminho, mtime: info.mtime, rodouEm, cabecalho, chamadas: bruto.length, falhas };
+  return {
+    artefato: caminho,
+    mtime: info.mtime,
+    rodouEm,
+    cabecalho,
+    chamadas: bruto.length,
+    falhas,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -129,18 +136,22 @@ function secaoCausas(rodada: Rodada): void {
 
   p('## Quantas, e de que causa');
   p();
-  p(`**${falhas.length} de ${total} chamadas (${pct(falhas.length, total)}) voltaram sem digest.**`);
+  p(
+    `**${falhas.length} de ${total} chamadas (${pct(falhas.length, total)}) voltaram sem digest.**`,
+  );
   p();
   p('| causa | n | % das chamadas | % das falhas | resposta |');
   p('| --- | ---: | ---: | ---: | --- |');
   for (const causa of CAUSAS) {
-    const n = falhas.filter(f => causa.codigos.includes(f.codigo)).length;
-    p(`| ${causa.titulo} | ${n} | ${pct(n, total)} | ${pct(n, falhas.length)} | ${causa.resposta} |`);
+    const n = falhas.filter((f) => causa.codigos.includes(f.codigo)).length;
+    p(
+      `| ${causa.titulo} | ${n} | ${pct(n, total)} | ${pct(n, falhas.length)} | ${causa.resposta} |`,
+    );
   }
-  const semCausa = falhas.filter(f => causaDe(f.codigo) === null);
+  const semCausa = falhas.filter((f) => causaDe(f.codigo) === null);
   if (semCausa.length > 0) {
     p(
-      `| **código fora da tabela** (${[...new Set(semCausa.map(f => f.codigo))].join(', ')}) | ` +
+      `| **código fora da tabela** (${[...new Set(semCausa.map((f) => f.codigo))].join(', ')}) | ` +
         `${semCausa.length} | ${pct(semCausa.length, total)} | ${pct(semCausa.length, falhas.length)} | ` +
         'a lista de causas envelheceu — acrescentar |',
     );
@@ -150,7 +161,7 @@ function secaoCausas(rodada: Rodada): void {
   p();
   p('| código | n |');
   p('| --- | ---: |');
-  for (const [k, v] of [...histograma(falhas.map(f => f.codigo)).entries()].sort(
+  for (const [k, v] of [...histograma(falhas.map((f) => f.codigo)).entries()].sort(
     (a, b) => b[1] - a[1],
   )) {
     p(`| \`${k}\` | ${v} |`);
@@ -159,7 +170,7 @@ function secaoCausas(rodada: Rodada): void {
 }
 
 function secaoTravaDeOpiniao(rodada: Rodada): void {
-  const opiniao = rodada.falhas.filter(f => f.codigo === 'opiniao');
+  const opiniao = rodada.falhas.filter((f) => f.codigo === 'opiniao');
   if (opiniao.length === 0) return;
 
   p('## Dentro da trava de opinião');
@@ -183,7 +194,7 @@ function secaoTravaDeOpiniao(rodada: Rodada): void {
     p(`| \`${campo}\` | \`${termo}\` | ${n} | ${leitura} |`);
   }
   p();
-  const vocab = opiniao.filter(f => leituraDe(f) === 'vocabulário da regra').length;
+  const vocab = opiniao.filter((f) => leituraDe(f) === 'vocabulário da regra').length;
   p(
     `**Vocabulário da regra: ${vocab} de ${opiniao.length}. Hedge do modelo: ${opiniao.length - vocab} de ${opiniao.length}.** ` +
       'A separação é heurística, está justificada em `lib/digest-nulo.ts`, e a evidência de cada uma vem abaixo.',
@@ -199,7 +210,9 @@ function secaoTravaDeOpiniao(rodada: Rodada): void {
     arr.push(f);
     porRegra.set(f.regra, arr);
   }
-  const repetidas = [...porRegra.values()].filter(v => v.length > 1).sort((a, b) => b.length - a.length);
+  const repetidas = [...porRegra.values()]
+    .filter((v) => v.length > 1)
+    .sort((a, b) => b.length - a.length);
   if (repetidas.length > 0) {
     p('**Mesmo texto de regra, mais de uma vez:**');
     p();
@@ -222,14 +235,16 @@ function secaoTravaDeOpiniao(rodada: Rodada): void {
  */
 function secaoRespostas(rodada: Rodada): void {
   const total = rodada.chamadas;
-  const opiniao = rodada.falhas.filter(f => f.codigo === 'opiniao');
-  const vocab = opiniao.filter(f => leituraDe(f) === 'vocabulário da regra').length;
+  const opiniao = rodada.falhas.filter((f) => f.codigo === 'opiniao');
+  const vocab = opiniao.filter((f) => leituraDe(f) === 'vocabulário da regra').length;
   const hedge = opiniao.length - vocab;
-  const transporte = rodada.falhas.filter(f => ['api_error', 'not_json'].includes(f.codigo)).length;
-  const malformada = rodada.falhas.filter(f =>
+  const transporte = rodada.falhas.filter((f) =>
+    ['api_error', 'not_json'].includes(f.codigo),
+  ).length;
+  const malformada = rodada.falhas.filter((f) =>
     ['schema', 'sem_resolve_sim', 'severidade_invalida', 'tipo_invalido'].includes(f.codigo),
   ).length;
-  const recusa = rodada.falhas.filter(f => f.codigo === 'refusal').length;
+  const recusa = rodada.falhas.filter((f) => f.codigo === 'refusal').length;
 
   p('## Uma resposta por causa');
   p();
@@ -334,7 +349,9 @@ async function main(): Promise<void> {
     const m = /^--artefato=(.+)$/.exec(arg);
     if (m === null) {
       console.error(`[medir:digest-nulo] argumento desconhecido: ${arg}`);
-      console.error('[medir:digest-nulo] uso: npm run medir:digest-nulo -- [--artefato=CAMINHO.json]');
+      console.error(
+        '[medir:digest-nulo] uso: npm run medir:digest-nulo -- [--artefato=CAMINHO.json]',
+      );
       process.exit(1);
       return;
     }

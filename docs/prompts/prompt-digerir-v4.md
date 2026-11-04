@@ -57,11 +57,11 @@ qual manda** quando elas discordam.
 Dois casos na v3:
 
 - Venezuela/Rubio — a regra aponta a listagem oficial do governo venezuelano
-  *"or otherwise confirmed by official government information as being the head
-  of state"*. Duas rotas. Se divergirem, a regra é muda.
-- Flórida — *"the first official announcement of the results from the Florida
+  _"or otherwise confirmed by official government information as being the head
+  of state"_. Duas rotas. Se divergirem, a regra é muda.
+- Flórida — _"the first official announcement of the results from the Florida
   Republican Party; **however**, an overwhelming consensus of credible reporting
-  may suffice."* O anúncio oficial é a fonte, exceto quando não é. Quando o
+  may suffice."_ O anúncio oficial é a fonte, exceto quando não é. Quando o
   consenso substitui o anúncio, e quando ele não substitui, a regra não diz.
 
 Isso não é `fonte_vaga`. `fonte_vaga` é uma fonte só, mal definida ("consensus of
@@ -77,12 +77,12 @@ sem régua (`clearly`, `overwhelming`, `substantially`).
 
 Dois casos na v3:
 
-- *"the market **may** remain open until the end of the third calendar day (ET)"*
+- _"the market **may** remain open until the end of the third calendar day (ET)"_
   — pode, ou não. Quem decide, e com base em quê?
-- *"does **not clearly** state"* — clareza segundo quem?
+- _"does **not clearly** state"_ — clareza segundo quem?
 
 Isso é diferente de `fonte_vaga` de novo: a fonte pode estar perfeitamente
-definida, e ainda assim a *decisão* ficar discricionária.
+definida, e ainda assim a _decisão_ ficar discricionária.
 
 ---
 
@@ -91,17 +91,17 @@ definida, e ainda assim a *decisão* ficar discricionária.
 Dois dos 7 `outro` não eram categoria faltando — eram categoria existente com a
 definição frouxa demais pro modelo reconhecer.
 
-**`escopo_de_entidade`** recebeu *"In the event that more than one official head
+**`escopo_de_entidade`** recebeu _"In the event that more than one official head
 of state is listed by the Venezuelan government, this market will resolve to the
-individual who is listed as having primary status."* Isso é escopo de entidade
+individual who is listed as having primary status."_ Isso é escopo de entidade
 puro: quem é a entidade que conta. A definição atual deve estar falando de
 "qual entidade" e não de "quantas entidades". Reescrever pra cobrir os dois:
 **qual pessoa/organização conta, quantas contam, e o que acontece quando há mais
 de uma candidata.**
 
-**`formato_do_mercado`** recebeu *"This market will resolve according to the exact
-amount of cuts of 25 basis points in 2026 by the Fed."* Isso é formato: o mercado
-conta *cortes de 25 bps*, não *pontos-base*. Um corte de 50 bps é **dois**. A
+**`formato_do_mercado`** recebeu _"This market will resolve according to the exact
+amount of cuts of 25 basis points in 2026 by the Fed."_ Isso é formato: o mercado
+conta _cortes de 25 bps_, não _pontos-base_. Um corte de 50 bps é **dois**. A
 definição atual não está deixando claro que a unidade de contagem é formato.
 Reescrever: **a unidade em que o resultado é medido ou contado, quando ela difere
 da unidade que o título sugere.**
@@ -116,7 +116,7 @@ Depois dessas duas correções, os 7 `outro` da v3 viram: 1 `contradicao_interna
 
 Deram 0 uso na v3. **Não remover.** Os três nasceram de mercados de market-cap e
 de limiar numérico, e a amostra de 10 desta rodada não tem nenhum desses. Zero uso
-numa amostra que não contém o caso é *não testado*, não é *refutado*. Remover
+numa amostra que não contém o caso é _não testado_, não é _refutado_. Remover
 categoria por zero uso em n=10 é exatamente o erro que a seção 4 fala.
 
 ---
@@ -200,6 +200,7 @@ Não mexer em `max_tokens` (32000) nem em `digest_timeout_ms` (300000).
   `contradicao_interna`, que é a única categoria que afirma algo sobre duas
   passagens ao mesmo tempo. Estendê-la às outras onze mexeria na contagem por
   tipo, que é o que a v4 se propôs a medir. Fica como pendência declarada.
+
 - **O relatório** — seção `## ⚠️ Contradições internas` no topo, antes das
   medidas, com as duas passagens em bloco de citação. Some inteira quando não há
   contradição: um "nenhuma" fixo no topo de toda rodada treina quem lê a pular.

@@ -28,7 +28,9 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, outcomes, end_date, polymarket_category, polymarket_fee_rate')
+    .select(
+      'id, polymarket_id, title, outcomes, end_date, polymarket_category, polymarket_fee_rate',
+    )
     .eq('status', 'active')
     .eq('tracked', true)
     .gt('end_date', new Date().toISOString());
@@ -81,7 +83,9 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
     }
 
     if (prices.length !== outcomes.values.length || prices.length === 0) {
-      mismatchErrors.push(`${event.id}: ${outcomes.values.length} outcomes / ${prices.length} prices`);
+      mismatchErrors.push(
+        `${event.id}: ${outcomes.values.length} outcomes / ${prices.length} prices`,
+      );
       total--;
       continue;
     }
@@ -99,15 +103,17 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
     if (expectedEdgePct < logEdgePct) continue;
 
     flagged++;
-    const confidenceScore =
-      expectedEdgePct < minEdgePct ? 0 : Math.min(1.0, deviation / 0.15);
-    if (confidenceScore > 0 && deviation >= config.cross_market_high_confidence_threshold) highConfidence++;
+    const confidenceScore = expectedEdgePct < minEdgePct ? 0 : Math.min(1.0, deviation / 0.15);
+    if (confidenceScore > 0 && deviation >= config.cross_market_high_confidence_threshold)
+      highConfidence++;
 
     const direction: 'over' | 'under' = priceSum > 1.0 ? 'over' : 'under';
     const outcomeDetails = outcomes.values.map((name, i) => ({ name, price: prices[i]! }));
     const now = new Date().toISOString();
 
-    const outcomeList = outcomeDetails.map((o) => `${o.name} ${(o.price * 100).toFixed(1)}%`).join(', ');
+    const outcomeList = outcomeDetails
+      .map((o) => `${o.name} ${(o.price * 100).toFixed(1)}%`)
+      .join(', ');
     const directionLabel = direction === 'over' ? 'Sobrepreço' : 'Subpreço';
     const reasoning = `Market '${event.title}' soma ${(priceSum * 100).toFixed(2)}% (desvio ${(deviation * 100).toFixed(2)}%, edge líquido ${expectedEdgePct.toFixed(2)}%). Outcomes: ${outcomeList}. ${directionLabel}.`;
 
@@ -185,7 +191,8 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
 
   await logEvent({
     component: 'cross_market_detector',
-    status: signalsResult.errors.length > 0 || malformed > 0 || queryErrors > 0 ? 'partial' : 'success',
+    status:
+      signalsResult.errors.length > 0 || malformed > 0 || queryErrors > 0 ? 'partial' : 'success',
     message:
       `Evaluated ${total} events, ${flagged} flagged, ${highConfidence} high-confidence, ${deduped} deduped` +
       `${malformed > 0 ? `, ${malformed} skipped_malformed` : ''}` +
@@ -199,9 +206,8 @@ export async function runCrossMarketIntraDetector(): Promise<void> {
       skipped_length_mismatch: mismatchErrors.length,
       dedup_query_errors: queryErrors,
       // Amostras: os contadores acima dão o tamanho, estas dão por onde começar.
-      malformed_sample: malformed > 0
-        ? [...parseErrors, ...mismatchErrors].slice(0, SAMPLE_LIMIT)
-        : null,
+      malformed_sample:
+        malformed > 0 ? [...parseErrors, ...mismatchErrors].slice(0, SAMPLE_LIMIT) : null,
       query_error_sample: queryErrors > 0 ? dedupQueryErrors.slice(0, SAMPLE_LIMIT) : null,
       signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,

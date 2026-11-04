@@ -19,7 +19,12 @@ body {
   margin: 0;
   background: var(--fundo);
   color: var(--tinta);
-  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font:
+    15px/1.5 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
 }
 
 .app {
@@ -44,7 +49,9 @@ body {
   background: #fff;
   color: var(--alerta);
   white-space: pre-wrap;
-  font: 14px/1.6 ui-monospace, monospace;
+  font:
+    14px/1.6 ui-monospace,
+    monospace;
 }
 
 /* navegação: um passo atrás, sempre no mesmo canto */
@@ -267,7 +274,9 @@ button.link {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font: 13px/1.65 ui-monospace, monospace;
+  font:
+    13px/1.65 ui-monospace,
+    monospace;
   color: var(--tinta);
 }
 /* Os tons valem em QUALQUER `mark`, e não só dentro de `.regulamento`: a
@@ -373,7 +382,9 @@ mark.aceso {
    ------------------------------------------------------------------------- */
 .sel-v3 .achado.selecionado {
   background: var(--caixa);
-  box-shadow: inset 3px 0 0 var(--fraco), 0 2px 8px rgb(0 0 0 / 12%);
+  box-shadow:
+    inset 3px 0 0 var(--fraco),
+    0 2px 8px rgb(0 0 0 / 12%);
   transform: translateX(3px);
 }
 .sel-v3 mark.selecionado {

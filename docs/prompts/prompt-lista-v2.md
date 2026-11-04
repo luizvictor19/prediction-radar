@@ -13,7 +13,7 @@ meus — o prompt anterior não pediu o que precisava.
 Liquidez é ordem parada no livro. **Volume é gente negociando.** A tese é "sai
 notícia → o preço exagera → volta", e mercado que ninguém negocia não exagera.
 
-O caso que escancara: *"Government shutdown by October 1"* tem US$ 13 mil de
+O caso que escancara: _"Government shutdown by October 1"_ tem US$ 13 mil de
 liquidez e **US$ 1 de volume em 24h**. 18 dos 40 estão nesse estado.
 
 **Adicione piso de volume 24h.** Não invente o número: reporte a distribuição de

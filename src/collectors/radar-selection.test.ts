@@ -142,20 +142,18 @@ test('mercado sem token de CLOB cai — não haveria livro para fotografar', () 
 });
 
 test('fechado ou inativo cai', () => {
-  assert.equal(
-    triar(mercado({ id: 'a', closed: true }), REGRAS, AGORA).ok === false,
-    true,
-  );
-  assert.equal(
-    triar(mercado({ id: 'b', active: false }), REGRAS, AGORA).ok === false,
-    true,
-  );
+  assert.equal(triar(mercado({ id: 'a', closed: true }), REGRAS, AGORA).ok === false, true);
+  assert.equal(triar(mercado({ id: 'b', active: false }), REGRAS, AGORA).ok === false, true);
 });
 
 test('mercado de partida cai; o de temporada fica', () => {
   // `sportsMarketType` é propriedade estável — um mercado é de partida ou não é,
   // e isso não muda na vida dele. Por isso o filtro cabe na coleta.
-  const partida = mercado({ id: 'a', sportsMarketType: 'moneyline', question: 'Brewers vs. Dodgers' });
+  const partida = mercado({
+    id: 'a',
+    sportsMarketType: 'moneyline',
+    question: 'Brewers vs. Dodgers',
+  });
   const temporada = mercado({ id: 'b', question: "Will Vitinha win the 2026 Ballon d'Or?" });
 
   const t = triar(partida, REGRAS, AGORA);
@@ -184,7 +182,11 @@ test('o filtro de partida não confunde string vazia com marca', () => {
 });
 
 test('slug de esports cai: a coleta deles foi desligada', () => {
-  for (const slug of ['cs2-navi-faze-2026-09-01', 'lol-t1-geng-2026-09-01', 'dota2-a-b-2026-09-01']) {
+  for (const slug of [
+    'cs2-navi-faze-2026-09-01',
+    'lol-t1-geng-2026-09-01',
+    'dota2-a-b-2026-09-01',
+  ]) {
     const t = triar(mercado({ id: slug, slug }), REGRAS, AGORA);
     assert.equal(t.ok === false && t.motivo, 'esports (coleta desligada)', slug);
   }
@@ -285,17 +287,21 @@ test('assunto junta o que o eventId separa, e separa o que só compartilha país
     'Will Russia capture Kostyantynivka by September 30?',
   ];
   const cands = perguntas.map((q, i) =>
-    candidato({ id: `m${i}`, eventId: `evento-${i}`, market: mercado({ id: `m${i}`, question: q }) }),
+    candidato({
+      id: `m${i}`,
+      eventId: `evento-${i}`,
+      market: mercado({ id: `m${i}`, question: q }),
+    }),
   );
 
   const grupos = agruparPorAssunto(cands);
-  const tamanhos = grupos.map(g => g.membros.length).sort((a, b) => b - a);
+  const tamanhos = grupos.map((g) => g.membros.length).sort((a, b) => b - a);
 
   assert.deepEqual(tamanhos, [2, 1], 'os dois do Irã juntos, a Rússia sozinha');
 });
 
 test('o assunto vira rótulo em cada mercado do roster, e não corta nenhum', () => {
-  const universo = [1, 2, 3, 4, 5].map(i =>
+  const universo = [1, 2, 3, 4, 5].map((i) =>
     mercado({
       id: `iran-${i}`,
       question: `Will Iran nuclear talks reach milestone ${i} by September 30?`,
@@ -307,8 +313,11 @@ test('o assunto vira rótulo em cada mercado do roster, e não corta nenhum', ()
   const r = montarRoster(universo, REGRAS, AGORA);
 
   assert.equal(r.roster.length, 5, 'os cinco do mesmo assunto ficam');
-  assert.equal(new Set(r.roster.map(c => c.grupoId)).size, 1, 'e todos no mesmo grupo');
-  assert.ok(r.roster.every(c => c.assunto.includes('iran')), 'com rótulo gravável');
+  assert.equal(new Set(r.roster.map((c) => c.grupoId)).size, 1, 'e todos no mesmo grupo');
+  assert.ok(
+    r.roster.every((c) => c.assunto.includes('iran')),
+    'com rótulo gravável',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -317,7 +326,7 @@ test('o assunto vira rótulo em cada mercado do roster, e não corta nenhum', ()
 
 test('o teto por categoria corta os MENORES em liquidez, e o corte é contado', () => {
   const regras: RadarRules = { ...REGRAS, maxPorCategoria: 2 };
-  const universo = [1, 2, 3, 4].map(i =>
+  const universo = [1, 2, 3, 4].map((i) =>
     mercado({
       id: `m${i}`,
       question: `Assunto totalmente distinto número ${i} sobre coisa ${i}?`,
@@ -331,7 +340,10 @@ test('o teto por categoria corta os MENORES em liquidez, e o corte é contado', 
 
   const r = montarRoster(universo, regras, AGORA);
 
-  assert.deepEqual(r.roster.map(c => c.market.id), ['m4', 'm3']);
+  assert.deepEqual(
+    r.roster.map((c) => c.market.id),
+    ['m4', 'm3'],
+  );
   assert.equal(r.cortadosPorTeto, 2);
   assert.equal(r.liquidezDoCorte, 3_000);
   assert.equal(r.liquidezDoPrimeiroCortado, 2_000);
@@ -343,7 +355,7 @@ test('o teto é POR CATEGORIA: a categoria pequena não é comida pela grande', 
   // uma opinião sobre categoria, dita pelo tamanho do livro médio de cada uma.
   const regras: RadarRules = { ...REGRAS, maxPorCategoria: 2 };
   const universo = [
-    ...[1, 2, 3, 4].map(i =>
+    ...[1, 2, 3, 4].map((i) =>
       mercado({
         id: `esporte-${i}`,
         question: `Campeonato coisa ${i} tem vencedor ${i}?`,
@@ -352,7 +364,7 @@ test('o teto é POR CATEGORIA: a categoria pequena não é comida pela grande', 
         events: [{ id: `evento-e${i}` }] as RadarMarketInput['events'],
       }),
     ),
-    ...[1, 2].map(i =>
+    ...[1, 2].map((i) =>
       mercado({
         id: `ia-${i}`,
         question: `Modelo novo ${i} sai até dezembro?`,

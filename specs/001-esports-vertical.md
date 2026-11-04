@@ -25,23 +25,23 @@ Primeira vertical: **CS2**. Estrutura desenhada para acomodar LoL e Dota 2 sem r
 A Gamma expõe, **só no endpoint `/events`**, um bloco de metadado que resolve boa parte
 do que esta spec desenhava via parser. Medições sobre 464 markets e 2.888 eventos:
 
-| campo | onde vive | cobertura | o que resolve |
-|---|---|---|---|
-| `teams[]` | `/events` | 100% desde jul/2026 | identidade de time, exata |
-| `eventMetadata.league` | ambos | 100% desde mar/2026 | competição |
-| `eventMetadata.serie` | ambos | ~46% | edição/split |
-| `eventMetadata.tournament` | ambos | 100% desde mar/2026 | fase (stage) |
-| `eventMetadata.leagueTier` | ambos | 100% desde mai/2026 | tier, string `"1"`..`"5"` |
-| `eventMetadata.pandascoreMatchId` | ambos | 100% desde jun/2026 | id externo da partida |
-| `eventMetadata.context_description` | ambos | 98% | candidato a enricher |
-| `score` (`"0-0|1-2|Bo3"`) | ambos | 92% | best-of e placar da série |
+| campo                               | onde vive | cobertura           | o que resolve             |
+| ----------------------------------- | --------- | ------------------- | ------------------------- | --- | ------------------------- |
+| `teams[]`                           | `/events` | 100% desde jul/2026 | identidade de time, exata |
+| `eventMetadata.league`              | ambos     | 100% desde mar/2026 | competição                |
+| `eventMetadata.serie`               | ambos     | ~46%                | edição/split              |
+| `eventMetadata.tournament`          | ambos     | 100% desde mar/2026 | fase (stage)              |
+| `eventMetadata.leagueTier`          | ambos     | 100% desde mai/2026 | tier, string `"1"`..`"5"` |
+| `eventMetadata.pandascoreMatchId`   | ambos     | 100% desde jun/2026 | id externo da partida     |
+| `eventMetadata.context_description` | ambos     | 98%                 | candidato a enricher      |
+| `score` (`"0-0                      | 1-2       | Bo3"`)              | ambos                     | 92% | best-of e placar da série |
 
 Os quatro fatos que reorganizam o desenho:
 
 1. **`teams[].abbreviation` é o código do slug.** Medido sobre 2.307 eventos no formato de
    partida: 2.307 casaram, **na ordem do slug**, 0 invertidos, 0 falhas. E `(league,
-   abbreviation)` produz 972 chaves com **0 colisões** — a constraint `unique (vertical_id,
-   polymarket_code)` está validada pela própria API. Cada time vem com `id` (Polymarket),
+abbreviation)` produz 972 chaves com **0 colisões** — a constraint `unique (vertical_id,
+polymarket_code)` está validada pela própria API. Cada time vem com `id` (Polymarket),
    `providerId` (PandaScore), `name` canônico e `ordering` (home/away).
 
 2. **Não existe chave de organização.** `team.id` e `providerId` são distintos por jogo, e
@@ -50,14 +50,14 @@ Os quatro fatos que reorganizam o desenho:
 
 3. **O corte temporal decide o backfill.** Cobertura por janela de uma semana:
 
-   | janela | teams | pandascoreMatchId | league | score |
-   |---|---|---|---|---|
-   | 2025-11 | 4% | 0% | 0% | 15% |
-   | 2026-01 | 14% | 0% | 0% | 93% |
-   | 2026-03 | 10% | 0% | 100% | 91% |
-   | 2026-05 | 35% | 5% | 99% | 95% |
-   | 2026-06 | 57% | 94% | 94% | 93% |
-   | 2026-07 | 100% | 100% | 100% | 100% |
+   | janela  | teams | pandascoreMatchId | league | score |
+   | ------- | ----- | ----------------- | ------ | ----- |
+   | 2025-11 | 4%    | 0%                | 0%     | 15%   |
+   | 2026-01 | 14%   | 0%                | 0%     | 93%   |
+   | 2026-03 | 10%   | 0%                | 100%   | 91%   |
+   | 2026-05 | 35%   | 5%                | 99%    | 95%   |
+   | 2026-06 | 57%   | 94%               | 94%    | 93%   |
+   | 2026-07 | 100%  | 100%              | 100%   | 100%  |
 
    Re-fetch de evento antigo devolve HTTP 200 com `teams: []`. **O histórico não será
    enriquecido por re-busca** — para ele o slug continua sendo o único caminho.
@@ -74,16 +74,33 @@ causa de um bug de leitura já corrigido):
 
 ```json
 {
-  "league": "NODWIN Clutch Series", "leagueTier": "5", "tournament": "Playoffs",
-  "serie": null, "pandascoreMatchId": 1582194, "gridSeriesId": null,
-  "context_description": "...", "context_updated_at": "2026-08-06T15:01:18.892Z",
+  "league": "NODWIN Clutch Series",
+  "leagueTier": "5",
+  "tournament": "Playoffs",
+  "serie": null,
+  "pandascoreMatchId": 1582194,
+  "gridSeriesId": null,
+  "context_description": "...",
+  "context_updated_at": "2026-08-06T15:01:18.892Z",
   "polymarket_event_id": "806202",
   "polymarket_sport": { "sport": "cs2", "resolution": "https://hltv.org" },
   "polymarket_teams": [
-    { "id": 3270870, "name": "Nuclear TigeRES", "abbreviation": "ntr",
-      "providerId": 135673, "league": "csgo", "ordering": "home" },
-    { "id": 138975, "name": "Butterfly", "abbreviation": "btf",
-      "providerId": 138975, "league": "csgo", "ordering": "away" }
+    {
+      "id": 3270870,
+      "name": "Nuclear TigeRES",
+      "abbreviation": "ntr",
+      "providerId": 135673,
+      "league": "csgo",
+      "ordering": "home"
+    },
+    {
+      "id": 138975,
+      "name": "Butterfly",
+      "abbreviation": "btf",
+      "providerId": 138975,
+      "league": "csgo",
+      "ordering": "away"
+    }
   ]
 }
 ```
@@ -216,9 +233,9 @@ sem `coalesce` no índice nem índice funcional.
 `''` significa **"edição sem série nomeada"**, não "desconhecido". A distinção não é
 cosmética:
 
-- *sem série nomeada* é um fato sobre a competição — ela não se divide em splits, ou a
+- _sem série nomeada_ é um fato sobre a competição — ela não se divide em splits, ou a
   Polymarket não a divide. `LPL` + `''` é uma edição legítima e completa.
-- *desconhecido* seria a afirmação de que existe uma série que não sabemos qual é, e isso
+- _desconhecido_ seria a afirmação de que existe uma série que não sabemos qual é, e isso
   pediria `needs_review` e uma fila. Não é o caso aqui.
 
 Consequência prática: `''` **não** é motivo para `needs_review`, não deve ser exibido como
@@ -335,6 +352,7 @@ create index idx_fragments_replay
 **Nunca faça UPDATE nesta tabela.** Informação nova = linha nova.
 
 `as_of` e `observed_at` são diferentes e ambos necessários:
+
 - `as_of` = quando o fato era verdade (ex.: roster anunciado às 14h).
 - `observed_at` = quando nós buscamos (ex.: nosso fetch às 18h).
 
@@ -391,9 +409,9 @@ export interface ParsedMarketSlug {
   verticalId: string;
   teamCodeA: string;
   teamCodeB: string;
-  matchDate: string;       // 'YYYY-MM-DD'
-  matchSlug: string;       // '{jogo}-{codA}-{codB}-{data}' — a identidade da partida
-  suffix: string | null;   // tudo depois da data, OPACO — nunca interpretado aqui
+  matchDate: string; // 'YYYY-MM-DD'
+  matchSlug: string; // '{jogo}-{codA}-{codB}-{data}' — a identidade da partida
+  suffix: string | null; // tudo depois da data, OPACO — nunca interpretado aqui
 }
 
 export function parseMarketSlug(slug: string): ParsedMarketSlug | null;
@@ -426,16 +444,16 @@ Sobre a robustez do formato: dos 464 markets medidos, **0 ficaram fora do padrã
 tinham exatamente 2 segmentos entre prefixo e data. A tabela de casos abaixo é suficiente;
 não precisa crescer especulativamente.
 
-| slug | matchSlug | suffix |
-|---|---|---|
-| `cs2-ts7-g2-2026-06-19` | igual ao slug | `null` |
-| `lol-g2-t1-2026-07-08-game4` | `lol-g2-t1-2026-07-08` | `game4` |
-| `cs2-yaw-guara-2026-08-04-total-games-2pt5` | `cs2-yaw-guara-2026-08-04` | `total-games-2pt5` |
-| `cs2-fnc-lilmix-2026-08-03-map-handicap-away-1pt5` | `cs2-fnc-lilmix-2026-08-03` | `map-handicap-away-1pt5` |
-| `cs2-1win-ruby1-2026-08-03` | igual ao slug | `null` (código com dígito inicial) |
-| `cs2-mouzn-mis-2026-08-03` | igual ao slug | `null` (`mouzn` ≠ `mouz`: time academy) |
-| `dota2-aur1-lgd-2026-06-06` | igual ao slug | `null` |
-| `bitcoin-up-or-down-july-8` | — | `null` (não-esports) |
+| slug                                               | matchSlug                   | suffix                                  |
+| -------------------------------------------------- | --------------------------- | --------------------------------------- |
+| `cs2-ts7-g2-2026-06-19`                            | igual ao slug               | `null`                                  |
+| `lol-g2-t1-2026-07-08-game4`                       | `lol-g2-t1-2026-07-08`      | `game4`                                 |
+| `cs2-yaw-guara-2026-08-04-total-games-2pt5`        | `cs2-yaw-guara-2026-08-04`  | `total-games-2pt5`                      |
+| `cs2-fnc-lilmix-2026-08-03-map-handicap-away-1pt5` | `cs2-fnc-lilmix-2026-08-03` | `map-handicap-away-1pt5`                |
+| `cs2-1win-ruby1-2026-08-03`                        | igual ao slug               | `null` (código com dígito inicial)      |
+| `cs2-mouzn-mis-2026-08-03`                         | igual ao slug               | `null` (`mouzn` ≠ `mouz`: time academy) |
+| `dota2-aur1-lgd-2026-06-06`                        | igual ao slug               | `null`                                  |
+| `bitcoin-up-or-down-july-8`                        | —                           | `null` (não-esports)                    |
 
 ### Fallback para registros históricos
 
@@ -448,11 +466,11 @@ derivado de sufixo como equivalente ao vindo da coluna.
 
 Servia para `display_name`, `best_of` e stage/torneio. Os três agora têm fonte estruturada:
 
-| era | passa a ser |
-|---|---|
-| `display_name` do regex do título | `polymarket_teams[].name` |
-| `best_of` de `\(BO(\d)\)` | sufixo `Bo{N}` de `score` — bate 133/133 com o título |
-| stage/torneio do título | `eventMetadata.tournament` + `.league` + `.serie` |
+| era                               | passa a ser                                           |
+| --------------------------------- | ----------------------------------------------------- |
+| `display_name` do regex do título | `polymarket_teams[].name`                             |
+| `best_of` de `\(BO(\d)\)`         | sufixo `Bo{N}` de `score` — bate 133/133 com o título |
+| stage/torneio do título           | `eventMetadata.tournament` + `.league` + `.serie`     |
 
 Não sobra uso. Manter o regex seria manter um caminho paralelo, menos confiável, que
 divergiria em silêncio do estruturado.
@@ -516,10 +534,10 @@ histórico — grande parte dele nunca terá nome de time.
 A regra original — "caminho 2 ⇒ `needs_review`" — foi medida e reprovada. Sobre 21.615
 markets resolvidos:
 
-| | markets | outcome não casado | pendências |
-|---|---|---|---|
-| caminho 1 (`teams[]`) | 446 | 0 | 0 |
-| caminho 2 (slug) | 21.169 | 9.824 | 21.169 |
+|                       | markets | outcome não casado | pendências |
+| --------------------- | ------- | ------------------ | ---------- |
+| caminho 1 (`teams[]`) | 446     | 0                  | 0          |
+| caminho 2 (slug)      | 21.169  | 9.824              | 21.169     |
 
 **21.169 linhas de fila é o mesmo que não ter fila** — e uma fila que ninguém quita não
 fica só inútil: ela esconde as pendências reais dentro dela.
@@ -569,7 +587,7 @@ há conflito de verdade.
 export interface EnricherContext {
   verticalId: string;
   matchId: string;
-  asOf: Date;               // OBRIGATÓRIO — nenhum enricher assume "agora"
+  asOf: Date; // OBRIGATÓRIO — nenhum enricher assume "agora"
 }
 
 export interface ContextFragment {
@@ -577,7 +595,7 @@ export interface ContextFragment {
   kind: string;
   asOf: Date;
   payload: unknown;
-  summary: string;          // 1-3 frases, é o que o LLM lê
+  summary: string; // 1-3 frases, é o que o LLM lê
   confidence: number;
 }
 
@@ -600,7 +618,7 @@ export function registerEnricher(e: Enricher): void;
 export function getEnrichers(verticalId: string): Enricher[];
 export async function runEnrichers(
   ctx: EnricherContext,
-  opts?: { requirePointInTime?: boolean }
+  opts?: { requirePointInTime?: boolean },
 ): Promise<ContextFragment[]>;
 ```
 
@@ -611,6 +629,7 @@ Essa flag é a única coisa que impede o eval de mentir depois — trate como in
 ### Enricher inicial (validação do contrato)
 
 `market-history` — não usa fonte externa nenhuma, lê `esports_snapshots`:
+
 - movimento de preço nas últimas 24h / 6h / 1h antes de `asOf`
 - evolução de liquidez e spread
 - para BO3/BO5: preços dos `child_moneyline` irmãos e a consistência
@@ -695,15 +714,15 @@ ruído do fornecedor a descartar.
 O agente **não deve** tentar executar nenhum destes itens, nem assumir que já foram feitos.
 Quando um item destes for pré-requisito, o agente para e pede o resultado.
 
-| # | Item | Momento |
-|---|---|---|
-| H1 | Rodar as queries de verificação (final desta spec) e devolver o output | antes de tudo |
-| H2 | Investigar a taxa de erro do Postgres (~266 erros / 835 requests em 24h) | antes de tudo |
-| H3 | ~~Versionar migrations~~ — **concluído**, `supabase/migrations/` está versionado | — |
-| H4 | **Aplicar** cada migration no banco, uma por vez, verificando entre elas | itens 1, 4, 7 |
-| H5 | Definir política de retenção antes de habilitar `context_fragments` | antes do item 4 |
-| H6 | Revisar a fila `needs_review` e consolidar o `tier` das competições | depois do item 6 |
-| H7 | Decidir se e quando habilitar as verticais `lol` e `dota2` | depois de tudo |
+| #   | Item                                                                             | Momento          |
+| --- | -------------------------------------------------------------------------------- | ---------------- |
+| H1  | Rodar as queries de verificação (final desta spec) e devolver o output           | antes de tudo    |
+| H2  | Investigar a taxa de erro do Postgres (~266 erros / 835 requests em 24h)         | antes de tudo    |
+| H3  | ~~Versionar migrations~~ — **concluído**, `supabase/migrations/` está versionado | —                |
+| H4  | **Aplicar** cada migration no banco, uma por vez, verificando entre elas         | itens 1, 4, 7    |
+| H5  | Definir política de retenção antes de habilitar `context_fragments`              | antes do item 4  |
+| H6  | Revisar a fila `needs_review` e consolidar o `tier` das competições              | depois do item 6 |
+| H7  | Decidir se e quando habilitar as verticais `lol` e `dota2`                       | depois de tudo   |
 
 Racional do H4: `system_config` deixa de ter `id = 1` como chave lógica e é lida por
 todo o sistema. Migration aplicada por agente, sem verificação humana entre passos,
@@ -735,15 +754,15 @@ Escrever, testar e abrir PR de:
 
 ## Parte F — Ordem de implementação
 
-| # | Item | Depende de | Verificação |
-|---|---|---|---|
-| 1 | Migration A1-A4 | — | tabelas criadas, FKs válidas |
-| 2 | `slug-parser.ts` + testes | 1 | tabela de casos passa 100% |
-| 3 | `resolver.ts` (caminhos 1 e 2) + backfill histórico | 2 | ver abaixo |
-| 4 | Migration A5 + persistência de fragmentos | 1 | append-only, nenhum UPDATE no código |
-| 5 | `enricher.ts` + `market-history` + `polymarket-context` | 4 | fragmento gravado com `as_of` e `observed_at` corretos |
-| 6 | `/review` no Telegram | 3 | fila zerável na mão |
-| 7 | Migration A6 (user_id + RLS) | — | nenhuma regressão nos comandos existentes |
+| #   | Item                                                    | Depende de | Verificação                                            |
+| --- | ------------------------------------------------------- | ---------- | ------------------------------------------------------ |
+| 1   | Migration A1-A4                                         | —          | tabelas criadas, FKs válidas                           |
+| 2   | `slug-parser.ts` + testes                               | 1          | tabela de casos passa 100%                             |
+| 3   | `resolver.ts` (caminhos 1 e 2) + backfill histórico     | 2          | ver abaixo                                             |
+| 4   | Migration A5 + persistência de fragmentos               | 1          | append-only, nenhum UPDATE no código                   |
+| 5   | `enricher.ts` + `market-history` + `polymarket-context` | 4          | fragmento gravado com `as_of` e `observed_at` corretos |
+| 6   | `/review` no Telegram                                   | 3          | fila zerável na mão                                    |
+| 7   | Migration A6 (user_id + RLS)                            | —          | nenhuma regressão nos comandos existentes              |
 
 Itens 1-3 são o caminho crítico. O 4 é o mais urgente em termos de custo de adiamento.
 O 7 é independente e pode ir em paralelo.
@@ -761,12 +780,12 @@ uma regressão no caminho novo atrás do ruído do histórico:
 O que foi removido nesta revisão e por quê. Registrado para não ser reintroduzido por
 esquecimento.
 
-| Removido | Motivo | O que fazer se voltar a fazer falta |
-|---|---|---|
-| `esports_orgs` | A API não expõe chave de org. `team.id` e `providerId` são distintos por jogo; 73 abbreviations aparecem em ligas diferentes com identidades distintas. Mapear seria trabalho manual, para resolver um problema que não existe em CS2-only. | Só ganha sentido com múltiplas verticais ativas **e** uma fonte externa de org (Liquipedia). Aí é spec própria. |
-| Parser de título | `display_name` ← `teams[].name`; `best_of` ← `score`; stage ← `eventMetadata.tournament`. Nenhum uso restante. | Só se a Gamma remover `teams[]`, o que tornaria o problema muito maior que um regex. |
-| `aliases` em competições | Existia para normalizar nome extraído de título. O vocabulário agora vem controlado da API (37 ligas, 20 stages). | Se aparecer a mesma liga com dois nomes na API. Medir antes de assumir. |
-| `tier` como `'s'|'a'|'b'` na liga | Escala real é `"1"`..`"5"`, e o valor não é estável por nome de liga (VCT em 2, 3 e 5). | — |
+| Removido                 | Motivo                                                                                                                                                                                                                                      | O que fazer se voltar a fazer falta                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --- |
+| `esports_orgs`           | A API não expõe chave de org. `team.id` e `providerId` são distintos por jogo; 73 abbreviations aparecem em ligas diferentes com identidades distintas. Mapear seria trabalho manual, para resolver um problema que não existe em CS2-only. | Só ganha sentido com múltiplas verticais ativas **e** uma fonte externa de org (Liquipedia). Aí é spec própria. |
+| Parser de título         | `display_name` ← `teams[].name`; `best_of` ← `score`; stage ← `eventMetadata.tournament`. Nenhum uso restante.                                                                                                                              | Só se a Gamma remover `teams[]`, o que tornaria o problema muito maior que um regex.                            |
+| `aliases` em competições | Existia para normalizar nome extraído de título. O vocabulário agora vem controlado da API (37 ligas, 20 stages).                                                                                                                           | Se aparecer a mesma liga com dois nomes na API. Medir antes de assumir.                                         |
+| `tier` como `'s'         | 'a'                                                                                                                                                                                                                                         | 'b'` na liga                                                                                                    | Escala real é `"1"`..`"5"`, e o valor não é estável por nome de liga (VCT em 2, 3 e 5). | —   |
 
 ---
 

@@ -52,7 +52,11 @@ const DICIONARIOS = {
 
 type Balde = 'pt' | 'en' | 'misto' | 'colisao' | 'jargao';
 
-const semAcento = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+const semAcento = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
 
 function carregarDicionario(caminho: string): Set<string> {
   try {
@@ -81,7 +85,7 @@ function arquivosDe(dir: string, acc: string[] = []): string[] {
 function tokens(nome: string): string[] {
   return nome
     .split(/[-_.]|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)
-    .map(t => t.toLowerCase())
+    .map((t) => t.toLowerCase())
     .filter(Boolean);
 }
 
@@ -97,7 +101,11 @@ function inventario(dir: string) {
   const tipos = new Set<string>();
 
   for (const caminho of arquivosDe(dir)) {
-    arquivos.add(basename(caminho).replace(/\.(test|d)?\.?tsx?$/, '').replace(/\.test$/, ''));
+    arquivos.add(
+      basename(caminho)
+        .replace(/\.(test|d)?\.?tsx?$/, '')
+        .replace(/\.test$/, ''),
+    );
     // Comentário fora ANTES de procurar identificador. Sem isto o extrator lê a
     // própria documentação: um `export const X = (` citado dentro de um bloco
     // `/** */` entrava na contagem como se fosse função — foi o que este
@@ -140,7 +148,9 @@ function medir() {
   };
 
   const p = (s: unknown, n: number) => String(s).padStart(n);
-  console.log('pasta    tipo       total     pt     en  misto colisao jargao   pt/total  pt/(pt+en)');
+  console.log(
+    'pasta    tipo       total     pt     en  misto colisao jargao   pt/total  pt/(pt+en)',
+  );
 
   const agregado: Record<string, Record<Balde | 'total', number>> = {};
 
@@ -158,9 +168,16 @@ function medir() {
       a.total += total;
 
       console.log(
-        rotulo.padEnd(9) + tipo.padEnd(10) + p(total, 6) + p(c.pt, 7) + p(c.en, 7) +
-          p(c.misto, 7) + p(c.colisao, 8) + p(c.jargao, 7) +
-          p(fracao(c.pt, total), 11) + p(fracao(c.pt, c.pt + c.en), 12),
+        rotulo.padEnd(9) +
+          tipo.padEnd(10) +
+          p(total, 6) +
+          p(c.pt, 7) +
+          p(c.en, 7) +
+          p(c.misto, 7) +
+          p(c.colisao, 8) +
+          p(c.jargao, 7) +
+          p(fracao(c.pt, total), 11) +
+          p(fracao(c.pt, c.pt + c.en), 12),
       );
     }
   }
@@ -168,9 +185,16 @@ function medir() {
   console.log('');
   for (const [rotulo, a] of Object.entries(agregado))
     console.log(
-      rotulo.padEnd(9) + 'AGREGADO  ' + p(a.total, 6) + p(a.pt, 7) + p(a.en, 7) + p(a.misto, 7) +
-        p(a.colisao, 8) + p(a.jargao, 7) +
-        p(fracao(a.pt, a.total), 11) + p(fracao(a.pt, a.pt + a.en), 12),
+      rotulo.padEnd(9) +
+        'AGREGADO  ' +
+        p(a.total, 6) +
+        p(a.pt, 7) +
+        p(a.en, 7) +
+        p(a.misto, 7) +
+        p(a.colisao, 8) +
+        p(a.jargao, 7) +
+        p(fracao(a.pt, a.total), 11) +
+        p(fracao(a.pt, a.pt + a.en), 12),
     );
 
   console.log(

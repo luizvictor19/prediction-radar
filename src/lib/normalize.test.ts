@@ -39,7 +39,9 @@ test('eventStartTime cobre quando gameStartTime falta', () => {
 
 test('events[0].startTime é a última rede — só ele tem cobertura total em ISO', () => {
   assert.equal(
-    gammaGameStartTime(market({ events: [{ id: 'e', slug: 's', startTime: '2026-08-06T18:30:00Z' }] })),
+    gammaGameStartTime(
+      market({ events: [{ id: 'e', slug: 's', startTime: '2026-08-06T18:30:00Z' }] }),
+    ),
     '2026-08-06T18:30:00.000Z',
   );
 });
@@ -74,8 +76,22 @@ function parentEvent(overrides: Partial<GammaEvent> = {}): GammaEvent {
 }
 
 const TEAMS = [
-  { id: 3270870, name: 'Vitality Academy', league: 'csgo', abbreviation: 'vita', providerId: 138618, ordering: 'home' },
-  { id: 169138, name: 'Bushido Wildcats', league: 'csgo', abbreviation: 'bw', providerId: 136934, ordering: 'away' },
+  {
+    id: 3270870,
+    name: 'Vitality Academy',
+    league: 'csgo',
+    abbreviation: 'vita',
+    providerId: 138618,
+    ordering: 'home',
+  },
+  {
+    id: 169138,
+    name: 'Bushido Wildcats',
+    league: 'csgo',
+    abbreviation: 'bw',
+    providerId: 136934,
+    ordering: 'away',
+  },
 ];
 
 /** `gammaToEvent` exige outcomes/outcomePrices; os testes de horário, não. */
@@ -134,7 +150,11 @@ test('series cai para o evento pai — o market de esports vem sem ela', () => {
 
 test('sem evento pai explícito, o embed de /markets ainda serve', () => {
   // A varredura por volume e o detector de resolvidos continuam em /markets.
-  const m = m2(market({ events: [{ id: 'e9', slug: 'cs2-x-y-2026-08-06', eventMetadata: { league: 'ESEA' } }] }));
+  const m = m2(
+    market({
+      events: [{ id: 'e9', slug: 'cs2-x-y-2026-08-06', eventMetadata: { league: 'ESEA' } }],
+    }),
+  );
   const row = gammaToEvent(m);
 
   assert.equal(row.event_group_slug, 'cs2-x-y-2026-08-06');

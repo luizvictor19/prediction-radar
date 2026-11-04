@@ -120,7 +120,7 @@ export interface FingerprintInput {
 export function fingerprintFragments(fragments: readonly FingerprintInput[]): string {
   const canonical = [...fragments]
     .sort((a, b) => a.fragmentId - b.fragmentId)
-    .map(f => `${f.fragmentId}:${f.asOf}`)
+    .map((f) => `${f.fragmentId}:${f.asOf}`)
     .join('|');
 
   return createHash('sha256').update(canonical).digest('hex').slice(0, 32);
@@ -339,7 +339,7 @@ export async function runAnalysis(request: AnalysisRequest): Promise<AnalysisRes
   }
 
   const prompt = build(request.input);
-  const labels = new Set(request.input.fragments.map(f => f.label));
+  const labels = new Set(request.input.fragments.map((f) => f.label));
   const startedAt = Date.now();
 
   let completion: CompletionResult;

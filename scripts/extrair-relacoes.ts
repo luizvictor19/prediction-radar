@@ -3,7 +3,12 @@ import 'dotenv/config';
 import { num, section, table } from './lib/probe-net.js';
 import { extrairRelacoes, estimarCustoUsd, ExtratorError } from '../src/relacoes/extrator.js';
 import { obterPrompt, VERSAO_PADRAO, versoesDePrompt } from '../src/relacoes/prompts.js';
-import { SEMENTE_PADRAO, ordenarFila, pendentes, type RegistroDeGrupo } from '../src/relacoes/fila.js';
+import {
+  SEMENTE_PADRAO,
+  ordenarFila,
+  pendentes,
+  type RegistroDeGrupo,
+} from '../src/relacoes/fila.js';
 import type { Relacao } from '../src/relacoes/taxonomia.js';
 import type { Desfecho } from '../src/relacoes/desfecho.js';
 
@@ -107,7 +112,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
 
     if (chave === 'limite') {
       const n = Number(valor);
-      if (!Number.isInteger(n) || n <= 0) return { error: `--limite=${valor} precisa ser inteiro > 0` };
+      if (!Number.isInteger(n) || n <= 0)
+        return { error: `--limite=${valor} precisa ser inteiro > 0` };
       args.limite = n;
     } else if (chave === 'teto-usd') {
       const n = Number(valor);
@@ -260,7 +266,8 @@ async function main(): Promise<void> {
     jaFeitos.map((r): RegistroDeGrupo => ({ grupoId: r.grupoId, status: r.status })),
   );
 
-  const alvo = args.limite === null ? restantes : restantes.slice(0, Math.max(0, args.limite - quantosFeitos));
+  const alvo =
+    args.limite === null ? restantes : restantes.slice(0, Math.max(0, args.limite - quantosFeitos));
 
   const estimativas = alvo.map((g) => estimarGrupo(g, args));
   const tokensEntrada = estimativas.reduce((s, e) => s + e.entrada, 0);
@@ -297,11 +304,7 @@ async function main(): Promise<void> {
         ...cabecalho,
         '',
         '  distribuição de tamanho do alvo:',
-        table(
-          ['membros', 'grupos', 'tok entrada (mediana)'],
-          faixas(alvo, estimativas),
-          [0],
-        ),
+        table(['membros', 'grupos', 'tok entrada (mediana)'], faixas(alvo, estimativas), [0]),
         '',
         '  --dry-run: nenhuma chamada feita, nenhum centavo gasto.',
       ].join('\n'),
@@ -445,11 +448,7 @@ function faixas(
         .filter((i) => i >= 0);
       if (indices.length === 0) return null;
       const toks = indices.map((i) => estimativas[i]?.entrada ?? 0).sort((a, b) => a - b);
-      return [
-        rotulo,
-        String(indices.length),
-        String(toks[Math.floor(toks.length / 2)] ?? 0),
-      ];
+      return [rotulo, String(indices.length), String(toks[Math.floor(toks.length / 2)] ?? 0)];
     })
     .filter((r): r is string[] => r !== null);
 }

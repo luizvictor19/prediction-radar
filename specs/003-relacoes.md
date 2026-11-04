@@ -16,12 +16,12 @@
 
 Vantagem em mercado vem de quatro lugares, do mais fácil ao mais difícil:
 
-| tipo | o que exige | garantia |
-| --- | --- | --- |
-| **arbitragem lógica** | ler duas perguntas | **matemática** |
-| arbitragem estatística | amostra grande | probabilística |
-| informação | fonte que os outros não têm | depende da fonte |
-| modelo | processar melhor o público | nenhuma |
+| tipo                   | o que exige                 | garantia         |
+| ---------------------- | --------------------------- | ---------------- |
+| **arbitragem lógica**  | ler duas perguntas          | **matemática**   |
+| arbitragem estatística | amostra grande              | probabilística   |
+| informação             | fonte que os outros não têm | depende da fonte |
+| modelo                 | processar melhor o público  | nenhuma          |
 
 O agente atual opera no **último** — o mais difícil — e foi medido: não funciona.
 
@@ -35,8 +35,8 @@ múltipla, porque não é inferência — é conta.
 A conta é trivial: comparar dois números.
 
 **O difícil é saber QUAIS mercados têm relação lógica.** São milhares de
-perguntas em texto livre, e reconhecer que *"X vence a Pensilvânia"* restringe
-*"X vence a eleição"* exige compreender linguagem.
+perguntas em texto livre, e reconhecer que _"X vence a Pensilvânia"_ restringe
+_"X vence a eleição"_ exige compreender linguagem.
 
 Isso é leitura, não previsão. E a diferença no custo do erro é o argumento
 central desta spec:
@@ -58,14 +58,14 @@ não ordens. A Parte G mantém a operação inteiramente humana.
 O agente não escreve relação em texto livre. Ele escolhe de uma lista, e cada
 tipo carrega a desigualdade que ele impõe aos preços.
 
-| tipo | significado | restrição de preço |
-| --- | --- | --- |
-| `implica` | A só acontece se B acontecer | `P(A) ≤ P(B)` |
-| `exclui` | não podem acontecer juntos | `P(A) + P(B) ≤ 1` |
-| `particiona` | exatamente um do conjunto acontece | `Σ P = 1` |
-| `equivale` | mesmo evento, roupas diferentes | `P(A) = P(B)` |
-| `conjuncao` | C é "A e B" | `P(C) ≤ min(P(A),P(B))` e `P(C) ≥ P(A)+P(B)−1` |
-| `nenhuma` | sem relação lógica | — |
+| tipo         | significado                        | restrição de preço                             |
+| ------------ | ---------------------------------- | ---------------------------------------------- |
+| `implica`    | A só acontece se B acontecer       | `P(A) ≤ P(B)`                                  |
+| `exclui`     | não podem acontecer juntos         | `P(A) + P(B) ≤ 1`                              |
+| `particiona` | exatamente um do conjunto acontece | `Σ P = 1`                                      |
+| `equivale`   | mesmo evento, roupas diferentes    | `P(A) = P(B)`                                  |
+| `conjuncao`  | C é "A e B"                        | `P(C) ≤ min(P(A),P(B))` e `P(C) ≥ P(A)+P(B)−1` |
+| `nenhuma`    | sem relação lógica                 | —                                              |
 
 `conjuncao` traz os limites de Fréchet. O de baixo é o menos óbvio e o mais
 esquecido: se A vale 0,80 e B vale 0,70, **"A e B" não pode valer menos que
@@ -125,15 +125,15 @@ cada camada. Descarte silencioso aqui é cobertura perdida sem ninguém saber.
 
 Amostra estratificada de 17.811 mercados — 10,7% do universo.
 
-| medida | valor |
-| --- | --- |
-| mercados abertos | ≥ 133.543 |
-| grupos gerados na amostra | 3.551 |
-| tamanho do grupo | mediana 7, p75 12, p95 33, máx 128 |
-| grupos que precisam do modelo | 2.722 |
-| grupos de graça (`negRisk`) | 829 |
-| `description` preenchida | 100,0% dos 17.811, mediana 1.262 caracteres |
-| `resolutionSource` preenchida | 62% |
+| medida                        | valor                                       |
+| ----------------------------- | ------------------------------------------- |
+| mercados abertos              | ≥ 133.543                                   |
+| grupos gerados na amostra     | 3.551                                       |
+| tamanho do grupo              | mediana 7, p75 12, p95 33, máx 128          |
+| grupos que precisam do modelo | 2.722                                       |
+| grupos de graça (`negRisk`)   | 829                                         |
+| `description` preenchida      | 100,0% dos 17.811, mediana 1.262 caracteres |
+| `resolutionSource` preenchida | 62%                                         |
 
 A `description` vir cheia em 100% dos mercados é o que **salva a
 `ressalvaDeResolucao`** da Parte B. O texto das regras está no payload; o agente
@@ -143,12 +143,12 @@ em uma das pontas.
 
 ### A aritmética que reprova a cobertura total
 
-| cenário | chamadas | custo |
-| --- | --- | --- |
-| extrapolação da amostra | ~25.400 | **~US$ 733** |
-| teto pessimista | — | US$ 2.746 |
-| teto independente de amostra | — | US$ 1.502 |
-| só a camada 1 (89% dos pares) | — | US$ 458 |
+| cenário                       | chamadas | custo        |
+| ----------------------------- | -------- | ------------ |
+| extrapolação da amostra       | ~25.400  | **~US$ 733** |
+| teto pessimista               | —        | US$ 2.746    |
+| teto independente de amostra  | —        | US$ 1.502    |
+| só a camada 1 (89% dos pares) | —        | US$ 458      |
 
 **Não passa no portão de "umas poucas centenas de dólares".** Pela regra que a
 própria spec escreveu, a fase 2 não começa cobrindo o universo aberto.
@@ -232,13 +232,13 @@ Relação lógica pode ser verificada **contra o desfecho**. Se `A implica B`, e
 em toda resolução onde A deu SIM, B tem que ter dado SIM. Uma violação **refuta a
 relação objetivamente**, sem opinião de ninguém.
 
-| tipo | o que o desfecho tem que respeitar |
-| --- | --- |
-| `implica` | A=SIM ⇒ B=SIM |
-| `exclui` | não pode A=SIM e B=SIM |
-| `particiona` | exatamente um do conjunto deu SIM |
-| `equivale` | A e B deram o mesmo |
-| `conjuncao` | C=SIM ⇔ A=SIM e B=SIM |
+| tipo         | o que o desfecho tem que respeitar |
+| ------------ | ---------------------------------- |
+| `implica`    | A=SIM ⇒ B=SIM                      |
+| `exclui`     | não pode A=SIM e B=SIM             |
+| `particiona` | exatamente um do conjunto deu SIM  |
+| `equivale`   | A e B deram o mesmo                |
+| `conjuncao`  | C=SIM ⇔ A=SIM e B=SIM              |
 
 Não vale quando **o antecedente nunca disparou** — se A deu NÃO, `A implica B`
 não é testável por aquele desfecho, e a relação segue precisando de humano.
@@ -330,14 +330,14 @@ produziu o quê.
 
 **Nenhuma operação é automática. Esta spec produz candidatos, não ordens.**
 
-| # | item | quando |
-| --- | --- | --- |
-| H1 | Rotular a amostra de relações. **É trabalho humano e é o produto da spec.** | a cada medição |
-| H2 | Conferir a ressalva de resolução antes de qualquer dinheiro | sempre |
-| H3 | Decidir o teto de gasto do extrator | antes de ligar |
-| H4 | Aplicar migrations | quando surgirem |
-| H5 | Julgar o critério de morte — o agente reporta, não decide | ao fim da medição |
-| H6 | Decidir o filtro do universo aberto (liquidez, prazo, ter irmão lógico) | **só depois** de a precisão existir |
+| #   | item                                                                        | quando                              |
+| --- | --------------------------------------------------------------------------- | ----------------------------------- |
+| H1  | Rotular a amostra de relações. **É trabalho humano e é o produto da spec.** | a cada medição                      |
+| H2  | Conferir a ressalva de resolução antes de qualquer dinheiro                 | sempre                              |
+| H3  | Decidir o teto de gasto do extrator                                         | antes de ligar                      |
+| H4  | Aplicar migrations                                                          | quando surgirem                     |
+| H5  | Julgar o critério de morte — o agente reporta, não decide                   | ao fim da medição                   |
+| H6  | Decidir o filtro do universo aberto (liquidez, prazo, ter irmão lógico)     | **só depois** de a precisão existir |
 
 ### Escopo do agente
 

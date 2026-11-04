@@ -29,5 +29,5 @@ export function safeSlugPrefixes(prefixes: readonly string[], component = 'confi
 
 /** A cláusula `or=` pronta, na forma que o PostgREST espera. */
 export function slugPrefixFilter(prefixes: readonly string[]): string {
-  return prefixes.map(p => `slug.like.${p}*`).join(',');
+  return prefixes.map((p) => `slug.like.${p}*`).join(',');
 }

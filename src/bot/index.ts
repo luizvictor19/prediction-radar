@@ -1,10 +1,20 @@
 import 'dotenv/config';
 import { Bot, Context, InlineKeyboard } from 'grammy';
-import { conversations, createConversation, type ConversationFlavor, type Conversation } from '@grammyjs/conversations';
+import {
+  conversations,
+  createConversation,
+  type ConversationFlavor,
+  type Conversation,
+} from '@grammyjs/conversations';
 import { authMiddleware } from './auth.js';
 import { signalsHandler } from './handlers/signals.js';
 import { trackConversation } from './handlers/track.js';
-import { positionsHandler, closePositionConversation, closeSingleLegConversation, viewOriginSignalHandler } from './handlers/positions.js';
+import {
+  positionsHandler,
+  closePositionConversation,
+  closeSingleLegConversation,
+  viewOriginSignalHandler,
+} from './handlers/positions.js';
 import { statusHandler } from './handlers/status.js';
 import { cashConversation } from './handlers/cash.js';
 import { configHandler } from './handlers/config_cmd.js';
@@ -32,54 +42,59 @@ const bot = new Bot<BotContext>(token);
 
 bot.use(conversations());
 
-bot.use(createConversation(
-  async (conversation, ctx, signalId: unknown) => {
+bot.use(
+  createConversation(async (conversation, ctx, signalId: unknown) => {
     await trackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
-  },
-  'track',
-));
+  }, 'track'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx, positionId: unknown) => {
-    await closePositionConversation(conversation as BotConversation, ctx as BotContext, positionId as string);
-  },
-  'close_position',
-));
+bot.use(
+  createConversation(async (conversation, ctx, positionId: unknown) => {
+    await closePositionConversation(
+      conversation as BotConversation,
+      ctx as BotContext,
+      positionId as string,
+    );
+  }, 'close_position'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx) => {
+bot.use(
+  createConversation(async (conversation, ctx) => {
     await registerConversation(conversation as BotConversation, ctx as BotContext);
-  },
-  'register',
-));
+  }, 'register'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx, legId: unknown) => {
+bot.use(
+  createConversation(async (conversation, ctx, legId: unknown) => {
     await editConversation(conversation as BotConversation, ctx as BotContext, legId);
-  },
-  'edit',
-));
+  }, 'edit'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx) => {
+bot.use(
+  createConversation(async (conversation, ctx) => {
     await cashConversation(conversation as BotConversation, ctx as BotContext);
-  },
-  'cashConversation',
-));
+  }, 'cashConversation'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx, signalId: unknown) => {
-    await customTrackConversation(conversation as BotConversation, ctx as BotContext, signalId as string);
-  },
-  'customTrackConversation',
-));
+bot.use(
+  createConversation(async (conversation, ctx, signalId: unknown) => {
+    await customTrackConversation(
+      conversation as BotConversation,
+      ctx as BotContext,
+      signalId as string,
+    );
+  }, 'customTrackConversation'),
+);
 
-bot.use(createConversation(
-  async (conversation, ctx, legId: unknown) => {
-    await closeSingleLegConversation(conversation as BotConversation, ctx as BotContext, legId as string);
-  },
-  'close_single_leg',
-));
+bot.use(
+  createConversation(async (conversation, ctx, legId: unknown) => {
+    await closeSingleLegConversation(
+      conversation as BotConversation,
+      ctx as BotContext,
+      legId as string,
+    );
+  }, 'close_single_leg'),
+);
 
 bot.use(authMiddleware());
 
@@ -94,7 +109,9 @@ bot.use(async (ctx, next) => {
 bot.command('signals', signalsHandler);
 bot.command('positions', positionsHandler);
 bot.command('status', statusHandler);
-bot.command('cash', async (ctx) => { await ctx.conversation.enter('cashConversation'); });
+bot.command('cash', async (ctx) => {
+  await ctx.conversation.enter('cashConversation');
+});
 bot.command('config', configHandler);
 bot.command('help', helpHandler);
 bot.command('register', registerHandler);
@@ -121,7 +138,11 @@ bot.callbackQuery(/^dismiss:(.+)$/, async (ctx) => {
     await ctx.editMessageText('❌ DISMISSED\n\n' + original, { parse_mode: 'Markdown' });
     await ctx.answerCallbackQuery('Sinal dispensado.');
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `dismiss callback error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `dismiss callback error: ${String(err)}`,
+    });
     await ctx.answerCallbackQuery('Erro ao dispensar sinal.');
   }
 });
@@ -232,14 +253,14 @@ startHealthMonitor(bot);
 
 try {
   await bot.api.setMyCommands([
-    { command: 'signals',   description: 'Listar sinais ativos' },
+    { command: 'signals', description: 'Listar sinais ativos' },
     { command: 'positions', description: 'Posições abertas' },
-    { command: 'status',    description: 'Resumo do sistema' },
-    { command: 'cash',      description: 'Atualizar saldo de cash' },
-    { command: 'config',    description: 'Configuração atual' },
-    { command: 'help',      description: 'Listar comandos disponíveis' },
-    { command: 'register',  description: 'Registrar bet feita fora do bot' },
-    { command: 'edit',      description: 'Editar legs abertas' },
+    { command: 'status', description: 'Resumo do sistema' },
+    { command: 'cash', description: 'Atualizar saldo de cash' },
+    { command: 'config', description: 'Configuração atual' },
+    { command: 'help', description: 'Listar comandos disponíveis' },
+    { command: 'register', description: 'Registrar bet feita fora do bot' },
+    { command: 'edit', description: 'Editar legs abertas' },
   ]);
   console.log('[bot] Commands registered');
 } catch (err) {
@@ -249,5 +270,9 @@ try {
 console.log('[bot] Waiting 60s before starting long-polling to avoid 409 conflicts...');
 await new Promise((resolve) => setTimeout(resolve, 60_000));
 console.log('[bot] Starting long-polling now');
-await logEvent({ component: 'telegram_bot', status: 'success', message: 'Bot started (long-polling)' });
+await logEvent({
+  component: 'telegram_bot',
+  status: 'success',
+  message: 'Bot started (long-polling)',
+});
 bot.start({ drop_pending_updates: true });

@@ -51,7 +51,11 @@ export async function runHypeRealityGapDetector(): Promise<void> {
       .gt('end_date', new Date().toISOString());
 
     if (eventsErr || !events) {
-      await logEvent({ component: 'hype_reality_gap_detector', status: 'error', message: `query failed: ${eventsErr?.message}` });
+      await logEvent({
+        component: 'hype_reality_gap_detector',
+        status: 'error',
+        message: `query failed: ${eventsErr?.message}`,
+      });
       return;
     }
 
@@ -102,7 +106,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         continue;
       }
 
-      const priceChangePct = Math.abs(currentSnap.mid_price - pastSnap.mid_price) / pastSnap.mid_price * 100;
+      const priceChangePct =
+        (Math.abs(currentSnap.mid_price - pastSnap.mid_price) / pastSnap.mid_price) * 100;
       const priceChangeAbs = Math.abs(currentSnap.mid_price - pastSnap.mid_price);
       const momentum: MomentumData = {
         triggered: priceChangePct >= MOMENTUM_THRESHOLD_PCT && priceChangeAbs >= MOMENTUM_ABS_MIN,
@@ -116,7 +121,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
       const liquidity_ratio = volume_1h / baseline_hourly;
 
       const liquidity: LiquidityData = {
-        triggered: liquidity_ratio >= LIQUIDITY_RATIO_THRESHOLD && priceChangePct < PRICE_STABLE_PCT,
+        triggered:
+          liquidity_ratio >= LIQUIDITY_RATIO_THRESHOLD && priceChangePct < PRICE_STABLE_PCT,
         volume_ratio: liquidity_ratio,
         current_volume_1h: volume_1h,
         baseline_hourly,
@@ -189,7 +195,8 @@ export async function runHypeRealityGapDetector(): Promise<void> {
         continue;
       }
 
-      const confidence = momentum.triggered && liquidity.triggered ? 0.8 : (momentum.triggered ? 0.65 : 0.6);
+      const confidence =
+        momentum.triggered && liquidity.triggered ? 0.8 : momentum.triggered ? 0.65 : 0.6;
 
       const secondaryOutcome = outcomes[1] ?? 'No';
 

@@ -32,7 +32,12 @@ describe('tokenize', () => {
   });
 
   it('preserva número, percentual e cifrão', () => {
-    assert.deepEqual(tokenize('Will $BTC be above 100k in 2027?'), ['$btc', 'above', '100k', '2027']);
+    assert.deepEqual(tokenize('Will $BTC be above 100k in 2027?'), [
+      '$btc',
+      'above',
+      '100k',
+      '2027',
+    ]);
   });
 });
 
@@ -84,7 +89,12 @@ describe('camada 1 — estrutura', () => {
 
   it('neg-risk vira grupo que NÃO precisa de modelo — a partição já veio da API', () => {
     const markets = ['x', 'y', 'z'].map((k) =>
-      market({ id: k, question: `Candidate ${k.toUpperCase()} wins?`, eventId: 'e1', negRiskKey: 'nr1' }),
+      market({
+        id: k,
+        question: `Candidate ${k.toUpperCase()} wins?`,
+        eventId: 'e1',
+        negRiskKey: 'nr1',
+      }),
     );
     const { groups, stats } = generateCandidates(markets);
     const nr = groups.filter((g) => g.reason.includes('neg-risk'));
@@ -120,7 +130,10 @@ describe('camada 1 — estrutura', () => {
     const { stats } = generateCandidates(markets);
     const l1 = stats.byLayer[0];
     assert.ok((l1?.pairsDroppedToCap ?? 0) > 0);
-    assert.equal(l1?.notes.some((n) => n.includes('truncados')), true);
+    assert.equal(
+      l1?.notes.some((n) => n.includes('truncados')),
+      true,
+    );
   });
 });
 
@@ -149,7 +162,10 @@ describe('camada 2 — entidades', () => {
     const { stats } = generateCandidates(markets);
     const l2 = stats.byLayer[1];
     assert.ok((l2?.pairsRejected ?? 0) > 0);
-    assert.equal(l2?.notes.some((n) => n.includes('genérica demais')), true);
+    assert.equal(
+      l2?.notes.some((n) => n.includes('genérica demais')),
+      true,
+    );
   });
 });
 

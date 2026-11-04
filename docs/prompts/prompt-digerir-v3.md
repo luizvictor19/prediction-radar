@@ -45,7 +45,7 @@ defeito de um campo de confiança que não separa nada.
 **Para marcar `muda_resultado`, é obrigatório preencher `cenario`:** uma situação
 concreta em que a leitura ingênua e a regra dão respostas diferentes.
 
-Formato: *"se acontecer X, quem leu só o título espera SIM, mas a regra dá NÃO."*
+Formato: _"se acontecer X, quem leu só o título espera SIM, mas a regra dá NÃO."_
 
 Sem `cenario` preenchido, a severidade cai para `detalhe` automaticamente. Em
 código, não por pedido.
@@ -55,7 +55,7 @@ produz cenário — não existe situação em que alguém perca dinheiro por iss
 que qualquer um que leia a regra vê "as of market close". Já "fechamento
 exatamente em US$ 76.000 resolve NÃO" produz cenário na hora.
 
-`muda_timing` também pede cenário, mas de outro tipo: *quando* o mercado resolve
+`muda_timing` também pede cenário, mas de outro tipo: _quando_ o mercado resolve
 contra quando o leitor espera.
 
 ---
@@ -68,8 +68,8 @@ dizer qual fechamento — qual bolsa, qual fuso, qual referência.
 É distinto de `fuso_ausente` (que é só o fuso) e de `fonte_vaga` (que é quem
 decide). Aqui o que falta é **qual instante conta**.
 
-Proponho `momento_ambiguo` e a definição é sua para ajustar: *a regra nomeia um
-instante de medição que admite mais de um ponto no tempo*.
+Proponho `momento_ambiguo` e a definição é sua para ajustar: _a regra nomeia um
+instante de medição que admite mais de um ponto no tempo_.
 
 Se discordar do nome ou do recorte, proponha outro e justifique — mas não deixe
 isso em `outro`, porque apareceu em 2 de 10 e vai repetir.

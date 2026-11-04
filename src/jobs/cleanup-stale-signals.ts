@@ -85,7 +85,7 @@ export async function runStaleSignalsCleanup(): Promise<void> {
           .limit(1)
           .maybeSingle();
         return data ? eventId : null;
-      })
+      }),
     );
     for (const eventId of checks) {
       if (eventId) liveEventIds.add(eventId);

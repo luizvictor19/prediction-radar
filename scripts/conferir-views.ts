@@ -133,7 +133,9 @@ async function main(): Promise<void> {
 
   const { data: radar, error } = await supabase
     .from('v_radar')
-    .select('id, pergunta, outcome, mid_price, preco_em, var_1h, var_1h_base, var_24h, var_24h_base, var_7d, var_7d_base')
+    .select(
+      'id, pergunta, outcome, mid_price, preco_em, var_1h, var_1h_base, var_24h, var_24h_base, var_7d, var_7d_base',
+    )
     .order('id');
 
   if (error) {
@@ -152,27 +154,29 @@ async function main(): Promise<void> {
 
   const conta = (p: (l: LinhaRadar) => boolean): number => linhas.filter(p).length;
 
-  console.log(table(
-    ['medida', 'mercados', '% do roster'],
-    [
-      ['no roster', String(linhas.length), '100.0'],
-      ...(
-        [
-          ['sem foto nenhuma', (l: LinhaRadar) => l.preco_em === null],
-          ['sem mid agora (livro de um lado)', (l: LinhaRadar) => num(l.mid_price) === null],
-          ['com variação 1h', (l: LinhaRadar) => num(l.var_1h) !== null],
-          ['  ...base mid', (l: LinhaRadar) => l.var_1h_base === 'mid'],
-          ['  ...base ask', (l: LinhaRadar) => l.var_1h_base === 'ask'],
-          ['  ...base bid', (l: LinhaRadar) => l.var_1h_base === 'bid'],
-          ['com variação 24h', (l: LinhaRadar) => num(l.var_24h) !== null],
-          ['com variação 7d', (l: LinhaRadar) => num(l.var_7d) !== null],
-        ] as const
-      ).map(([rotulo, p]) => {
-        const n = conta(p);
-        return [rotulo, String(n), ((100 * n) / linhas.length).toFixed(1)];
-      }),
-    ],
-  ));
+  console.log(
+    table(
+      ['medida', 'mercados', '% do roster'],
+      [
+        ['no roster', String(linhas.length), '100.0'],
+        ...(
+          [
+            ['sem foto nenhuma', (l: LinhaRadar) => l.preco_em === null],
+            ['sem mid agora (livro de um lado)', (l: LinhaRadar) => num(l.mid_price) === null],
+            ['com variação 1h', (l: LinhaRadar) => num(l.var_1h) !== null],
+            ['  ...base mid', (l: LinhaRadar) => l.var_1h_base === 'mid'],
+            ['  ...base ask', (l: LinhaRadar) => l.var_1h_base === 'ask'],
+            ['  ...base bid', (l: LinhaRadar) => l.var_1h_base === 'bid'],
+            ['com variação 24h', (l: LinhaRadar) => num(l.var_24h) !== null],
+            ['com variação 7d', (l: LinhaRadar) => num(l.var_7d) !== null],
+          ] as const
+        ).map(([rotulo, p]) => {
+          const n = conta(p);
+          return [rotulo, String(n), ((100 * n) / linhas.length).toFixed(1)];
+        }),
+      ],
+    ),
+  );
 
   console.log(
     `\nTolerâncias em uso: 1h ±${TOLERANCIA_MS.h1 / 60_000} min · ` +
@@ -190,10 +194,10 @@ async function main(): Promise<void> {
       : `Conferindo ${alvo.length} de ${linhas.length} mercados. Use --todos para o roster inteiro.`,
   );
 
-  const outcomePorId = new Map(alvo.map(l => [l.id, l.outcome]));
+  const outcomePorId = new Map(alvo.map((l) => [l.id, l.outcome]));
   const desde = new Date(Date.now() - FUNDO_MS - 60_000).toISOString();
   const serie = await lerSerie(
-    alvo.map(l => l.id),
+    alvo.map((l) => l.id),
     outcomePorId,
     desde,
   );
@@ -264,7 +268,9 @@ async function main(): Promise<void> {
 
   const { data: pos, error: posErr } = await supabase
     .from('v_minhas_posicoes')
-    .select('pergunta, outcome, stake_usd, preco_agora, pnl_nao_realizado, preco_origem, bid_depth, motivo_sem_preco');
+    .select(
+      'pergunta, outcome, stake_usd, preco_agora, pnl_nao_realizado, preco_origem, bid_depth, motivo_sem_preco',
+    );
 
   if (posErr) {
     console.error(`Não consegui ler v_minhas_posicoes: ${posErr.message}`);
@@ -278,14 +284,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const semPreco = legs.filter(l => num(l.preco_agora) === null);
+  const semPreco = legs.filter((l) => num(l.preco_agora) === null);
   console.log(`${legs.length} legs abertas, ${semPreco.length} sem preço de mercado.`);
 
-  const derivadas = legs.filter(l => String(l.preco_origem ?? '').startsWith('derivado'));
+  const derivadas = legs.filter((l) => String(l.preco_origem ?? '').startsWith('derivado'));
   if (derivadas.length > 0) {
     // Profundidade em linha derivada seria número inventado: o livro do outro
     // token é outro livro. Se aparecer, é defeito da view.
-    const comProfundidade = derivadas.filter(l => num(l.bid_depth) !== null).length;
+    const comProfundidade = derivadas.filter((l) => num(l.bid_depth) !== null).length;
     console.log(
       `${derivadas.length} legs com preço DERIVADO do lado oposto` +
         (comProfundidade > 0
@@ -311,7 +317,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });

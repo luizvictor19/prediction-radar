@@ -197,14 +197,78 @@ export const DEFAULT_PAIRING_CONFIG: PairingConfig = {
  * "Will", "Which", "Who".
  */
 const GRAMMATICAL_STOPWORDS = new Set([
-  'a', 'an', 'the', 'be', 'is', 'are', 'was', 'were', 'been', 'will', 'would',
-  'shall', 'should', 'can', 'could', 'may', 'might', 'must', 'do', 'does',
-  'did', 'have', 'has', 'had', 'of', 'in', 'on', 'at', 'to', 'for', 'from',
-  'by', 'with', 'and', 'or', 'but', 'if', 'then', 'than', 'as', 'that', 'this',
-  'these', 'those', 'it', 'its', 'there', 'any', 'all', 'no', 'not', 'more',
-  'most', 'least', 'less', 'who', 'what', 'which', 'when', 'where', 'how',
-  'before', 'after', 'during', 'between', 'up', 'down', 'out', 'over', 'under',
-  'vs', 'v',
+  'a',
+  'an',
+  'the',
+  'be',
+  'is',
+  'are',
+  'was',
+  'were',
+  'been',
+  'will',
+  'would',
+  'shall',
+  'should',
+  'can',
+  'could',
+  'may',
+  'might',
+  'must',
+  'do',
+  'does',
+  'did',
+  'have',
+  'has',
+  'had',
+  'of',
+  'in',
+  'on',
+  'at',
+  'to',
+  'for',
+  'from',
+  'by',
+  'with',
+  'and',
+  'or',
+  'but',
+  'if',
+  'then',
+  'than',
+  'as',
+  'that',
+  'this',
+  'these',
+  'those',
+  'it',
+  'its',
+  'there',
+  'any',
+  'all',
+  'no',
+  'not',
+  'more',
+  'most',
+  'least',
+  'less',
+  'who',
+  'what',
+  'which',
+  'when',
+  'where',
+  'how',
+  'before',
+  'after',
+  'during',
+  'between',
+  'up',
+  'down',
+  'out',
+  'over',
+  'under',
+  'vs',
+  'v',
 ]);
 
 export function tokenize(text: string): string[] {
@@ -219,8 +283,18 @@ export function tokenize(text: string): string[] {
 }
 
 const MONTHS = new Set([
-  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
-  'september', 'october', 'november', 'december',
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
 ]);
 
 /**
@@ -413,12 +487,21 @@ export function generateCandidates(
   // --- camada 1: estrutura declarada pela API -------------------------------
 
   const l1: LayerStats = {
-    layer: 1, groups: 0, pairsNew: 0, pairsRedundant: 0,
-    pairsDroppedToCap: 0, pairsRejected: 0, notes: [],
+    layer: 1,
+    groups: 0,
+    pairsNew: 0,
+    pairsRedundant: 0,
+    pairsDroppedToCap: 0,
+    pairsRejected: 0,
+    notes: [],
   };
 
   const structural: Array<[string, string, (m: PairingMarket) => string | null]> = [
-    ['neg-risk', 'mesmo neg-risk (mutuamente exclusivos por declaração da API)', (m) => m.negRiskKey],
+    [
+      'neg-risk',
+      'mesmo neg-risk (mutuamente exclusivos por declaração da API)',
+      (m) => m.negRiskKey,
+    ],
     ['evento', 'mesmo evento', (m) => (m.negRiskKey === null ? m.eventId : null)],
     ['série', 'mesma série', (m) => m.seriesId],
   ];
@@ -458,9 +541,7 @@ export function generateCandidates(
         // o mesmo universo cortem os mesmos membros.
         use = members.slice(0, config.maxStructuralGroupSize);
         l1.pairsDroppedToCap += uncoveredPairs(members) - uncoveredPairs(use);
-        l1.notes.push(
-          `${kind} ${key}: ${members.length} membros truncados para ${use.length}`,
-        );
+        l1.notes.push(`${kind} ${key}: ${members.length} membros truncados para ${use.length}`);
       }
 
       emit(1, `${reason} (${key})`, use, needsModel, l1);
@@ -473,8 +554,13 @@ export function generateCandidates(
   // --- camada 2: entidades compartilhadas -----------------------------------
 
   const l2: LayerStats = {
-    layer: 2, groups: 0, pairsNew: 0, pairsRedundant: 0,
-    pairsDroppedToCap: 0, pairsRejected: 0, notes: [],
+    layer: 2,
+    groups: 0,
+    pairsNew: 0,
+    pairsRedundant: 0,
+    pairsDroppedToCap: 0,
+    pairsRejected: 0,
+    notes: [],
   };
 
   const entitiesOf = markets.map((m) => extractEntities(m.question));
@@ -535,7 +621,9 @@ export function generateCandidates(
       // 3, que vai separá-lo por texto. O que se recusa aqui é o balde inteiro
       // como grupo, não os mercados.
       l2.pairsRejected += uncoveredPairs(members);
-      l2.notes.push(`entidade "${entity}": ${members.length} membros, genérica demais — desce para a camada 3`);
+      l2.notes.push(
+        `entidade "${entity}": ${members.length} membros, genérica demais — desce para a camada 3`,
+      );
       l2Leftovers.push(...members);
       continue;
     }
@@ -563,8 +651,13 @@ export function generateCandidates(
   // --- camada 3: proximidade textual ----------------------------------------
 
   const l3: LayerStats = {
-    layer: 3, groups: 0, pairsNew: 0, pairsRedundant: 0,
-    pairsDroppedToCap: 0, pairsRejected: 0, notes: [],
+    layer: 3,
+    groups: 0,
+    pairsNew: 0,
+    pairsRedundant: 0,
+    pairsDroppedToCap: 0,
+    pairsRejected: 0,
+    notes: [],
   };
 
   const tokensOf = markets.map((m) => new Set(tokenize(m.question)));
@@ -624,7 +717,9 @@ export function generateCandidates(
         const key = pairKey(a, b);
         if (scored.has(key)) continue;
         scored.add(key);
-        if (jaccard(content[a] as Set<string>, content[b] as Set<string>) >= config.textSimilarity) {
+        if (
+          jaccard(content[a] as Set<string>, content[b] as Set<string>) >= config.textSimilarity
+        ) {
           addEdge(a, b);
         } else if (!covered.has(key)) {
           rejectedUncovered++;
@@ -674,7 +769,13 @@ export function generateCandidates(
     l3.pairsDroppedToCap +=
       uncoveredPairs(component) - chunks.reduce((s, c) => s + uncoveredPairs(c), 0);
     chunks.forEach((chunk, k) => {
-      emit(3, `proximidade textual (componente de ${component.length}, parte ${k + 1}/${chunks.length})`, chunk, true, l3);
+      emit(
+        3,
+        `proximidade textual (componente de ${component.length}, parte ${k + 1}/${chunks.length})`,
+        chunk,
+        true,
+        l3,
+      );
     });
   }
 
@@ -765,7 +866,13 @@ export function sampleDiscardedPairs(
 ): DiscardSample {
   const n = markets.length;
   if (n < 2) {
-    return { sampled: 0, maxSimilarity: 0, aboveThreshold: 0, aboveThresholdSameEvent: 0, worst: [] };
+    return {
+      sampled: 0,
+      maxSimilarity: 0,
+      aboveThreshold: 0,
+      aboveThresholdSameEvent: 0,
+      worst: [],
+    };
   }
 
   const coveredKeys = new Set<number>();

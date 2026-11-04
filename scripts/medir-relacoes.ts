@@ -53,7 +53,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     if (m === null) return { error: `argumento desconhecido: ${arg}` };
     if (m[1] === 'amostra') {
       const n = Number(m[2]);
-      if (!Number.isInteger(n) || n < 0) return { error: `--amostra=${m[2]} precisa ser inteiro >= 0` };
+      if (!Number.isInteger(n) || n < 0)
+        return { error: `--amostra=${m[2]} precisa ser inteiro >= 0` };
       args.amostra = n;
     } else args.semente = m[2] as string;
   }
@@ -281,7 +282,7 @@ async function main(): Promise<void> {
     '',
     testadas === 0
       ? '  SEM VEREDITO: nenhuma relação foi testável. O gabarito não respondeu, e a\n' +
-        '  decisão passa inteira para a amostra humana.'
+          '  decisão passa inteira para a amostra humana.'
       : hi < 0.1
         ? `  PASSA com folga: o teto do intervalo (${pct(hi, 1)}) está abaixo dos 10%.`
         : taxa < 0.1
@@ -381,8 +382,8 @@ async function main(): Promise<void> {
     `  confiança <  0,90: ${pct(b90.taxa, 1)} de refutação em ${b90.n} testáveis`,
     a90.n === 0 || b90.n === 0
       ? '  SEM VEREDITO sobre a confiança: uma das metades está vazia. O modelo não usou\n' +
-        '  a faixa toda, e isso por si é um achado — uma confiança que só assume um valor\n' +
-        '  não pode separar nada.'
+          '  a faixa toda, e isso por si é um achado — uma confiança que só assume um valor\n' +
+          '  não pode separar nada.'
       : b90.taxa > a90.taxa
         ? '  A confiança SEPARA na direção certa: a metade de cima refuta menos.'
         : '  A confiança NÃO separa: a metade de cima refuta o mesmo ou mais que a de baixo.\n' +
@@ -431,13 +432,15 @@ async function main(): Promise<void> {
   if (refutadas.length > 0) {
     out.push(
       section('7. AS REFUTADAS — o desfecho violou a restrição'),
-      ...refutadas.slice(0, 15).flatMap((c) => [
-        `  [${c.grupoId}] ${c.relacao.tipo} ${c.relacao.mercados.join(' → ')}  (confiança ${num(c.relacao.confianca, 2)})`,
-        ...c.perguntas.map((p, i) => `      ${c.relacao.mercados[i]}: ${p.slice(0, 84)}`),
-        `      motivo: ${c.motivo}`,
-        `      justificativa do modelo: ${c.relacao.justificativa.slice(0, 150)}`,
-        '',
-      ]),
+      ...refutadas
+        .slice(0, 15)
+        .flatMap((c) => [
+          `  [${c.grupoId}] ${c.relacao.tipo} ${c.relacao.mercados.join(' → ')}  (confiança ${num(c.relacao.confianca, 2)})`,
+          ...c.perguntas.map((p, i) => `      ${c.relacao.mercados[i]}: ${p.slice(0, 84)}`),
+          `      motivo: ${c.motivo}`,
+          `      justificativa do modelo: ${c.relacao.justificativa.slice(0, 150)}`,
+          '',
+        ]),
       refutadas.length > 15 ? `  ... e mais ${refutadas.length - 15}.` : '',
     );
   }

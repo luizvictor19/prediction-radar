@@ -31,13 +31,13 @@ Decidido: CS2, LoL e Dota saem.
 
 ### Fica na coleta
 
-| # | critério | por quê |
-| --- | --- | --- |
-| 1 | aberto, ativo, não arquivado | viabilidade |
-| 2 | **livro dos dois lados** | sem isso não há preço; livro vazio dá mid 0,50 por aritmética e já fabricou resultado falso aqui |
-| 3 | **categoria** na lista abaixo | propriedade estável |
-| 4 | resolve em até **~180 dias** | evita fotografar mercado de 2028 por dois anos |
-| 5 | **teto por RANKING de liquidez** | ver abaixo — teto é custo, não tese |
+| #   | critério                         | por quê                                                                                          |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 1   | aberto, ativo, não arquivado     | viabilidade                                                                                      |
+| 2   | **livro dos dois lados**         | sem isso não há preço; livro vazio dá mid 0,50 por aritmética e já fabricou resultado falso aqui |
+| 3   | **categoria** na lista abaixo    | propriedade estável                                                                              |
+| 4   | resolve em até **~180 dias**     | evita fotografar mercado de 2028 por dois anos                                                   |
+| 5   | **teto por RANKING de liquidez** | ver abaixo — teto é custo, não tese                                                              |
 
 **Categorias a coletar** (mais largo que a tese de hoje, de propósito — histórico
 não se recupera):

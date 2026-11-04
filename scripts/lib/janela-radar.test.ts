@@ -46,10 +46,7 @@ function soBid(capturedAt: number, bid: number): Foto {
 
 describe('escolherAncora — a janela é por TEMPO, não por número de linhas', () => {
   it('pega a foto mais próxima do alvo, não a última anterior a ele', () => {
-    const fotos: Foto[] = [
-      foto(T0 - 70 * MIN, 0.3),
-      foto(T0 - 55 * MIN, 0.4),
-    ];
+    const fotos: Foto[] = [foto(T0 - 70 * MIN, 0.3), foto(T0 - 55 * MIN, 0.4)];
     // Alvo em -60: a de -55 está a 5 min, a de -70 está a 10.
     const a = escolherAncora(fotos, T0 - 60 * MIN, TOLERANCIA_MS.h1);
     assert.equal(a?.mid, 0.4);
@@ -71,11 +68,11 @@ describe('escolherAncora — a janela é por TEMPO, não por número de linhas',
     // Aqui a de -75 é entregue SABENDO que ela é a de -75 — span_1h_min = 75 —
     // e a de -45 é entregue quando está mais perto.
     const semSessenta: Foto[] = [
-      foto(T0 - 75 * MIN, 0.20),
+      foto(T0 - 75 * MIN, 0.2),
       foto(T0 - 45 * MIN, 0.25),
-      foto(T0 - 30 * MIN, 0.30),
+      foto(T0 - 30 * MIN, 0.3),
       foto(T0 - 15 * MIN, 0.35),
-      foto(T0, 0.40),
+      foto(T0, 0.4),
     ];
     const a = escolherAncora(semSessenta, T0 - 60 * MIN, TOLERANCIA_MS.h1);
     // Empate real: -75 e -45 estão as duas a 15 min do alvo. Desempata pela
@@ -84,10 +81,7 @@ describe('escolherAncora — a janela é por TEMPO, não por número de linhas',
   });
 
   it('desempata pela mais antiga, sem depender da ordem de entrada', () => {
-    const emp: Foto[] = [
-      foto(T0 - 45 * MIN, 0.9),
-      foto(T0 - 75 * MIN, 0.1),
-    ];
+    const emp: Foto[] = [foto(T0 - 45 * MIN, 0.9), foto(T0 - 75 * MIN, 0.1)];
     assert.equal(escolherAncora(emp, T0 - 60 * MIN, TOLERANCIA_MS.h1)?.mid, 0.1);
     assert.equal(escolherAncora([...emp].reverse(), T0 - 60 * MIN, TOLERANCIA_MS.h1)?.mid, 0.1);
   });
@@ -98,34 +92,36 @@ describe('escolherAncora — a janela é por TEMPO, não por número de linhas',
 
   it('a tolerância de 1h cobre um ciclo inteiro perdido (buraco de 30 min)', () => {
     // Dois ciclos consecutivos ausentes em volta do alvo: sobram -82,5 e -37,5.
-    const fotos: Foto[] = [
-      foto(T0 - 82.5 * MIN, 0.2),
-      foto(T0 - 37.5 * MIN, 0.3),
-    ];
+    const fotos: Foto[] = [foto(T0 - 82.5 * MIN, 0.2), foto(T0 - 37.5 * MIN, 0.3)];
     // 22,5 min de distância dos dois lados: além de ±15, então SEM âncora.
     assert.equal(escolherAncora(fotos, T0 - 60 * MIN, TOLERANCIA_MS.h1), null);
 
     // Com um ciclo só perdido (buraco de 30 min), a mais próxima está a 15 min
     // e a âncora existe.
-    const umSo: Foto[] = [
-      foto(T0 - 75 * MIN, 0.2),
-      foto(T0 - 45 * MIN, 0.3),
-    ];
+    const umSo: Foto[] = [foto(T0 - 75 * MIN, 0.2), foto(T0 - 45 * MIN, 0.3)];
     assert.notEqual(escolherAncora(umSo, T0 - 60 * MIN, TOLERANCIA_MS.h1), null);
   });
 });
 
 describe('variacaoComBase — mid nulo continua nulo, mas a variação não', () => {
-  const A = (mid: number | null, bid: number | null, ask: number | null): Foto =>
-    ({ capturedAt: T0, mid, bid, ask });
-  const B = (mid: number | null, bid: number | null, ask: number | null): Foto =>
-    ({ capturedAt: T0 - 60 * MIN, mid, bid, ask });
+  const A = (mid: number | null, bid: number | null, ask: number | null): Foto => ({
+    capturedAt: T0,
+    mid,
+    bid,
+    ask,
+  });
+  const B = (mid: number | null, bid: number | null, ask: number | null): Foto => ({
+    capturedAt: T0 - 60 * MIN,
+    mid,
+    bid,
+    ask,
+  });
 
   it('mid nas duas pontas: base mid', () => {
-    const r = variacaoComBase(A(0.42, 0.41, 0.43), B(0.40, 0.39, 0.41));
+    const r = variacaoComBase(A(0.42, 0.41, 0.43), B(0.4, 0.39, 0.41));
     assert.equal(r.base, 'mid');
     assert.ok(Math.abs((r.variacao as number) - 0.02) < 1e-9);
-    assert.equal(r.ref, 0.40);
+    assert.equal(r.ref, 0.4);
   });
 
   it('sem mid nas duas, com ask nas duas: base ask — o azarão que andou 2 centavos', () => {
@@ -136,7 +132,7 @@ describe('variacaoComBase — mid nulo continua nulo, mas a variação não', ()
   });
 
   it('sem mid e sem ask, com bid nas duas: base bid', () => {
-    const r = variacaoComBase(soBid(T0, 0.30), soBid(T0 - 60 * MIN, 0.28));
+    const r = variacaoComBase(soBid(T0, 0.3), soBid(T0 - 60 * MIN, 0.28));
     assert.equal(r.base, 'bid');
     assert.ok(Math.abs((r.variacao as number) - 0.02) < 1e-9);
   });
@@ -158,7 +154,7 @@ describe('variacaoComBase — mid nulo continua nulo, mas a variação não', ()
 
   it('a ordem da cascata é mid, depois ask, depois bid', () => {
     // Livro completo dos dois lados: tem que escolher mid, não ask.
-    const r = variacaoComBase(A(0.42, 0.41, 0.43), B(0.40, 0.39, 0.41));
+    const r = variacaoComBase(A(0.42, 0.41, 0.43), B(0.4, 0.39, 0.41));
     assert.equal(r.base, 'mid');
     // Sem mid, mas com os dois lados: ask ganha de bid.
     const r2 = variacaoComBase(A(null, 0.41, 0.43), B(null, 0.39, 0.41));
@@ -183,11 +179,11 @@ describe('variacaoComBase — mid nulo continua nulo, mas a variação não', ()
 
   it('âncora ausente: nulo, sem exceção', () => {
     assert.equal(variacaoComBase(A(0.42, 0.41, 0.43), null).variacao, null);
-    assert.equal(variacaoComBase(null, B(0.40, 0.39, 0.41)).variacao, null);
+    assert.equal(variacaoComBase(null, B(0.4, 0.39, 0.41)).variacao, null);
   });
 
   it('subtrai na ordem agora menos âncora', () => {
-    const r = variacaoComBase(A(0.40, 0.39, 0.41), B(0.42, 0.41, 0.43));
+    const r = variacaoComBase(A(0.4, 0.39, 0.41), B(0.42, 0.41, 0.43));
     assert.ok((r.variacao as number) < 0);
   });
 });
@@ -195,7 +191,7 @@ describe('variacaoComBase — mid nulo continua nulo, mas a variação não', ()
 describe('lerJanelas — o alvo é a última FOTO, não o relógio', () => {
   it('ancora em agora.capturedAt, de modo que a janela medida é a janela pedida', () => {
     // Série de 8h a cada 15 min. A última foto é T0.
-    const fotos = grade(33, i => 0.5 - i * 0.001);
+    const fotos = grade(33, (i) => 0.5 - i * 0.001);
     const r = lerJanelas(fotos);
     assert.equal(r.agora?.capturedAt, T0);
     // A âncora de 1h cai exatamente em T0 - 1h, sem desvio.
@@ -240,7 +236,7 @@ describe('lerJanelas — o alvo é a última FOTO, não o relógio', () => {
   it('âncora com livro vazio no meio de uma série cheia: variação nula', () => {
     // Um ciclo em que o livro secou dos dois lados, bem em cima da âncora de
     // 1h. Não há base comum, e o resultado é nulo — não o mid do ciclo vizinho.
-    const fotos = grade(33, i => (i === 4 ? null : 0.5));
+    const fotos = grade(33, (i) => (i === 4 ? null : 0.5));
     const r = lerJanelas(fotos);
     assert.equal(r.ancoras.h1?.capturedAt, T0 - JANELA_MS.h1);
     assert.equal(r.ancoras.h1?.mid, null);

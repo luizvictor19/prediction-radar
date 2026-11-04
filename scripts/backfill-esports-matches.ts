@@ -63,7 +63,9 @@ const LABEL = 'backfill-esports';
 const BATCH_SIZE = 1000;
 
 function flag(name: string): string | null {
-  const hit = process.argv.slice(2).find(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
+  const hit = process.argv
+    .slice(2)
+    .find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
   if (hit === undefined) return null;
   const [, value] = hit.split('=');
   return value ?? '';
@@ -206,11 +208,7 @@ async function main(): Promise<void> {
       : `\n    markets/partida ...... ${(written.links / written.matches).toFixed(1)}`;
 
   /** Uma linha com o total e a quebra pelos dois caminhos. */
-  const line = (
-    label: string,
-    pick: (p: PathCounts) => number,
-    nota = '',
-  ): string => {
+  const line = (label: string, pick: (p: PathCounts) => number, nota = ''): string => {
     const t = pick(all);
     return (
       `  ${label.padEnd(24, '.')} ${String(t).padStart(6)} (${pct(t, all.resolved).padStart(6)})` +
@@ -233,23 +231,23 @@ async function main(): Promise<void> {
   Cada linha abaixo: TOTAL (% dos resolvidos)   c1=caminho 1  c2=caminho 2
 
   outcome_a_index
-${line('casado', p => p.outcome.matched)}
-${line('sem lado de time', p => p.outcome.noTeamSide, '   <- correto')}
-${line('não casou', p => p.outcome.unmatched, '   <- c1 anomalia / c2 recomputável')}
-${line('ambíguo', p => p.outcome.ambiguous, '   <- humano')}
+${line('casado', (p) => p.outcome.matched)}
+${line('sem lado de time', (p) => p.outcome.noTeamSide, '   <- correto')}
+${line('não casou', (p) => p.outcome.unmatched, '   <- c1 anomalia / c2 recomputável')}
+${line('ambíguo', (p) => p.outcome.ambiguous, '   <- humano')}
 
   papel do mercado          (${total.learnedRoleForms} formas aprendidas da coluna)
-${line('da coluna', p => p.role.column)}
-${line('inferido (estático)', p => p.role.guess)}
-${line('inferido (aprendido)', p => p.role.learned)}
-${line('desconhecido', p => p.role.unknown, '   <- estado C')}
+${line('da coluna', (p) => p.role.column)}
+${line('inferido (estático)', (p) => p.role.guess)}
+${line('inferido (aprendido)', (p) => p.role.learned)}
+${line('desconhecido', (p) => p.role.unknown, '   <- estado C')}
 
-${line('sem best_of', p => p.missingBestOf)}
+${line('sem best_of', (p) => p.missingBestOf)}
       \`score\` não é gravado em event_metadata — ver bestOfFromScore.
 
   os três estados
-${line('A: revisão humana', p => p.needsReview, '   <- a fila do /review')}
-${line('B: recomputável', p => p.recomputable, '   <- --recompute resolve')}
+${line('A: revisão humana', (p) => p.needsReview, '   <- a fila do /review')}
+${line('B: recomputável', (p) => p.recomputable, '   <- --recompute resolve')}
       C: papel desconhecido, agregado por família no fim deste relatório.
 
   entidades DISTINTAS tocadas${dryRun ? ' (DRY-RUN: nada foi escrito)' : ''}
@@ -283,9 +281,7 @@ ${line('B: recomputável', p => p.recomputable, '   <- --recompute resolve')}
 `);
 
     for (const [family, seen] of families.slice(0, 40)) {
-      console.log(
-        `  ${String(seen.count).padStart(6)}  ${family.padEnd(44)}  ex: ${seen.example}`,
-      );
+      console.log(`  ${String(seen.count).padStart(6)}  ${family.padEnd(44)}  ex: ${seen.example}`);
     }
   }
 
@@ -307,7 +303,7 @@ ${line('B: recomputável', p => p.recomputable, '   <- --recompute resolve')}
   if (total.errors.length > 0) process.exit(1);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(`[${LABEL}] Fatal:`, err);
   process.exit(1);
 });

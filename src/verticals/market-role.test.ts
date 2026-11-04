@@ -118,8 +118,14 @@ test('a família mascara o código de time do meio do sufixo', () => {
   // Sem isto, `gameN-round-handicap-{code}-X` aparecia como 36 famílias
   // distintas no relatório — uma por time. É uma regra só.
   const codes = ['navi', 'vit'];
-  assert.equal(suffixFamily('game1-round-handicap-navi-5pt5', codes), 'gameN-round-handicap-{code}-X');
-  assert.equal(suffixFamily('game1-round-handicap-vit-5pt5', codes), 'gameN-round-handicap-{code}-X');
+  assert.equal(
+    suffixFamily('game1-round-handicap-navi-5pt5', codes),
+    'gameN-round-handicap-{code}-X',
+  );
+  assert.equal(
+    suffixFamily('game1-round-handicap-vit-5pt5', codes),
+    'gameN-round-handicap-{code}-X',
+  );
   assert.equal(suffixFamily('game2-round-total-24pt5'), 'gameN-round-total-X');
   assert.equal(suffixFamily(null), '(sem sufixo)');
 });
@@ -173,10 +179,7 @@ test('forma com poucas observações não é aprendida', () => {
 test('forma ambígua é DESCARTADA, não decidida pelo mais comum', () => {
   // Se a mesma forma de sufixo aparece com dois papéis, ela não determina
   // papel. Escolher a maioria seria transformar ambiguidade medida em fato.
-  const learned = learnRoles([
-    ...obs('game1-x', 'papel_a', 30),
-    ...obs('game1-x', 'papel_b', 20),
-  ]);
+  const learned = learnRoles([...obs('game1-x', 'papel_a', 30), ...obs('game1-x', 'papel_b', 20)]);
   assert.equal(learned['game1-x'], undefined);
 });
 

@@ -26,7 +26,10 @@ test('semente diferente, fila diferente', () => {
 
 test('a fila embaralha de verdade — não devolve a ordem de entrada', () => {
   const entrada = grupos(50).map((g) => g.id);
-  assert.notDeepEqual(ordenarFila(grupos(50), SEMENTE_PADRAO).map((g) => g.id), entrada);
+  assert.notDeepEqual(
+    ordenarFila(grupos(50), SEMENTE_PADRAO).map((g) => g.id),
+    entrada,
+  );
 });
 
 test('grupo novo se encaixa sem reembaralhar os antigos', () => {

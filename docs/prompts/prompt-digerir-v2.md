@@ -25,11 +25,11 @@ prompt tem que dizer isso em voz alta — o modelo preenche tabela por padrão.
 
 Cada pegadinha ganha **severidade**, de uma lista fechada:
 
-| severidade | significa |
-| --- | --- |
-| `muda_resultado` | decide SIM contra NÃO |
-| `muda_timing` | não muda o desfecho, mas muda **quando** resolve |
-| `detalhe` | nuance de leitura, não muda decisão |
+| severidade       | significa                                        |
+| ---------------- | ------------------------------------------------ |
+| `muda_resultado` | decide SIM contra NÃO                            |
+| `muda_timing`    | não muda o desfecho, mas muda **quando** resolve |
+| `detalhe`        | nuance de leitura, não muda decisão              |
 
 `muda_timing` existe por um caso real que apareceu: o mercado do White Sox
 resolve NÃO **na eliminação matemática**, não no fim da World Series. O desfecho
@@ -77,7 +77,7 @@ isso em vez de forçar as categorias existentes.
 
 ## O conserto da trava
 
-Uma das 10 foi recusada porque escreveu *"a leitura restritiva é mais provável"*.
+Uma das 10 foi recusada porque escreveu _"a leitura restritiva é mais provável"_.
 A trava pegou a palavra "provável", e ela estava certa em pegar — mas o modelo
 não estava opinando sobre desfecho, e sim sobre qual leitura da regra pesa mais.
 
@@ -104,7 +104,7 @@ rodada de ontem e são a régua:
   conta." → `muda_resultado`
 - "A regra exclui coligações e conta só os assentos da entidade nomeada." →
   `muda_resultado`
-- "Fechamento exatamente em US$ 76.000 resolve NÃO — a regra diz *higher than*."
+- "Fechamento exatamente em US$ 76.000 resolve NÃO — a regra diz _higher than_."
   → `muda_resultado`
 - "Resolve NÃO na eliminação matemática, antes do jogo." → `muda_timing`
 - "A janela começa em 24/11/2025, não na criação do mercado." → `muda_resultado`

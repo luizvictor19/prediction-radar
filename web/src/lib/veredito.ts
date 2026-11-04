@@ -60,7 +60,7 @@ export type Veredicavel = {
 export function ehArmadilha(a: Veredicavel): boolean {
   return (
     a.classe === 'pegadinha' &&
-    (a.subtipos ?? []).some(s => s === 'muda_resultado' || s === 'muda_timing')
+    (a.subtipos ?? []).some((s) => s === 'muda_resultado' || s === 'muda_timing')
   );
 }
 

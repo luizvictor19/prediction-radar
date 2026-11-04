@@ -4,7 +4,10 @@ import type { DetectedSignal, Event } from '../types/index.js';
 
 const client = new Anthropic();
 
-export async function generateDailyReport(signals: DetectedSignal[], events: Event[]): Promise<string> {
+export async function generateDailyReport(
+  signals: DetectedSignal[],
+  events: Event[],
+): Promise<string> {
   const prompt = buildDailyReportPrompt(signals, events);
 
   const message = await client.messages.create({

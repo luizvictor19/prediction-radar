@@ -1,5 +1,19 @@
-import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, CalendarDrivenSignalMetadata } from '../types/index.js';
-import { confidenceStars, describeVolatility, truncate, calcCalendarDrivenStake, calcMinBankroll, formatSignalAge, formatTimeUntilResolution, formatEndDate, formatTimeSinceOpen } from '../lib/format-helpers.js';
+import type {
+  CrossMarketInterSignalMetadata,
+  CrossMarketInterMember,
+  CalendarDrivenSignalMetadata,
+} from '../types/index.js';
+import {
+  confidenceStars,
+  describeVolatility,
+  truncate,
+  calcCalendarDrivenStake,
+  calcMinBankroll,
+  formatSignalAge,
+  formatTimeUntilResolution,
+  formatEndDate,
+  formatTimeSinceOpen,
+} from '../lib/format-helpers.js';
 
 export interface SignalRow {
   id: string;
@@ -8,7 +22,14 @@ export interface SignalRow {
   suggested_outcome: string | null;
   confidence_score?: number | null;
   metadata: Record<string, unknown> | null;
-  events?: { title: string; polymarket_id: string; outcomes?: any; sports_market_type?: string | null; line?: number | null; end_date?: string | null } | null;
+  events?: {
+    title: string;
+    polymarket_id: string;
+    outcomes?: any;
+    sports_market_type?: string | null;
+    line?: number | null;
+    end_date?: string | null;
+  } | null;
 }
 
 export interface PositionRow {
@@ -82,7 +103,7 @@ function talvez(v: number | null, f: (n: number) => number): number | null {
 
 export function formatPricePct(price: number): string {
   if (price < 0.05) return `${(price * 100).toFixed(2)}%`;
-  if (price < 0.10) return `${(price * 100).toFixed(1)}%`;
+  if (price < 0.1) return `${(price * 100).toFixed(1)}%`;
   return `${(price * 100).toFixed(0)}%`;
 }
 
@@ -245,8 +266,8 @@ export function formatCalendarDrivenSignal(
   // `stake` é `number | null`: nulo quando a carteira não está marcada. Tudo
   // que deriva dele propaga o nulo em vez de virar zero, e sai como "—".
   const stake = calcCalendarDrivenStake(bankroll, cap, confidence);
-  const shares0 = talvez(stake, s => (price0 > 0 ? s / price0 : 0));
-  const shares1 = talvez(stake, s => (price1 > 0 ? s / price1 : 0));
+  const shares0 = talvez(stake, (s) => (price0 > 0 ? s / price0 : 0));
+  const shares1 = talvez(stake, (s) => (price1 > 0 ? s / price1 : 0));
   const payoff0 = shares0;
   const payoff1 = shares1;
   const profit0 = stake === null || payoff0 === null ? null : payoff0 - stake;
@@ -263,7 +284,8 @@ export function formatCalendarDrivenSignal(
     prefixSide1 = price1 >= 0.5 ? '👑 favorito —' : '🐺 azarão —';
   }
 
-  const truncLimit = (isSpreadType && line !== null) || (sportsMarketType === 'totals' && line !== null) ? 24 : 16;
+  const truncLimit =
+    (isSpreadType && line !== null) || (sportsMarketType === 'totals' && line !== null) ? 24 : 16;
   const l0 = truncate(label0, truncLimit);
   const l1 = truncate(label1, truncLimit);
   let sideRepr0: string;
@@ -351,7 +373,11 @@ export function formatCalendarDrivenSignal(
   );
 }
 
-function formatEarlyMarketSignal(signal: SignalRow, bankroll: number | null, maxStakePct: number): string {
+function formatEarlyMarketSignal(
+  signal: SignalRow,
+  bankroll: number | null,
+  maxStakePct: number,
+): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const startDate = meta['start_date'] as string;
   const currentPrice = meta['current_yes_price'] as number;
@@ -398,8 +424,8 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number | null, max
   text += `2. Reação exagerada → vai voltar pro patamar inicial\n`;
   text += `3. Mercado estabilizando → consenso emergente\n\n`;
 
-  const sharesPrimary = talvez(stake, v => (currentPrice > 0 ? v / currentPrice : 0));
-  const sharesSecondary = talvez(stake, v => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
+  const sharesPrimary = talvez(stake, (v) => (currentPrice > 0 ? v / currentPrice : 0));
+  const sharesSecondary = talvez(stake, (v) => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
 
   text += stake === null ? `${SEM_DIMENSIONAMENTO}\n` : `Stake sugerido: ${usd(stake)}\n`;
   text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${qtd(sharesPrimary)} shares\n`;
@@ -408,11 +434,24 @@ function formatEarlyMarketSignal(signal: SignalRow, bankroll: number | null, max
   return text + ageLine;
 }
 
-function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number | null, maxStakePct: number): string {
+function formatHypeRealityGapSignal(
+  signal: SignalRow,
+  bankroll: number | null,
+  maxStakePct: number,
+): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const triggers = (meta['trigger_types'] ?? []) as string[];
-  const momentum = meta['momentum'] as { triggered: boolean; price_change_pct: number; from: number; to: number } | undefined;
-  const liquidity = meta['liquidity'] as { triggered: boolean; current_volume_1h: number; baseline_hourly: number; volume_ratio: number } | undefined;
+  const momentum = meta['momentum'] as
+    | { triggered: boolean; price_change_pct: number; from: number; to: number }
+    | undefined;
+  const liquidity = meta['liquidity'] as
+    | {
+        triggered: boolean;
+        current_volume_1h: number;
+        baseline_hourly: number;
+        volume_ratio: number;
+      }
+    | undefined;
   const currentPrice = (meta['current_price'] as number | undefined) ?? 0;
   const primaryOutcome = (meta['primary_outcome'] as string | undefined) ?? 'Yes';
   const secondaryOutcome = (meta['secondary_outcome'] as string | undefined) ?? 'No';
@@ -443,8 +482,8 @@ function formatHypeRealityGapSignal(signal: SignalRow, bankroll: number | null, 
   text += `1. Notícia real legítima → preço novo é correto\n`;
   text += `2. Hype puro → vai voltar pro patamar anterior\n`;
   text += `3. Manipulação coordenada → vai voltar mais devagar\n\n`;
-  const sharesPrimary = talvez(stake, v => (currentPrice > 0 ? v / currentPrice : 0));
-  const sharesSecondary = talvez(stake, v => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
+  const sharesPrimary = talvez(stake, (v) => (currentPrice > 0 ? v / currentPrice : 0));
+  const sharesSecondary = talvez(stake, (v) => (1 - currentPrice > 0 ? v / (1 - currentPrice) : 0));
 
   text += stake === null ? `${SEM_DIMENSIONAMENTO}\n` : `Stake sugerido: ${usd(stake)}\n`;
   text += `   → ${primaryOutcome} @ ${currentPrice.toFixed(3)} = ${qtd(sharesPrimary)} shares\n`;
@@ -490,7 +529,7 @@ export function formatSignal(
   const side = direction === 'over' ? 'No' : 'Yes';
 
   const stakeTotal = calcStake(bankroll, maxStakePct, edgePct);
-  const stakePerLeg = talvez(stakeTotal, v => (groupSize > 0 ? v / groupSize : 0));
+  const stakePerLeg = talvez(stakeTotal, (v) => (groupSize > 0 ? v / groupSize : 0));
 
   // Viability cases A / B / C
   let viabilityLine: string;
@@ -520,7 +559,9 @@ export function formatSignal(
   // Scenarios. Cada payoff é `stake / preço`: sem stake não há cenário, e
   // inventar um com stake zero devolveria uma tabela de lucros zerados.
   const scenarios =
-    stakePerLeg === null ? [] : computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
+    stakePerLeg === null
+      ? []
+      : computeScenarios(members, direction, stakePerLeg, priceSum, groupSize);
   const probLucroTotal = scenarios.reduce((acc, s) => acc + (s.profit > 0 ? s.probability : 0), 0);
   const scenariosSorted = [...scenarios].sort((a, b) => b.probability - a.probability);
 
@@ -536,8 +577,7 @@ export function formatSignal(
     const profitEmoji = s.profit > 0 ? '✅' : '❌';
     const profitLabel = s.profit > 0 ? 'lucro' : 'prejuízo';
     const probPct = (s.probability * 100).toFixed(1);
-    natureSec +=
-      `   ${profitEmoji} ${s.winnerName} ganha (${probPct}%) → recebe $${s.payoff.toFixed(2)} → ${profitLabel} $${Math.abs(s.profit).toFixed(2)}\n`;
+    natureSec += `   ${profitEmoji} ${s.winnerName} ganha (${probPct}%) → recebe $${s.payoff.toFixed(2)} → ${profitLabel} $${Math.abs(s.profit).toFixed(2)}\n`;
   }
   natureSec +=
     `   \n` +
@@ -558,14 +598,16 @@ export function formatSignal(
   for (const m of members) {
     const name = memberDisplayTitle(m.title);
     const priceForBuy = direction === 'over' ? 1 - m.yes_price : m.yes_price;
-    const shares = talvez(stakePerLeg, v => (v > 0 && priceForBuy > 0 ? v / priceForBuy : 0));
+    const shares = talvez(stakePerLeg, (v) => (v > 0 && priceForBuy > 0 ? v / priceForBuy : 0));
     execSec += `   • ${name} → ${side} → ${usd(stakePerLeg)} a ${priceForBuy.toFixed(3)} (${qtd(shares)} shares)\n`;
   }
 
   return (
     `${emoji} ${title}\n` +
     `Cross-Market Inter · ${groupSize} membros\n` +
-    (earliestEnd ? `Encerra ${formatEndDate(earliestEnd)} · ${formatTimeUntilResolution(earliestEnd)}\n` : '') +
+    (earliestEnd
+      ? `Encerra ${formatEndDate(earliestEnd)} · ${formatTimeUntilResolution(earliestEnd)}\n`
+      : '') +
     `\n` +
     `⚡ Confiança: ${confidenceStars(confidence)}\n` +
     `Edge: ${edgePct.toFixed(2)}% líquido | direction: ${direction}\n` +

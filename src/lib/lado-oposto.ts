@@ -71,7 +71,7 @@ export function rotulosDoMercado(outcomes: unknown): string[] | null {
   if (outcomes === null || typeof outcomes !== 'object') return null;
   const values = (outcomes as { values?: unknown }).values;
   if (!Array.isArray(values)) return null;
-  if (!values.every(v => typeof v === 'string')) return null;
+  if (!values.every((v) => typeof v === 'string')) return null;
   return values as string[];
 }
 

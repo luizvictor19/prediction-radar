@@ -240,7 +240,7 @@ export function impliedSeriesProbability(
 ): number | null {
   if (!Number.isInteger(bestOf) || bestOf < 1) return null;
   if (gameProbs.length !== bestOf) return null;
-  if (gameProbs.some(p => !Number.isFinite(p) || p < 0 || p > 1)) return null;
+  if (gameProbs.some((p) => !Number.isFinite(p) || p < 0 || p > 1)) return null;
 
   // Distribuição do número de vitórias do time A, acumulada game a game.
   let dist = [1];
@@ -268,10 +268,7 @@ export interface PriceFragmentInput {
   windows: readonly ResolvedWindow[];
 }
 
-function windowPayload(
-  window: ResolvedWindow,
-  current: AnchorSnapshot,
-): Record<string, unknown> {
+function windowPayload(window: ResolvedWindow, current: AnchorSnapshot): Record<string, unknown> {
   if (window.snapshot === null) {
     return { window: window.key, target: window.target, missing: true };
   }
@@ -296,8 +293,7 @@ function windowPayload(
         ? current.liquidity - past.liquidity
         : null,
     spread: pastSpread,
-    spread_delta:
-      currentSpread !== null && pastSpread !== null ? currentSpread - pastSpread : null,
+    spread_delta: currentSpread !== null && pastSpread !== null ? currentSpread - pastSpread : null,
     volume_24h: past.volume24h,
   };
 }
@@ -323,12 +319,12 @@ export function buildPriceFragments(input: PriceFragmentInput): ContextFragment[
     captured_at: now.capturedAt,
   };
 
-  const windowRows = windows.map(w => windowPayload(w, now));
+  const windowRows = windows.map((w) => windowPayload(w, now));
 
   // --- preço ---------------------------------------------------------------
   if (now.midPrice !== null) {
     const moves = windows
-      .map(w => {
+      .map((w) => {
         const past = w.snapshot;
         if (past?.midPrice == null || now.midPrice === null) return null;
         return `${pp(now.midPrice - past.midPrice)} em ${w.key}`;
@@ -369,7 +365,7 @@ export function buildPriceFragments(input: PriceFragmentInput): ContextFragment[
     if (currentSpread !== null) parts.push(`spread ${price(currentSpread)}`);
     if (now.volume24h !== null) parts.push(`volume 24h ${formatUsd(now.volume24h)}`);
 
-    const past24h = windows.find(w => w.key === '24h')?.snapshot ?? null;
+    const past24h = windows.find((w) => w.key === '24h')?.snapshot ?? null;
     const trend: string[] = [];
     if (past24h !== null && now.liquidity !== null && past24h.liquidity !== null) {
       trend.push(`liquidez era ${formatUsd(past24h.liquidity)} em 24h`);
@@ -428,13 +424,13 @@ export function buildConsistencyFragment(input: ConsistencyInput): ContextFragme
   if (ordered.length !== bestOf) return null;
 
   const implied = impliedSeriesProbability(
-    ordered.map(g => g.mid),
+    ordered.map((g) => g.mid),
     bestOf,
   );
   if (implied === null) return null;
 
-  const stamps = [input.seriesCapturedAt, ...ordered.map(g => g.capturedAt)];
-  const times = stamps.map(s => new Date(s).getTime());
+  const stamps = [input.seriesCapturedAt, ...ordered.map((g) => g.capturedAt)];
+  const times = stamps.map((s) => new Date(s).getTime());
   const oldest = Math.min(...times);
   const newest = Math.max(...times);
 
@@ -458,7 +454,7 @@ export function buildConsistencyFragment(input: ConsistencyInput): ContextFragme
       // leitura de observações sob uma hipótese que a própria modalidade viola.
       model: 'independent_games',
       max_staleness_seconds: Math.round((newest - oldest) / 1000),
-      games: ordered.map(g => ({
+      games: ordered.map((g) => ({
         game: g.game,
         event_id: g.eventId,
         mid_price: g.mid,
@@ -467,7 +463,7 @@ export function buildConsistencyFragment(input: ConsistencyInput): ContextFragme
     },
     summary:
       `Série BO${bestOf}${input.bestOfSource === 'inferred' ? ' (best_of inferido dos markets de game)' : ''}: ` +
-      `${teamLabel} em ${price(seriesMid)}; os games precificam ${ordered.map(g => price(g.mid)).join(' / ')}, ` +
+      `${teamLabel} em ${price(seriesMid)}; os games precificam ${ordered.map((g) => price(g.mid)).join(' / ')}, ` +
       `o que implica ${price(implied)} para a série sob independência entre games. ` +
       `Divergência de ${pp(divergence)}.`,
     // Insumos exatos, combinação modelada. A independência entre games é falsa em
@@ -565,7 +561,7 @@ async function loadLinkedMarkets(matchId: string): Promise<LinkedMarket[]> {
     .select('id, slug, outcomes')
     .in(
       'id',
-      rows.map(r => r['event_id'] as string),
+      rows.map((r) => r['event_id'] as string),
     );
 
   if (eventError) {
@@ -573,9 +569,9 @@ async function loadLinkedMarkets(matchId: string): Promise<LinkedMarket[]> {
     return [];
   }
 
-  const byId = new Map((events ?? []).map(e => [e['id'] as string, e] as const));
+  const byId = new Map((events ?? []).map((e) => [e['id'] as string, e] as const));
 
-  return rows.map(row => {
+  return rows.map((row) => {
     const eventId = row['event_id'] as string;
     const event = byId.get(eventId);
     const outcomeAIndex = row['outcome_a_index'] as number | null;
@@ -605,7 +601,7 @@ async function fetchMarketHistory(ctx: EnricherContext): Promise<ContextFragment
   const markets = await loadLinkedMarkets(ctx.matchId);
   if (markets.length === 0) return [];
 
-  const series = markets.find(m => m.role === 'moneyline' && m.teamLabel !== null);
+  const series = markets.find((m) => m.role === 'moneyline' && m.teamLabel !== null);
   if (!series?.teamLabel) return [];
 
   const now = await anchorAt(series.eventId, series.teamLabel, ctx.asOf, NOW_TOLERANCE_SECONDS);
@@ -646,12 +642,12 @@ async function fetchMarketHistory(ctx: EnricherContext): Promise<ContextFragment
 
   // --- consistência BO3/BO5 ------------------------------------------------
   const gameMarkets = markets
-    .map(m => ({ market: m, game: gameNumberOf(m.suffix, m.role) }))
+    .map((m) => ({ market: m, game: gameNumberOf(m.suffix, m.role) }))
     .filter((g): g is { market: LinkedMarket; game: number } => g.game !== null);
 
   const format = resolveBestOf(
     columnBestOf,
-    gameMarkets.map(g => g.game),
+    gameMarkets.map((g) => g.game),
   );
 
   if (format !== null && format.bestOf >= 3 && now.midPrice !== null) {
