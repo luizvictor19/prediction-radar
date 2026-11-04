@@ -21,6 +21,10 @@ worktree precisar rodar algo contra o banco, quem copia é o Luiz:
     cp .env .claude/worktrees/<type>-NN-<scope>/
     cp web/.env.local .claude/worktrees/<type>-NN-<scope>/web/
 
+Uma vez por clone, para o `git blame` pular o commit de formatação:
+
+    git config blame.ignoreRevsFile .git-blame-ignore-revs
+
 ## Portão
 
 O comando único (`npm run check`) entra com o PR de CI. Até lá, na ordem:
