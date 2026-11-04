@@ -133,8 +133,14 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
    +0,13.
 5. **Teto sai de medição, não de chute.** O gargalo não é a API, é disco.
 6. **Código morto o git lembra; dado morto some para sempre.** Apagar código:
-   livre. Apagar dado: nunca. `esports_snapshots` (~14,26M linhas em agosto)
-   fica, mesmo com esports desligado.
+   livre. Apagar dado: nunca. Tirar do banco não é apagar quando o dado fica
+   guardado fora dele, com contagem de linhas conferida contra o banco e
+   sha256 de cada arquivo (decidido em 04/11/2026, issue 54). É o caso das
+   partições de agosto de `esports_snapshots` (14,26M linhas) e da
+   `polymarket_snapshots_legado`: arquivadas e conferidas em 04/11 no bucket
+   `arquivo-frio`, pasta `2026-11-04/`, com `manifest.json`, e numa cópia
+   local do dono. Saem do banco quando o dono aplicar a migration
+   `20261104221251_drop_archived_cold_tables`.
 
 ## A tela (`web/`)
 
