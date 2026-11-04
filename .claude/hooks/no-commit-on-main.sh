@@ -62,10 +62,27 @@ if $is_commit && [[ "$branch" == "main" ]]; then
 fi
 
 if $is_push; then
-  if grep -Eq '(^|[[:space:]])(--force|--force-with-lease|--force-if-includes|-f|--mirror)([[:space:]=]|$)|[[:space:]]\+[^[:space:]]+' <<<"$command"; then
-    deny "Never force push. Push the branch normally, or ask Luiz."
-  fi
-  if grep -Eq '(^|[[:space:]:])(refs/heads/)?main([[:space:]]|$)' <<<"$command"; then
+  # Only the arguments of the real `git push` segments are checked, word by
+  # word. Text elsewhere in the command (a grep pattern, a commit message)
+  # can no longer look like a +refspec or a branch named main.
+  segs="$(sed -E 's/(&&|\|\||[;|&`(){}])/\n/g' <<<"$command" \
+    | sed -nE 's/^[[:space:]]*git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|-[^[:space:]]+))*[[:space:]]+push([[:space:]]+|$)//p')"
+  pushed_main=false
+  while IFS= read -r args; do
+    read -r -a words <<<"$args" || true
+    for w in "${words[@]}"; do
+      w="${w%\"}"; w="${w#\"}"; w="${w%\'}"; w="${w#\'}"
+      case "$w" in
+        --force|--force=*|--force-with-lease|--force-with-lease=*|--force-if-includes|--mirror|+*)
+          deny "Never force push. Push the branch normally, or ask Luiz." ;;
+        -[!-]*)
+          [[ "$w" == *f* ]] && deny "Never force push. Push the branch normally, or ask Luiz." ;;
+        main|:main|*:main|refs/heads/main|*:refs/heads/main)
+          pushed_main=true ;;
+      esac
+    done
+  done <<<"$segs"
+  if $pushed_main; then
     deny "Never push to main. Push the feature branch and open a PR."
   fi
   if [[ "$branch" == "main" ]]; then
