@@ -16,20 +16,27 @@
 -- Restoring one table: create it again (a partition of esports_snapshots for
 -- that day, or the legado table), then `gunzip -c FILE | psql <db-url>`.
 --
--- Nothing else depends on these tables: no view, function body, incoming
--- foreign key or publication (catalog read, 2026-11-04 22:12 UTC). The parent
--- esports_snapshots and its default partition stay. manage_esports_partitions
--- only creates the coming days and drops expired ones, so it is unaffected.
+-- Nothing else depends on these tables (2026-11-04 22:12 UTC): pg_depend shows
+-- no view, incoming foreign key or publication, a text search of every public
+-- function body (prosrc) finds neither name, and neither does `git grep` over
+-- src/, web/src/ and scripts/. The parent esports_snapshots and its default
+-- partition stay. manage_esports_partitions creates only today plus its
+-- lookahead days and drops expired ones (body read the same day), so it does
+-- not bring the August partitions back.
 --
--- The guard below recounts every table and refuses to drop anything if one
--- holds MORE rows than its archive: such a row was written after the export
--- and would exist nowhere else. Fewer rows is safe (the archive is a
--- superset), and so is a missing or empty table, which is what a fresh local
--- stack (`npm run test:db`) has: nothing there is archived data. It is a
--- full scan of cold tables (about 1.9 GB) that nothing writes to, so it costs
--- time, not contention.
+-- Everything runs in one DO block, so a single raise aborts every drop
+-- whatever the runner's transaction mode. It first recounts each table and
+-- refuses if one holds MORE rows than its archive: such a row was written
+-- after the export and would exist nowhere else. Fewer rows is safe (the
+-- archive is a superset), and so is a missing or empty table, which is what a
+-- fresh local stack (`npm run test:db`, exercised 2026-11-04) has.
+--
+-- Locks: the recount reads about 1.9 GB of tables nothing writes to, holding
+-- ACCESS SHARE on each until commit. Dropping a partition also takes ACCESS
+-- EXCLUSIVE on the parent esports_snapshots, which nothing writes to either.
+-- lock_timeout makes the block give up instead of queueing behind a lock.
 
-do $guard$
+do $archive$
 declare
   expected constant jsonb := '{
     "esports_snapshots_p20260805": 322598,
@@ -47,6 +54,8 @@ declare
   t      text;
   actual bigint;
 begin
+  perform set_config('lock_timeout', '10s', true);
+
   for t in select jsonb_object_keys(expected) loop
     continue when to_regclass(format('public.%I', t)) is null;
     execute format('select count(*) from public.%I', t) into actual;
@@ -55,18 +64,9 @@ begin
         t, actual, expected ->> t;
     end if;
   end loop;
+
+  for t in select jsonb_object_keys(expected) loop
+    execute format('drop table if exists public.%I', t);
+  end loop;
 end
-$guard$;
-
-drop table if exists public.esports_snapshots_p20260805;
-drop table if exists public.esports_snapshots_p20260806;
-drop table if exists public.esports_snapshots_p20260807;
-drop table if exists public.esports_snapshots_p20260808;
-drop table if exists public.esports_snapshots_p20260809;
-drop table if exists public.esports_snapshots_p20260810;
-drop table if exists public.esports_snapshots_p20260811;
-drop table if exists public.esports_snapshots_p20260812;
-drop table if exists public.esports_snapshots_p20260813;
-drop table if exists public.esports_snapshots_p20260814;
-
-drop table if exists public.polymarket_snapshots_legado;
+$archive$;
