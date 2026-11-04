@@ -58,11 +58,10 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
   baseline; as migrations 001 a 004 são anteriores e já aplicadas. O resto
   são migrations datadas, todas escritas aqui e aplicadas pelo Luiz.
 - Specs numeradas: `specs/000` a `003`. Spec da tela de Regra:
-  `spec-tela-regra.md` e `spec-tela-regra-item5.md`, ainda na raiz.
+  `docs/spec-tela-regra.md` e `docs/spec-tela-regra-item5.md`.
 - Processos agendados e cron: `docs/processos-automaticos.md`. Comandos do
   bot: `docs/comandos-do-bot.md`. Termos: `docs/GLOSSARIO.md`.
-- Os `prompt-*.md` da raiz são prompts de sessões passadas. Mudam de lugar
-  num PR de limpeza próprio.
+- Prompts de sessões passadas: `docs/prompts/prompt-*.md`.
 
 ## Ambientes
 
