@@ -15,11 +15,6 @@ interface EventRow {
   polymarket_fee_rate: number | null;
 }
 
-interface ExistingSignal {
-  id: string;
-  metadata: CrossMarketSignalMetadata;
-}
-
 export async function runCrossMarketIntraDetector(): Promise<void> {
   const start = Date.now();
   const config = await getSystemConfig();

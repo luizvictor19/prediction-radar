@@ -4,7 +4,7 @@
 
 SET check_function_bodies = false;
 
-DROP EXTENSION pg_net;
+DROP EXTENSION IF EXISTS pg_net;
 
 ALTER TABLE public.my_bets
   DROP COLUMN closing_price;

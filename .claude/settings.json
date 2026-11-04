@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(*)",
+      "EnterWorktree",
+      "ExitWorktree",
       "Edit(src/**)",
       "Write(src/**)",
       "Edit(scripts/**)",
@@ -19,14 +21,31 @@
       "Bash(supabase db pull*)",
       "Bash(supabase migration up*)",
       "Bash(psql*)",
-      "Bash(git push*)",
-      "Bash(git commit*)",
       "Bash(git merge*)",
       "Bash(git rebase*)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(rm -rf*)",
       "Bash(npm run oddspapi:probe*)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
     ],
     "defaultMode": "acceptEdits"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/no-commit-on-main.sh"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -131,12 +131,6 @@ function extractComplement(title: string): string | null {
   return rest || null;
 }
 
-function extractSubject(title: string): string {
-  const match = VERB_PATTERN.exec(title);
-  if (match?.[1]) return match[1];
-  return title.split(' ')[0] ?? title;
-}
-
 export function deriveSignalTitle(members: Array<{ title: string }>): string | null {
   if (members.length === 0) return null;
 
@@ -199,22 +193,6 @@ function computeScenarios(
 interface OutcomesShape {
   values?: string[];
   prices?: string[];
-}
-
-function buildMemberLabels(members: CrossMarketInterMember[]): Map<string, string> {
-  const subjectCounts = new Map<string, number>();
-  for (const m of members) {
-    const subject = extractSubject(m.title);
-    subjectCounts.set(subject, (subjectCounts.get(subject) ?? 0) + 1);
-  }
-  const labels = new Map<string, string>();
-  for (const m of members) {
-    const subject = extractSubject(m.title);
-    const count = subjectCounts.get(subject) ?? 1;
-    const label = count >= 2 ? (m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title) : subject;
-    labels.set(m.event_id, label);
-  }
-  return labels;
 }
 
 export function formatCalendarDrivenSignal(
@@ -376,7 +354,6 @@ export function formatCalendarDrivenSignal(
 function formatEarlyMarketSignal(signal: SignalRow, bankroll: number | null, maxStakePct: number): string {
   const meta = (signal.metadata ?? {}) as Record<string, unknown>;
   const startDate = meta['start_date'] as string;
-  const hoursSinceOpen = meta['hours_since_open'] as number;
   const currentPrice = meta['current_yes_price'] as number;
   const initialPrice = meta['initial_yes_price'] as number | null;
   const priceMovement = meta['price_movement_pct'] as number | null;

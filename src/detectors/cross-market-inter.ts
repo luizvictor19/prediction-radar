@@ -1,4 +1,4 @@
-import type { CrossMarketInterSignalMetadata, CrossMarketInterMember, ArbDirection } from '../types/index.js';
+import type { CrossMarketInterSignalMetadata, CrossMarketInterMember } from '../types/index.js';
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
@@ -22,11 +22,6 @@ interface EventRow {
   end_date: string | null;
   sports_market_type?: string | null;
   line?: number | null;
-}
-
-interface ExistingSignal {
-  id: string;
-  metadata: CrossMarketInterSignalMetadata;
 }
 
 function extractYesPrice(outcomes: EventRow['outcomes']): number | null {
