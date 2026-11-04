@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { hashDescription } from '../../../src/digest/digest.js';
 import { SKIP_REASON, testDatabase } from '../../../src/lib/test-db.js';
 import { COLUNAS_CONTAGEM, ordenarContagens, PAGINA } from './paginacao.js';
 
@@ -62,10 +63,11 @@ const LINHAS = 4000;
 
 const MARCA = 'teste-paginacao';
 
-function sha(i: number): string {
-  // Fixed width: in 64-position hex, lexicographic order is numeric order, so the
-  // sorted seeded list is `sha(0)..sha(n-1)` without depending on a comparator.
-  return i.toString(16).padStart(64, '0');
+// One distinct text per row. The sha has to be the real sha256 of the text:
+// `market_rule_texts_hash_confere` refuses anything else, and the digests' FK
+// (`market_rule_digests_texto_guardado`) refuses a digest whose text is not stored.
+function texto(i: number): string {
+  return `${MARCA} texto ${i}`;
 }
 
 type Cliente = NonNullable<Awaited<ReturnType<typeof testDatabase>>>;
@@ -104,10 +106,21 @@ async function semear(db: Cliente): Promise<string> {
   if (error) throw new Error(`events: ${error.message}`);
   const eventId = (data as { id: string }).id;
 
+  // Texts first, like `scripts/carregar-digest.ts`: the digest FK points at them.
+  for (let i = 0; i < LINHAS; i += 200) {
+    const lote = Array.from({ length: Math.min(200, LINHAS - i) }, (_, k) => ({
+      description_sha256: hashDescription(texto(i + k)),
+      description: texto(i + k),
+      guardado_por: 'digestao',
+    }));
+    const { error: e } = await db.from('market_rule_texts').insert(lote);
+    if (e) throw new Error(`market_rule_texts: ${e.message}`);
+  }
+
   for (let i = 0; i < LINHAS; i += 200) {
     const lote = Array.from({ length: Math.min(200, LINHAS - i) }, (_, k) => ({
       event_id: eventId,
-      description_sha256: sha(i + k),
+      description_sha256: hashDescription(texto(i + k)),
       resolve_sim: ['sim'],
       model: MARCA,
       prompt_version: MARCA,
@@ -118,10 +131,18 @@ async function semear(db: Cliente): Promise<string> {
   return eventId;
 }
 
-/** Takes the digestions with it, through the FK cascade. */
+/**
+ * Events first: they take the digestions with them, through the FK cascade. Only
+ * then the texts, which the digests' FK would otherwise hold in place.
+ */
 async function limpar(db: Cliente) {
   const { error } = await db.from('events').delete().like('polymarket_id', `${MARCA}-%`);
   if (error) throw new Error(`limpeza: ${error.message}`);
+  const { error: e } = await db
+    .from('market_rule_texts')
+    .delete()
+    .like('description', `${MARCA} texto %`);
+  if (e) throw new Error(`limpeza market_rule_texts: ${e.message}`);
 }
 
 test(
@@ -148,7 +169,9 @@ test(
         'Zere com `supabase stop --no-backup && npm run test:db`.',
     );
 
-    const esperado = Array.from({ length: LINHAS }, (_, i) => sha(i));
+    // With a single event_id, `ordenarContagens` orders by the sha, so the
+    // expectation is the hex strings sorted, not the seeding order.
+    const esperado = Array.from({ length: LINHAS }, (_, i) => hashDescription(texto(i))).sort();
 
     await semear(db);
     try {
