@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { getSystemConfig } from '../lib/config.js';
 import { logEvent } from '../lib/logger.js';
+import { probeDiskUsage } from '../lib/disk-usage.js';
 
 /**
  * Retenção de `polymarket_snapshots` e `system_logs`.
@@ -42,6 +43,9 @@ async function probeLegacyEsports(): Promise<number | null> {
 export async function runRetentionJob(): Promise<void> {
   const startedAt = Date.now();
   const config = await getSystemConfig();
+  // Read before the deletes on purpose: the daily series is the size the day
+  // reached, not the size right after this job freed pages. Never throws.
+  const disk = await probeDiskUsage((fn) => supabase.rpc(fn));
   const retentionHours = config.snapshot_retention_days * 24;
 
   const BATCH_SIZE = 5000;
@@ -126,6 +130,9 @@ export async function runRetentionJob(): Promise<void> {
       `Deleted ${result.old_deleted ?? 0} old (>${retentionHours}h) + ${result.finalized_deleted ?? 0} from finalized events + ${logCount ?? 0} logs in ${durationMs}ms` +
       (errors.length > 0 ? ` — ${errors.join('; ')}` : ''),
     metadata: {
+      // Bytes from `database_disk_usage()`; `null` until that migration is applied.
+      database_bytes: disk.database_bytes,
+      wal_bytes: disk.wal_bytes,
       errors: errors.length > 0 ? errors : undefined,
       old_deleted: result.old_deleted ?? 0,
       finalized_deleted: result.finalized_deleted ?? 0,
