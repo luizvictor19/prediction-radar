@@ -52,12 +52,12 @@ perto de 1, o par não serve para a hipótese e sai da conta.
 
 Do livro de ordens da CLOB (`https://clob.polymarket.com`, público):
 
-| medida | por quê |
-| --- | --- |
-| melhor bid, melhor ask, **spread em centavos** | é o custo de entrar e sair |
-| **profundidade no topo do livro, em dólares** | vantagem × tamanho minúsculo = nada |
-| volume 24h | define rápido vs lento |
-| livro vazio? | mid = 0,50 por aritmética — **descarte, não conte como 50%** |
+| medida                                         | por quê                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| melhor bid, melhor ask, **spread em centavos** | é o custo de entrar e sair                                   |
+| **profundidade no topo do livro, em dólares**  | vantagem × tamanho minúsculo = nada                          |
+| volume 24h                                     | define rápido vs lento                                       |
+| livro vazio?                                   | mid = 0,50 por aritmética — **descarte, não conte como 50%** |
 
 O último já fabricou edge falso na frente do XTracker. Conte os descartes e
 reporte com sinal.

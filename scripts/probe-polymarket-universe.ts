@@ -464,7 +464,8 @@ function toPairing(events: readonly GammaEvent[]): Enriched[] {
     // a API declarando que os mercados dele são mutuamente exclusivos e
     // exaustivos. O `negRiskRequestID` do mercado vem vazio mesmo em evento
     // neg-risk, então usá-lo perderia a partição.
-    const negRiskKey = event.negRisk === true || event.enableNegRisk === true ? `event:${event.id}` : null;
+    const negRiskKey =
+      event.negRisk === true || event.enableNegRisk === true ? `event:${event.id}` : null;
     const siblings = event.markets?.length ?? 0;
 
     for (const market of event.markets ?? []) {
@@ -475,7 +476,8 @@ function toPairing(events: readonly GammaEvent[]): Enriched[] {
       // Mercado antigo (2020-21) devolve `["0","0"]` — nem sim nem não. Só o par
       // {"0","1"} é desfecho legível.
       const sorted = [...prices].sort();
-      const outcomeKnown = resolved && prices.length === 2 && sorted[0] === '0' && sorted[1] === '1';
+      const outcomeKnown =
+        resolved && prices.length === 2 && sorted[0] === '0' && sorted[1] === '1';
 
       out.push({
         pairing: {
@@ -700,7 +702,11 @@ async function main(): Promise<void> {
   const resolvedSummaries: EventSummary[] = [];
   let resolvedPages = 0;
 
-  for (let offset = 0; resolvedPages < args.resolvedPages && offset < OFFSET_CEILING; offset += PAGE) {
+  for (
+    let offset = 0;
+    resolvedPages < args.resolvedPages && offset < OFFSET_CEILING;
+    offset += PAGE
+  ) {
     const page = await fetchResolvedPage(offset, endDateMax);
     if (page.events.length === 0) break;
     resolved.push(...toPairing(page.events));
@@ -720,7 +726,11 @@ async function main(): Promise<void> {
   // sonda do XTracker já tinha tomado, e pelo mesmo motivo.
   if (args.write) {
     const openSnap = await fetchEventPage(
-      { end_date_min: strata[0]?.from ?? CALENDAR_START, end_date_max: strata[0]?.to ?? CALENDAR_END, offset: '0' },
+      {
+        end_date_min: strata[0]?.from ?? CALENDAR_START,
+        end_date_max: strata[0]?.to ?? CALENDAR_END,
+        offset: '0',
+      },
       SNAPSHOT_LIMIT,
     );
     await writeSnapshot(
@@ -750,7 +760,13 @@ async function main(): Promise<void> {
       `${SNAPSHOT_DIR}/gamma-events-resolved.json`,
       'gamma-events-resolved-snapshot',
       '/events',
-      { limit: String(SNAPSHOT_LIMIT), closed: 'true', order: 'endDate', ascending: 'false', end_date_max: endDateMax },
+      {
+        limit: String(SNAPSHOT_LIMIT),
+        closed: 'true',
+        order: 'endDate',
+        ascending: 'false',
+        end_date_max: endDateMax,
+      },
       resolvedSnap,
     );
   }
@@ -790,18 +806,18 @@ async function main(): Promise<void> {
     '',
     withRules.length / Math.max(1, all.length) > 0.95
       ? '  SIM, as regras vêm no payload, em `description`, e vêm em praticamente todo\n' +
-        '  mercado. É texto corrido e completo — fonte, data, condição de void, critério\n' +
-        '  de "Yes". A `ressalvaDeResolucao` da Parte B é possível: o agente tem o que\n' +
-        '  ler nas duas pontas para declarar diferença, e o campo não é teatro.\n' +
-        '\n' +
-        '  A ressalva sobre a ressalva: `resolutionSource` como CAMPO é quase sempre\n' +
-        '  vazio. A fonte está DENTRO do texto de `description`, em prosa. Comparar\n' +
-        '  fonte entre dois mercados é leitura, não igualdade de string — que é\n' +
-        '  justamente a tarefa que a spec dá ao modelo, então não é problema. Mas mata\n' +
-        '  qualquer atalho do tipo "só compare se `resolutionSource` bater".'
+          '  mercado. É texto corrido e completo — fonte, data, condição de void, critério\n' +
+          '  de "Yes". A `ressalvaDeResolucao` da Parte B é possível: o agente tem o que\n' +
+          '  ler nas duas pontas para declarar diferença, e o campo não é teatro.\n' +
+          '\n' +
+          '  A ressalva sobre a ressalva: `resolutionSource` como CAMPO é quase sempre\n' +
+          '  vazio. A fonte está DENTRO do texto de `description`, em prosa. Comparar\n' +
+          '  fonte entre dois mercados é leitura, não igualdade de string — que é\n' +
+          '  justamente a tarefa que a spec dá ao modelo, então não é problema. Mas mata\n' +
+          '  qualquer atalho do tipo "só compare se `resolutionSource` bater".'
       : '  NÃO: as regras NÃO vêm de forma confiável no payload. A `ressalvaDeResolucao`\n' +
-        '  não é implementável como a spec a descreve, e a Parte B precisa ser reescrita\n' +
-        '  antes da fase 2.',
+          '  não é implementável como a spec a descreve, e a Parte B precisa ser reescrita\n' +
+          '  antes da fase 2.',
   );
 
   // --- 4. agrupamento de graça ----------------------------------------------
@@ -815,9 +831,24 @@ async function main(): Promise<void> {
     table(
       ['estrutura', 'mercados', 'da amostra', 'o que ela declara'],
       [
-        ['evento com 2+ mercados', String(inMultiMarketEvent.length), pct(inMultiMarketEvent.length, all.length), 'mesmo assunto; relação provável'],
-        ['neg-risk', String(inNegRisk.length), pct(inNegRisk.length, all.length), 'exclusivos e exaustivos → `particiona`'],
-        ['série', String(inSeries.length), pct(inSeries.length, all.length), 'mesma pergunta, janelas diferentes'],
+        [
+          'evento com 2+ mercados',
+          String(inMultiMarketEvent.length),
+          pct(inMultiMarketEvent.length, all.length),
+          'mesmo assunto; relação provável',
+        ],
+        [
+          'neg-risk',
+          String(inNegRisk.length),
+          pct(inNegRisk.length, all.length),
+          'exclusivos e exaustivos → `particiona`',
+        ],
+        [
+          'série',
+          String(inSeries.length),
+          pct(inSeries.length, all.length),
+          'mesma pergunta, janelas diferentes',
+        ],
       ],
       [0, 3],
     ),
@@ -834,7 +865,8 @@ async function main(): Promise<void> {
   // --- 5. estrutura no texto ------------------------------------------------
 
   const tagCounts = new Map<string, number>();
-  for (const e of allSummaries) for (const t of e.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+  for (const e of allSummaries)
+    for (const t of e.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
   const topTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
   const withTags = allSummaries.filter((e) => e.tags.length > 0);
   const withEndDate = all.filter((m) => m.pairing.endDate !== null);
@@ -847,7 +879,11 @@ async function main(): Promise<void> {
     `  tamanho da pergunta, em caracteres: ${distribution(all.map((m) => m.pairing.question.length))}`,
     '',
     '  tags mais frequentes:',
-    table(['tag', 'eventos'], topTags.map(([slug, n]) => [slug, String(n)]), [0]),
+    table(
+      ['tag', 'eventos'],
+      topTags.map(([slug, n]) => [slug, String(n)]),
+      [0],
+    ),
     '',
     '  Tag vem de /events, não de /markets: a rota de mercados não traz `tags` nem',
     '  dentro do `events` embutido. Quem quiser tag tem que passar por evento.',
@@ -896,7 +932,11 @@ async function main(): Promise<void> {
     `  tamanho de grupo:           ${distribution(result.groups.map((g) => g.memberIds.length))}`,
     '',
     '  distribuição de tamanho:',
-    table(['membros', 'grupos', 'do total', 'c/ modelo', 'todos resolvidos'], groupSizeRows(result.groups), [0]),
+    table(
+      ['membros', 'grupos', 'do total', 'c/ modelo', 'todos resolvidos'],
+      groupSizeRows(result.groups),
+      [0],
+    ),
     '',
     `  Teto de grupo: ${DEFAULT_PAIRING_CONFIG.maxGroupSize} membros (${DEFAULT_PAIRING_CONFIG.maxStructuralGroupSize} para grupo estrutural que vira prompt).`,
     '  O que manda não é o contexto: um mercado custa ~150 tokens de pergunta +',
@@ -924,7 +964,9 @@ async function main(): Promise<void> {
     '  ("redundantes" e "recusados" contam só pares que nenhuma camada anterior já',
     '   cobria — descarte inventado engana tanto quanto descarte silencioso.)',
     '',
-    ...stats.byLayer.flatMap((l) => l.notes.slice(0, 4).map((note) => `  [camada ${l.layer}] ${note}`)),
+    ...stats.byLayer.flatMap((l) =>
+      l.notes.slice(0, 4).map((note) => `  [camada ${l.layer}] ${note}`),
+    ),
   );
 
   // --- 8. auditoria do descarte ---------------------------------------------
@@ -942,17 +984,22 @@ async function main(): Promise<void> {
     '  os pares descartados mais parecidos da amostra:',
     table(
       ['jaccard', 'mesmo ev.', 'pergunta A', 'pergunta B'],
-      audit.worst.map((w) => [num(w.similarity, 3), w.sameEvent ? 'sim' : 'não', w.a.slice(0, 40), w.b.slice(0, 40)]),
+      audit.worst.map((w) => [
+        num(w.similarity, 3),
+        w.sameEvent ? 'sim' : 'não',
+        w.a.slice(0, 40),
+        w.b.slice(0, 40),
+      ]),
       [1, 2, 3],
     ),
     '',
     audit.aboveThreshold === 0
       ? '  Nenhum par descartado passaria do limiar. O descarte é o que diz ser: o que\n' +
-        '  sai é o que não se parece com nada. Isso NÃO prova que não há relação lógica\n' +
-        '  entre perguntas escritas de formas muito diferentes — prova que a heurística\n' +
-        '  aplica o próprio critério, e não perde por defeito. A relação parafraseada\n' +
-        '  segue sendo o ponto fraco conhecido, e na assimetria da Parte E ela custa\n' +
-        '  zero: perder relação não perde dinheiro; inventar relação perde.'
+          '  sai é o que não se parece com nada. Isso NÃO prova que não há relação lógica\n' +
+          '  entre perguntas escritas de formas muito diferentes — prova que a heurística\n' +
+          '  aplica o próprio critério, e não perde por defeito. A relação parafraseada\n' +
+          '  segue sendo o ponto fraco conhecido, e na assimetria da Parte E ela custa\n' +
+          '  zero: perder relação não perde dinheiro; inventar relação perde.'
       : audit.aboveThresholdSameEvent > audit.aboveThreshold / 2
         ? '  ATENÇÃO: há par descartado acima do limiar, e a MAIORIA é do mesmo evento.\n' +
           '  Isso é teto de grupo cortando estrutura, não limiar mal escolhido. Subir\n' +
@@ -990,8 +1037,20 @@ async function main(): Promise<void> {
     table(
       ['cenário', 'chamadas', 'tok entrada', 'tok saída', 'US$'],
       [
-        ['emite só o que achar', cheap.calls.toLocaleString('pt-BR'), cheap.inputTokens.toLocaleString('pt-BR'), cheap.outputTokens.toLocaleString('pt-BR'), num(cheap.usd, 2)],
-        ['um veredito por par (teto)', pessimistic.calls.toLocaleString('pt-BR'), pessimistic.inputTokens.toLocaleString('pt-BR'), pessimistic.outputTokens.toLocaleString('pt-BR'), num(pessimistic.usd, 2)],
+        [
+          'emite só o que achar',
+          cheap.calls.toLocaleString('pt-BR'),
+          cheap.inputTokens.toLocaleString('pt-BR'),
+          cheap.outputTokens.toLocaleString('pt-BR'),
+          num(cheap.usd, 2),
+        ],
+        [
+          'um veredito por par (teto)',
+          pessimistic.calls.toLocaleString('pt-BR'),
+          pessimistic.inputTokens.toLocaleString('pt-BR'),
+          pessimistic.outputTokens.toLocaleString('pt-BR'),
+          num(pessimistic.usd, 2),
+        ],
       ],
       [0],
     ),

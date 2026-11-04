@@ -85,11 +85,18 @@ async function main() {
 
         const { error: updateErr } = await supabase
           .from('events')
-          .update({ polymarket_category: feeType, polymarket_fee_rate: feeRate, is_ai_tech: isAiTech })
+          .update({
+            polymarket_category: feeType,
+            polymarket_fee_rate: feeRate,
+            is_ai_tech: isAiTech,
+          })
           .eq('id', event.id);
 
         if (updateErr) {
-          console.error(`[backfill-polymarket-category] Update failed for ${event.id}:`, updateErr.message);
+          console.error(
+            `[backfill-polymarket-category] Update failed for ${event.id}:`,
+            updateErr.message,
+          );
           errors++;
         } else {
           updated++;

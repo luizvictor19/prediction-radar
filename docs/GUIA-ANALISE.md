@@ -34,12 +34,12 @@ eval           a análise é pontuada contra o desfecho    sob demanda
 
 **O que o analista lê**, e é só isso:
 
-| enricher | fragmentos | o que diz |
-|---|---|---|
-| `market-history` | odds, liquidity, series_consistency | como o preço se moveu, quanto book tem |
-| `polymarket-context` | news | parágrafo gerado pela Polymarket (confiança 0,4) |
-| `oddspapi` | bookmaker_odds, bookmaker_suspension | o que as casas pagam, e se suspenderam |
-| `match-history` | h2h, form, market_calibration | confrontos, forma recente, acerto histórico do mercado |
+| enricher             | fragmentos                           | o que diz                                              |
+| -------------------- | ------------------------------------ | ------------------------------------------------------ |
+| `market-history`     | odds, liquidity, series_consistency  | como o preço se moveu, quanto book tem                 |
+| `polymarket-context` | news                                 | parágrafo gerado pela Polymarket (confiança 0,4)       |
+| `oddspapi`           | bookmaker_odds, bookmaker_suspension | o que as casas pagam, e se suspenderam                 |
+| `match-history`      | h2h, form, market_calibration        | confrontos, forma recente, acerto histórico do mercado |
 
 Se um enricher não produz, o analista não sabe que faltou. Ele analisa com o que
 chegou. **Por isso a distribuição de citações importa**: se 58% das afirmações
@@ -240,7 +240,7 @@ from collector_heartbeats order by seg_atras desc;
 
 **Por que o heartbeat existe:** um componente que parou e um componente sem
 trabalho produzem o mesmo silêncio no log. O heartbeat distingue: ele bate
-quando o ciclo *completa*, mesmo sem ter feito nada.
+quando o ciclo _completa_, mesmo sem ter feito nada.
 
 Foi essa distinção que faltou quando o collector ficou 48 horas parado.
 
@@ -291,8 +291,8 @@ O que procurar na tese:
 - Discorda por evidência positiva, ou por não achar explicação?
 - Trata movimento de preço como informação ou como ruído?
 
-**Padrão encontrado hoje:** *"houve queda abrupta, deve ser ruído, prefiro o
-preço anterior"*. Foi assim que ele disse 0,840 onde o mercado dizia 0,145, e o
+**Padrão encontrado hoje:** _"houve queda abrupta, deve ser ruído, prefiro o
+preço anterior"_. Foi assim que ele disse 0,840 onde o mercado dizia 0,145, e o
 mercado estava certo.
 
 ### Passo 5: O que ele leu?
@@ -354,10 +354,10 @@ análises como se fosse tendência.
 
 **Nomes das colunas, que não são iguais nas duas tabelas:**
 
-| onde | coluna | o que é |
-|---|---|---|
-| `esports_analyses` | `prompt_version` | a versão que rodou naquela análise |
-| `system_config` | `analyst_prompt_version` | a versão que roda agora |
+| onde               | coluna                   | o que é                            |
+| ------------------ | ------------------------ | ---------------------------------- |
+| `esports_analyses` | `prompt_version`         | a versão que rodou naquela análise |
+| `system_config`    | `analyst_prompt_version` | a versão que roda agora            |
 
 `analysis_claims` não tem nenhuma das duas, daí o `join` com `esports_analyses`.
 

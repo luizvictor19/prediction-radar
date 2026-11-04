@@ -136,7 +136,7 @@ export function inspectMarketSlug(
   const normalized = slug.trim().toLowerCase();
 
   const candidates = [...verticals].sort((a, b) => b.slugPrefix.length - a.slugPrefix.length);
-  const vertical = candidates.find(v => normalized.startsWith(v.slugPrefix));
+  const vertical = candidates.find((v) => normalized.startsWith(v.slugPrefix));
 
   if (vertical === undefined) return { ok: false, reason: 'not_esports' };
 

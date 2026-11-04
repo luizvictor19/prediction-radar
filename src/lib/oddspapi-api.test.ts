@@ -416,8 +416,7 @@ test('o cache livre despeja o vencido antes do válido, e nunca zera inteiro', (
   const agora = t0 + MAX_CACHE_ENTRIES + 1;
   assert.equal(cacheRead('/v4/historical-odds', params(0), 120, agora), undefined);
   assert.notEqual(cacheRead('/v4/historical-odds', params(1), 120, agora), undefined);
-  assert.deepEqual(
-    cacheRead('/v4/historical-odds', params(MAX_CACHE_ENTRIES), 120, agora)?.body,
-    { i: MAX_CACHE_ENTRIES },
-  );
+  assert.deepEqual(cacheRead('/v4/historical-odds', params(MAX_CACHE_ENTRIES), 120, agora)?.body, {
+    i: MAX_CACHE_ENTRIES,
+  });
 });

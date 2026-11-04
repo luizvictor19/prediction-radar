@@ -26,17 +26,16 @@ export async function runCalendarDrivenDetector(): Promise<void> {
   const start = Date.now();
   const config = await getSystemConfig();
 
-  const {
-    collector_min_volume_24h: minVolume,
-    signal_cooldown_minutes: cooldownMinutes,
-  } = config;
+  const { collector_min_volume_24h: minVolume, signal_cooldown_minutes: cooldownMinutes } = config;
 
   const now = new Date();
   const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, title, polymarket_category, is_ai_tech, volume_24h, end_date, outcomes, sports_market_type, line')
+    .select(
+      'id, title, polymarket_category, is_ai_tech, volume_24h, end_date, outcomes, sports_market_type, line',
+    )
     .eq('status', 'active')
     .eq('tracked', true)
     .gt('end_date', now.toISOString())
@@ -224,11 +223,8 @@ export async function runCalendarDrivenDetector(): Promise<void> {
     const existing = (existingRows ?? [])[0] ?? null;
 
     if ((existingRows ?? []).length > 1) {
-      const olderIds = (existingRows ?? []).slice(1).map(r => r.id);
-      await supabase
-        .from('detected_signals')
-        .update({ dismissed: true })
-        .in('id', olderIds);
+      const olderIds = (existingRows ?? []).slice(1).map((r) => r.id);
+      await supabase.from('detected_signals').update({ dismissed: true }).in('id', olderIds);
 
       // Escrita, não descarte — por isso vira contador no log do ciclo em vez de
       // sumir junto com as linhas por evento.
@@ -276,10 +272,7 @@ export async function runCalendarDrivenDetector(): Promise<void> {
         updateData['acted_on'] = true;
       }
 
-      await supabase
-        .from('detected_signals')
-        .update(updateData)
-        .eq('id', existing.id);
+      await supabase.from('detected_signals').update(updateData).eq('id', existing.id);
     } else {
       const metadata: CalendarDrivenSignalMetadata = {
         end_date: event.end_date,
@@ -342,9 +335,10 @@ export async function runCalendarDrivenDetector(): Promise<void> {
       cooldown_query_errors: cooldownQueryErrors.length,
       snapshot_query_errors: snapshotQueryErrors.length,
       dedup_query_errors: dedupQueryErrors.length,
-      query_error_sample: queryErrors > 0
-        ? [...cooldownQueryErrors, ...snapshotQueryErrors, ...dedupQueryErrors].slice(0, 5)
-        : null,
+      query_error_sample:
+        queryErrors > 0
+          ? [...cooldownQueryErrors, ...snapshotQueryErrors, ...dedupQueryErrors].slice(0, 5)
+          : null,
       signals_inserted: signalsResult.written,
       duration_ms: Date.now() - start,
       write_errors: signalsResult.errors.length > 0 ? signalsResult.errors : null,

@@ -179,7 +179,7 @@ test('as_of é o captured_at do snapshot, não o asOf perguntado', () => {
 
 test('saem dois fragmentos, com kinds distintos', () => {
   assert.deepEqual(
-    priceFragments().map(f => f.kind),
+    priceFragments().map((f) => f.kind),
     ['odds', 'liquidity'],
   );
 });
@@ -224,7 +224,7 @@ test('sem mid_price não há fragmento de preço, mas o book ainda vale', () => 
   });
 
   assert.deepEqual(
-    fragments.map(f => f.kind),
+    fragments.map((f) => f.kind),
     ['liquidity'],
   );
 });

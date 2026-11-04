@@ -74,9 +74,10 @@ export function lerRadar(): Promise<MercadoRadar[]> {
  */
 export function lerContagens(): Promise<ContagemDigest[]> {
   return paginar<ContagemDigest>((de, ate) =>
-    ordenarContagens(
-      supabase.from('digest_achados_por_mercado').select(COLUNAS_CONTAGEM),
-    ).range(de, ate),
+    ordenarContagens(supabase.from('digest_achados_por_mercado').select(COLUNAS_CONTAGEM)).range(
+      de,
+      ate,
+    ),
   );
 }
 
@@ -159,7 +160,7 @@ export type CorpusDigerido = {
 
 export function lerCorpusDigerido(): Promise<CorpusDigerido> {
   if (indiceEmVoo === null) {
-    indiceEmVoo = carregarIndice().catch(e => {
+    indiceEmVoo = carregarIndice().catch((e) => {
       indiceEmVoo = null;
       throw e;
     });
@@ -178,7 +179,11 @@ async function carregarIndice(): Promise<CorpusDigerido> {
 
   const [digests, pegadinhas, ambiguidades] = await Promise.all([
     paginar<LinhaDigest>((de, ate) =>
-      supabase.from('market_rule_digests').select('id, description_sha256').order('id').range(de, ate),
+      supabase
+        .from('market_rule_digests')
+        .select('id, description_sha256')
+        .order('id')
+        .range(de, ate),
     ),
     paginar<LinhaFilha>((de, ate) =>
       supabase
@@ -200,7 +205,7 @@ async function carregarIndice(): Promise<CorpusDigerido> {
     ),
   ]);
 
-  const shaPorDigest = new Map(digests.map(d => [d.id, d.description_sha256]));
+  const shaPorDigest = new Map(digests.map((d) => [d.id, d.description_sha256]));
 
   const linhas: LinhaDeTrecho[] = [];
   const leiturasPorChave = new Map<string, Set<string>>();
@@ -297,7 +302,9 @@ export async function lerTextoDaRegra(eventId: string): Promise<string | null> {
  */
 function tabelaAusente(error: { code?: string; message: string }): boolean {
   if (error.code === '42P01' || error.code === 'PGRST205') return true;
-  return /market_rule_texts/.test(error.message) && /(does not exist|not find)/i.test(error.message);
+  return (
+    /market_rule_texts/.test(error.message) && /(does not exist|not find)/i.test(error.message)
+  );
 }
 
 /**

@@ -82,7 +82,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
       continue;
     }
     const match = /^--arquivo=(.+)$/.exec(arg);
-    if (match === null || match[1] === undefined) return { error: `argumento desconhecido: ${arg}` };
+    if (match === null || match[1] === undefined)
+      return { error: `argumento desconhecido: ${arg}` };
     args.arquivo = match[1];
   }
 
@@ -148,7 +149,10 @@ function validar(entradas: readonly Entrada[]): string[] {
 
     for (const p of e.pegadinhas) {
       const sev = p['severidade'];
-      if (sev !== null && (typeof sev !== 'string' || !(SEVERIDADES as readonly string[]).includes(sev))) {
+      if (
+        sev !== null &&
+        (typeof sev !== 'string' || !(SEVERIDADES as readonly string[]).includes(sev))
+      ) {
         problemas.push(`${onde}: severidade fora da lista: ${JSON.stringify(sev)}`);
       }
       const cenario = p['cenario'];
@@ -197,9 +201,13 @@ function leituraDe(d: Record<string, unknown>): number {
 }
 
 function chaveDe(d: Record<string, unknown>): string {
-  return [d['event_id'], d['description_sha256'], d['model'], d['prompt_version'], leituraDe(d)].join(
-    '|',
-  );
+  return [
+    d['event_id'],
+    d['description_sha256'],
+    d['model'],
+    d['prompt_version'],
+    leituraDe(d),
+  ].join('|');
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +273,7 @@ async function planejarTextos(
   pendentes: readonly Entrada[],
   guardados: ReadonlySet<string>,
 ): Promise<PlanoDeTextos> {
-  const refs: DigestedTextRef[] = pendentes.map(e => ({
+  const refs: DigestedTextRef[] = pendentes.map((e) => ({
     eventId: String(e.digest['event_id']),
     descriptionSha256: String(e.digest['description_sha256']),
   }));
@@ -292,11 +300,11 @@ async function planejarTextos(
   // It is the old-artifact path, and it reads only the markets the first pass
   // did not resolve.
   const faltando = comArtefato.unrecoverable;
-  const shasFaltando = new Set(faltando.map(t => t.descriptionSha256));
-  const idsFaltando = [...new Set(faltando.flatMap(t => t.markets))];
+  const shasFaltando = new Set(faltando.map((t) => t.descriptionSha256));
+  const idsFaltando = [...new Set(faltando.flatMap((t) => t.markets))];
   const deEvents = await lerDescricoes(idsFaltando);
   const comEvents = planBackfill(
-    refs.filter(r => shasFaltando.has(r.descriptionSha256)),
+    refs.filter((r) => shasFaltando.has(r.descriptionSha256)),
     deEvents,
     new Set(),
   );
@@ -313,13 +321,10 @@ async function planejarTextos(
  * key is the hash, "it is already there" is the right answer and not an error,
  * and a crash halfway has to be able to continue.
  */
-async function gravarTextos(
-  textos: readonly TextToStore[],
-  guardadoPor: string,
-): Promise<number> {
+async function gravarTextos(textos: readonly TextToStore[], guardadoPor: string): Promise<number> {
   let gravados = 0;
   for (let i = 0; i < textos.length; i += LOTE) {
-    const lote = textos.slice(i, i + LOTE).map(t => ({
+    const lote = textos.slice(i, i + LOTE).map((t) => ({
       description_sha256: t.descriptionSha256,
       description: t.description,
       guardado_por: guardadoPor,
@@ -363,7 +368,7 @@ interface Resultado {
 async function carregarLote(lote: readonly Entrada[]): Promise<Resultado> {
   const { data, error } = await supabase
     .from('market_rule_digests')
-    .insert(lote.map(e => e.digest))
+    .insert(lote.map((e) => e.digest))
     .select('id, event_id, description_sha256, model, prompt_version, leitura_n');
 
   if (error !== null) throw new Error(`insert em market_rule_digests falhou: ${error.message}`);
@@ -629,7 +634,7 @@ async function verificarContraArtefato(arquivo: string): Promise<void> {
 
   const paraImprimir = naoCarregadas.slice(0, 40).map(([, alvo]) => alvo);
   const slugs = await slugsDe([
-    ...new Set([...perdas, ...sobras, ...paraImprimir].map(x => x.eventId)),
+    ...new Set([...perdas, ...sobras, ...paraImprimir].map((x) => x.eventId)),
   ]);
   const nome = (eventId: string): string => slugs.get(eventId) ?? `event=${eventId}`;
   const contagens = (d: Divergencia): string =>
@@ -639,12 +644,14 @@ async function verificarContraArtefato(arquivo: string): Promise<void> {
     console.log(section('PERDA — o banco tem menos filhas que o artefato'));
     console.log('  Estas precisam de reparo: a digestão está gravada, e a chave de dedup a');
     console.log('  considera pronta, então uma nova carga NÃO vai reinseri-las.');
-    for (const p of perdas) console.log(`    ${nome(p.eventId)}  ${contagens(p)}  digest=${p.digestId}`);
+    for (const p of perdas)
+      console.log(`    ${nome(p.eventId)}  ${contagens(p)}  digest=${p.digestId}`);
   }
 
   if (sobras.length > 0) {
     console.log(section('Sobra — o banco tem mais filhas que o artefato'));
-    for (const s of sobras) console.log(`    ${nome(s.eventId)}  ${contagens(s)}  digest=${s.digestId}`);
+    for (const s of sobras)
+      console.log(`    ${nome(s.eventId)}  ${contagens(s)}  digest=${s.digestId}`);
   }
 
   if (naoCarregadas.length > 0) {
@@ -675,7 +682,9 @@ async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if ('error' in parsed) {
     console.error(`[${LABEL}] ${parsed.error}`);
-    console.error(`  uso: npm run carregar-digest -- [--arquivo=CAMINHO] [--confirmar] [--verificar]`);
+    console.error(
+      `  uso: npm run carregar-digest -- [--arquivo=CAMINHO] [--confirmar] [--verificar]`,
+    );
     process.exit(1);
     return;
   }
@@ -707,7 +716,9 @@ async function main(): Promise<void> {
     process.exit(1);
     return;
   }
-  console.log(`  validação:           as ${entradas.length} passam nos CHECKs das três tabelas do digest`);
+  console.log(
+    `  validação:           as ${entradas.length} passam nos CHECKs das três tabelas do digest`,
+  );
 
   // A tabela tem que existir. Sem ela, `readDigested` devolve tabelaExiste=false
   // e uma carga que "não pulou nada" seria indistinguível de uma que não pode
@@ -732,7 +743,7 @@ async function main(): Promise<void> {
   //
   // Parar ANTES, com o motivo escrito, é a diferença entre um erro e um
   // incidente.
-  const leiturasExtras = entradas.filter(e => leituraDe(e.digest) > 1).length;
+  const leiturasExtras = entradas.filter((e) => leituraDe(e.digest) > 1).length;
   if (leiturasExtras > 0 && !digeridos.colunaLeituraN) {
     console.error(
       `\n[${LABEL}] o artefato tem ${leiturasExtras} leituras com leitura_n > 1 e a coluna\n` +
@@ -751,7 +762,7 @@ async function main(): Promise<void> {
   // tendo gravado zero. É a mesma família da migration que roda verde enquanto
   // falha: o silêncio passando por resultado.
   const pendentes = entradas.filter(
-    e =>
+    (e) =>
       !jaCarregado(
         digeridos,
         {
@@ -806,7 +817,8 @@ async function main(): Promise<void> {
           'contradições a gravar',
           String(
             pendentes.reduce(
-              (n, e) => n + e.ambiguidades.filter(a => a['tipo'] === 'contradicao_interna').length,
+              (n, e) =>
+                n + e.ambiguidades.filter((a) => a['tipo'] === 'contradicao_interna').length,
               0,
             ),
           ),
@@ -869,12 +881,18 @@ async function main(): Promise<void> {
   // than issue #9.
   const daCarga = new Set(
     pendentes
-      .map(e => e.text?.['description_sha256'])
+      .map((e) => e.text?.['description_sha256'])
       .filter((s): s is string => typeof s === 'string'),
   );
   const textosGravados =
-    (await gravarTextos(textos.aGravar.filter(t => daCarga.has(t.descriptionSha256)), 'digestao')) +
-    (await gravarTextos(textos.aGravar.filter(t => !daCarga.has(t.descriptionSha256)), 'backfill'));
+    (await gravarTextos(
+      textos.aGravar.filter((t) => daCarga.has(t.descriptionSha256)),
+      'digestao',
+    )) +
+    (await gravarTextos(
+      textos.aGravar.filter((t) => !daCarga.has(t.descriptionSha256)),
+      'backfill',
+    ));
   console.log(`  ${textosGravados} textos em market_rule_texts`);
 
   const total: Resultado = { digests: 0, pegadinhas: 0, ambiguidades: 0, orfas: [] };
@@ -886,7 +904,9 @@ async function main(): Promise<void> {
     total.pegadinhas += r.pegadinhas;
     total.ambiguidades += r.ambiguidades;
     total.orfas.push(...r.orfas);
-    console.log(`  ${total.digests}/${pendentes.length} digestões  |  ${total.pegadinhas} pegadinhas  |  ${total.ambiguidades} ambiguidades`);
+    console.log(
+      `  ${total.digests}/${pendentes.length} digestões  |  ${total.pegadinhas} pegadinhas  |  ${total.ambiguidades} ambiguidades`,
+    );
   }
 
   console.log(section('Gravado'));
@@ -904,7 +924,9 @@ async function main(): Promise<void> {
   );
 
   if (total.orfas.length > 0) {
-    console.error(`\n  ${total.orfas.length} digestão(ões) não casaram com a linha devolvida e ficaram SEM filhas:`);
+    console.error(
+      `\n  ${total.orfas.length} digestão(ões) não casaram com a linha devolvida e ficaram SEM filhas:`,
+    );
     for (const o of total.orfas) console.error(`    ${o}`);
   }
 

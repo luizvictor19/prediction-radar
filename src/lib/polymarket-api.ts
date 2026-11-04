@@ -12,7 +12,10 @@ const FETCH_TIMEOUT_MS = 20_000;
  * "acabou a paginação" (422 no teto de offset) de "a API caiu" (5xx).
  */
 export class GammaHttpError extends Error {
-  constructor(readonly status: number, readonly url: string) {
+  constructor(
+    readonly status: number,
+    readonly url: string,
+  ) {
     super(`HTTP ${status} fetching ${url}`);
     this.name = 'GammaHttpError';
   }
@@ -84,10 +87,12 @@ export async function fetchMarketsByIds(
 ): Promise<GammaMarket[]> {
   if (ids.length === 0) return [];
   if (ids.length > MAX_IDS_PER_REQUEST) {
-    throw new Error(`fetchMarketsByIds: ${ids.length} ids excede o máximo de ${MAX_IDS_PER_REQUEST}`);
+    throw new Error(
+      `fetchMarketsByIds: ${ids.length} ids excede o máximo de ${MAX_IDS_PER_REQUEST}`,
+    );
   }
 
-  const query = ids.map(id => `id=${encodeURIComponent(id)}`).join('&');
+  const query = ids.map((id) => `id=${encodeURIComponent(id)}`).join('&');
   const url = `${GAMMA_URL}/markets?limit=${ids.length}&closed=${opts.closed}&${query}`;
   return get<GammaMarket[]>(url);
 }
@@ -175,7 +180,7 @@ export async function fetchEventsBySlugs(
     );
   }
 
-  const query = slugs.map(slug => `slug=${encodeURIComponent(slug)}`).join('&');
+  const query = slugs.map((slug) => `slug=${encodeURIComponent(slug)}`).join('&');
   const url = `${GAMMA_URL}/events?limit=${slugs.length}&closed=${opts.closed}&${query}`;
   return get<GammaEvent[]>(url);
 }
@@ -319,7 +324,7 @@ export async function fetchBooks(tokenIds: readonly string[]): Promise<ClobOrder
     const res = await fetch(`${CLOB_URL}/books`, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(tokenIds.map(id => ({ token_id: id }))),
+      body: JSON.stringify(tokenIds.map((id) => ({ token_id: id }))),
       signal: controller.signal,
     });
     if (!res.ok) throw new GammaHttpError(res.status, `${CLOB_URL}/books`);

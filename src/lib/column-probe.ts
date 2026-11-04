@@ -61,7 +61,7 @@ export class ColumnProbe {
     if (rows.length === 0) return rows;
     if (await this.isSupported()) return rows;
 
-    return rows.map(row => {
+    return rows.map((row) => {
       const copy = { ...row };
       delete copy[this.column];
       return copy;

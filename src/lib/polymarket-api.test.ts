@@ -65,7 +65,9 @@ test('lote vazio não vira requisição', async () => {
  */
 
 test('a paginação de eventos carrega a tag e o closed explícito', async () => {
-  const url = await captureUrl(() => fetchEsportsEvents({ offset: 300, order: 'startDate', ascending: false }));
+  const url = await captureUrl(() =>
+    fetchEsportsEvents({ offset: 300, order: 'startDate', ascending: false }),
+  );
 
   assert.match(url, /\/events\?/);
   assert.match(url, /[?&]tag_slug=esports(&|$)/);
@@ -90,15 +92,22 @@ test('busca por slug manda limit explícito igual ao tamanho do lote', async () 
 });
 
 test('busca por slug leva closed nos dois sentidos', async () => {
-  const open = await captureUrl(() => fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: false }));
+  const open = await captureUrl(() =>
+    fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: false }),
+  );
   assert.match(open, /[?&]closed=false(&|$)/);
 
-  const closed = await captureUrl(() => fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: true }));
+  const closed = await captureUrl(() =>
+    fetchEventsBySlugs(['cs2-a-b-2026-08-06'], { closed: true }),
+  );
   assert.match(closed, /[?&]closed=true(&|$)/);
 });
 
 test('lote de slugs acima de 100 é erro, não 422 na cara da Gamma', async () => {
-  const slugs = Array.from({ length: MAX_EVENTS_PER_REQUEST + 1 }, (_, i) => `cs2-a${i}-b-2026-08-06`);
+  const slugs = Array.from(
+    { length: MAX_EVENTS_PER_REQUEST + 1 },
+    (_, i) => `cs2-a${i}-b-2026-08-06`,
+  );
   await assert.rejects(() => fetchEventsBySlugs(slugs, { closed: false }), /excede o máximo/);
 });
 

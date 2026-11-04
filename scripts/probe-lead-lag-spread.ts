@@ -67,11 +67,39 @@ const TAGS = ['politics', 'geopolitics', 'world', 'elections', 'economy', 'tech'
 
 /** Tag que reprova o evento inteiro, mesmo que ele apareça numa busca acima. */
 const TAGS_PROIBIDAS = new Set([
-  'sports', 'soccer', 'games', 'nba', 'nfl', 'mlb', 'nhl', 'tennis', 'table-tennis',
-  'baseball', 'basketball', 'football', 'hockey', 'ufc', 'mma', 'boxing', 'esports',
-  'cs2', 'lol', 'dota', 'valorant', 'setka', 'epl', 'golf', 'cricket', 'f1', 'olympics',
+  'sports',
+  'soccer',
+  'games',
+  'nba',
+  'nfl',
+  'mlb',
+  'nhl',
+  'tennis',
+  'table-tennis',
+  'baseball',
+  'basketball',
+  'football',
+  'hockey',
+  'ufc',
+  'mma',
+  'boxing',
+  'esports',
+  'cs2',
+  'lol',
+  'dota',
+  'valorant',
+  'setka',
+  'epl',
+  'golf',
+  'cricket',
+  'f1',
+  'olympics',
   // Vela de minutos: é cripto, mas de prazo curto, e o alvo é prazo longo.
-  'up-or-down', 'crypto-prices', 'hourly', '5m', '15m',
+  'up-or-down',
+  'crypto-prices',
+  'hourly',
+  '5m',
+  '15m',
 ]);
 
 /**
@@ -164,8 +192,18 @@ async function eventosDaTag(slug: string): Promise<GammaEvent[]> {
 // ---------------------------------------------------------------------------
 
 const MESES: Record<string, number> = {
-  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
 };
 
 /**
@@ -182,9 +220,10 @@ function degrauDeData(pergunta: string): number | null {
 
 /** Um degrau de valor: "above 100,000", "Over 4.5", "$120k", "at least 55%". */
 function degrauDeValor(pergunta: string): number | null {
-  const m = /\b(?:above|over|under|below|least|more than|less than|reach|hit|\$)\s*\$?([\d][\d,.]*)\s*([kmb])?/i.exec(
-    pergunta,
-  );
+  const m =
+    /\b(?:above|over|under|below|least|more than|less than|reach|hit|\$)\s*\$?([\d][\d,.]*)\s*([kmb])?/i.exec(
+      pergunta,
+    );
   if (m === null) return null;
   const base = Number((m[1] ?? '').replace(/,/g, ''));
   if (!Number.isFinite(base)) return null;
@@ -527,9 +566,11 @@ async function main(): Promise<void> {
   const ate2c = spreadsLento.filter((s) => s <= 2).length;
   const passa = lentosComLivro.length > 0 && ate2c / lentosComLivro.length >= 0.2;
 
-  const mid = (l: Livro): number => (((l.melhorBid as number) + (l.melhorAsk as number)) / 2);
+  const mid = (l: Livro): number => ((l.melhorBid as number) + (l.melhorAsk as number)) / 2;
   const midsLento = lentosComLivro.map((x) => mid(x.livro));
-  const relativosLento = lentosComLivro.map((x) => (x.livro.spread as number) / 100 / Math.max(1e-6, mid(x.livro)));
+  const relativosLento = lentosComLivro.map(
+    (x) => (x.livro.spread as number) / 100 / Math.max(1e-6, mid(x.livro)),
+  );
   // A faixa em que um ganho de 2 a 4 centavos é sequer aritmeticamente possível
   // nas duas direções. Fora dela o critério em centavos absolutos compara duas
   // grandezas que não vivem na mesma escala.
@@ -566,7 +607,9 @@ async function main(): Promise<void> {
         ['> 5¢', Infinity],
       ].map(([rotulo, teto]) => {
         const sel = lentosComLivro.filter((x) =>
-          teto === Infinity ? (x.livro.spread as number) > 5 : (x.livro.spread as number) <= (teto as number),
+          teto === Infinity
+            ? (x.livro.spread as number) > 5
+            : (x.livro.spread as number) <= (teto as number),
         );
         const profs = sel.map((x) => x.livro.profundidade).sort((a, b) => a - b);
         return [
@@ -646,7 +689,17 @@ async function main(): Promise<void> {
       [5, 6],
     ),
     '',
-    `  profundidade mediana deste conjunto: US$ ${operaveisEstreitos.length === 0 ? '—' : num(quantil(operaveisEstreitos.map((x) => x.livro.profundidade).sort((a, b) => a - b), 0.5), 0)}`,
+    `  profundidade mediana deste conjunto: US$ ${
+      operaveisEstreitos.length === 0
+        ? '—'
+        : num(
+            quantil(
+              operaveisEstreitos.map((x) => x.livro.profundidade).sort((a, b) => a - b),
+              0.5,
+            ),
+            0,
+          )
+    }`,
     '  O próprio enunciado da sondagem já dizia que US$ 40 de profundidade é pouco.',
     '',
     ...(await historicoQueTemos()),
@@ -699,8 +752,16 @@ async function historicoQueTemos(): Promise<string[]> {
 
   // A. janela
   const [maisAntigo, maisNovo] = await Promise.all([
-    supabase.from('polymarket_snapshots').select('captured_at').order('id', { ascending: true }).limit(1),
-    supabase.from('polymarket_snapshots').select('captured_at').order('id', { ascending: false }).limit(1),
+    supabase
+      .from('polymarket_snapshots')
+      .select('captured_at')
+      .order('id', { ascending: true })
+      .limit(1),
+    supabase
+      .from('polymarket_snapshots')
+      .select('captured_at')
+      .order('id', { ascending: false })
+      .limit(1),
   ]);
   if (maisAntigo.error !== null || maisNovo.error !== null) {
     return [...cabecalho, `  Falhou: ${maisAntigo.error?.message ?? maisNovo.error?.message}`];
@@ -719,9 +780,12 @@ async function historicoQueTemos(): Promise<string[]> {
     .select('event_id')
     .order('id', { ascending: false })
     .limit(2000);
-  if (erroCauda !== null) return [...cabecalho, `  Falhou ao amostrar event_id: ${erroCauda.message}`];
+  if (erroCauda !== null)
+    return [...cabecalho, `  Falhou ao amostrar event_id: ${erroCauda.message}`];
 
-  const ids = [...new Set((cauda ?? []).map((r) => r.event_id as string))].filter((x) => x !== null);
+  const ids = [...new Set((cauda ?? []).map((r) => r.event_id as string))].filter(
+    (x) => x !== null,
+  );
 
   const amostra: Array<{ id: string; titulo: string; categoria: string | null }> = [];
   // `events` por PK, em lotes: `in (...)` sobre a chave primária é index scan.
@@ -743,7 +807,8 @@ async function historicoQueTemos(): Promise<string[]> {
 
   // Fora de esporte: pela categoria quando ela existe, e pelo título quando não.
   // Heurística, e rotulada como tal — não é classificação, é corte grosseiro.
-  const ESPORTE = /\b(vs\.?|game|match|set|handicap|o\/u|over|under|goals?|nba|nfl|mlb|nhl|ufc|soccer|tennis|cs2|lol|dota|series|inning|quarter|half)\b/i;
+  const ESPORTE =
+    /\b(vs\.?|game|match|set|handicap|o\/u|over|under|goals?|nba|nfl|mlb|nhl|ufc|soccer|tennis|cs2|lol|dota|series|inning|quarter|half)\b/i;
   const foraDeEsporte = (m: (typeof amostra)[number]): boolean => {
     if (m.categoria !== null) return !/sport|esport|game/i.test(m.categoria);
     return !ESPORTE.test(m.titulo);
@@ -773,7 +838,9 @@ async function historicoQueTemos(): Promise<string[]> {
     // captura contada duas vezes. Arredonda ao segundo porque a coluna tem
     // microssegundos e as duas linhas do par não são idênticas até a última casa.
     const ts = [
-      ...new Set((data ?? []).map((r) => Math.floor(new Date(r.captured_at as string).getTime() / 1000))),
+      ...new Set(
+        (data ?? []).map((r) => Math.floor(new Date(r.captured_at as string).getTime() / 1000)),
+      ),
     ]
       .map((s) => s * 1000)
       .sort((a, b) => a - b);
@@ -787,7 +854,8 @@ async function historicoQueTemos(): Promise<string[]> {
     // mercados. Jogar todos os intervalos num balde só deixaria o mercado mais
     // capturado decidir o número sozinho.
     const passos: number[] = [];
-    for (let i = 1; i < ts.length; i++) passos.push(((ts[i] as number) - (ts[i - 1] as number)) / 1000);
+    for (let i = 1; i < ts.length; i++)
+      passos.push(((ts[i] as number) - (ts[i - 1] as number)) / 1000);
     passos.sort((a, b) => a - b);
     const medianaDoMercado = quantil(passos, 0.5);
     intervalos.push(medianaDoMercado);

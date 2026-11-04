@@ -13,9 +13,9 @@ export async function cashConversation(
 
     await ctx.reply(
       `*Cash atual:* \`$${currentCash.toFixed(2)}\`\n\n` +
-      `Digite o novo valor (em USD) para atualizar:\n` +
-      `Ex: \`117.42\`\n\n` +
-      `Ou digite \`cancel\` para cancelar.`,
+        `Digite o novo valor (em USD) para atualizar:\n` +
+        `Ex: \`117.42\`\n\n` +
+        `Ou digite \`cancel\` para cancelar.`,
       { parse_mode: 'Markdown' },
     );
 

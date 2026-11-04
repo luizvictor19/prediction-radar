@@ -54,7 +54,9 @@ import {
 const LABEL = 'probe-liquipedia';
 
 function flag(name: string): string | null {
-  const hit = process.argv.slice(2).find(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
+  const hit = process.argv
+    .slice(2)
+    .find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
   if (hit === undefined) return null;
   const [, value] = hit.split('=');
   return value ?? '';
@@ -63,7 +65,9 @@ function flag(name: string): string | null {
 function show(title: string, rows: readonly Record<string, unknown>[]): void {
   console.log(`\n[${LABEL}] ===== ${title} =====`);
   const keys = Object.keys(rows[0] ?? {}).join(', ');
-  console.log(`  ${rows.length} linha(s). Chaves da primeira: ${keys.length > 0 ? keys : '(nenhuma)'}`);
+  console.log(
+    `  ${rows.length} linha(s). Chaves da primeira: ${keys.length > 0 ? keys : '(nenhuma)'}`,
+  );
   console.log(JSON.stringify(rows.slice(0, 3), null, 2));
 }
 
@@ -102,7 +106,9 @@ async function main(): Promise<void> {
   const teamB = flag('team-b');
 
   if (teamA === null || teamB === null || teamA.length === 0 || teamB.length === 0) {
-    console.error(`[${LABEL}] uso: --team-a="Natus Vincere" --team-b="FaZe Clan" [--wiki=counterstrike]`);
+    console.error(
+      `[${LABEL}] uso: --team-a="Natus Vincere" --team-b="FaZe Clan" [--wiki=counterstrike]`,
+    );
     process.exit(1);
   }
 
@@ -125,11 +131,15 @@ async function main(): Promise<void> {
 
   const pageOf = (name: string): string => {
     const hit = teams.find(
-      row => typeof row['name'] === 'string' && (row['name'] as string).toLowerCase() === name.toLowerCase(),
+      (row) =>
+        typeof row['name'] === 'string' &&
+        (row['name'] as string).toLowerCase() === name.toLowerCase(),
     );
     const page = typeof hit?.['pagename'] === 'string' ? (hit['pagename'] as string) : null;
     if (page === null) {
-      console.warn(`[${LABEL}] "${name}" não resolveu para uma página — usando o nome como página.`);
+      console.warn(
+        `[${LABEL}] "${name}" não resolveu para uma página — usando o nome como página.`,
+      );
     }
     return page ?? name;
   };
@@ -180,7 +190,7 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(`[${LABEL}] Fatal:`, err);
   process.exit(1);
 });

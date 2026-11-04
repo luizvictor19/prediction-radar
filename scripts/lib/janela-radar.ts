@@ -135,7 +135,10 @@ export function escolherAncora(
   for (const foto of fotos) {
     const dist = Math.abs(foto.capturedAt - alvoMs);
     if (dist > toleranciaMs) continue;
-    if (dist < melhorDist || (dist === melhorDist && melhor !== null && foto.capturedAt < melhor.capturedAt)) {
+    if (
+      dist < melhorDist ||
+      (dist === melhorDist && melhor !== null && foto.capturedAt < melhor.capturedAt)
+    ) {
       melhor = foto;
       melhorDist = dist;
     }

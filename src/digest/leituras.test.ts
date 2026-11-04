@@ -26,7 +26,7 @@ function indice(leituras: readonly number[]): DigestedIndex {
     tabelaExiste: true,
     colunaLeituraN: true,
     keys: new Set(leituras.length > 0 ? [flat] : []),
-    keysComLeitura: new Set(leituras.map(n => `${flat}|${n}`)),
+    keysComLeitura: new Set(leituras.map((n) => `${flat}|${n}`)),
     leiturasPorTexto: new Map([[CHAVE.descriptionSha256, leituras.length]]),
     maxLeituraPorChave: new Map(leituras.length > 0 ? [[flat, Math.max(...leituras)]] : []),
     combinacoes: new Map([[`${CHAVE.model}|${CHAVE.promptVersion}`, leituras.length]]),

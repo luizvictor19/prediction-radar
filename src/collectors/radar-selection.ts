@@ -163,7 +163,7 @@ function parseJsonArray(raw: string | undefined): string[] {
   if (raw === undefined) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(v => String(v)) : [];
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)) : [];
   } catch {
     return [];
   }
@@ -322,7 +322,7 @@ export function triar(m: RadarMarketInput, rules: RadarRules, nowMs: number): Tr
   const no = (motivo: MotivoDescarte): Triagem => ({ ok: false, motivo });
   const jaMarcado = m.jaMarcado === true;
 
-  if (PREFIXOS_ESPORTS.some(p => m.slug.startsWith(p))) return no('esports (coleta desligada)');
+  if (PREFIXOS_ESPORTS.some((p) => m.slug.startsWith(p))) return no('esports (coleta desligada)');
   if (ehMercadoDePartida(m)) return no('mercado de partida (jogo único)');
   if (m.closed || !m.active) return no('fechado ou inativo');
 
@@ -547,8 +547,8 @@ export interface GrupoAssunto {
  */
 export function agruparPorAssunto(cands: readonly RadarCandidate[]): GrupoAssunto[] {
   const n = cands.length;
-  const chaves = cands.map(c => componentesDeAssunto(c.market.question));
-  const tokens = cands.map(c => new Set(tokenize(c.market.question)));
+  const chaves = cands.map((c) => componentesDeAssunto(c.market.question));
+  const tokens = cands.map((c) => new Set(tokenize(c.market.question)));
 
   const pai = Array.from({ length: n }, (_, i) => i);
   const raiz = (i: number): number => {
@@ -597,7 +597,7 @@ export function agruparPorAssunto(cands: readonly RadarCandidate[]): GrupoAssunt
     else lista.push(i);
   }
 
-  return [...porRaiz.values()].map(membros => {
+  return [...porRaiz.values()].map((membros) => {
     const contagem = new Map<string, number>();
     for (const i of membros) {
       for (const t of chaves[i] as Set<string>) contagem.set(t, (contagem.get(t) ?? 0) + 1);
@@ -640,7 +640,12 @@ export interface RosterResult {
   /** Por categoria: quantos passaram, quantos ficaram, e a liquidez do corte. */
   porCategoria: Record<
     string,
-    { candidatos: number; roster: number; liquidezDoCorte: number | null; liquidezDoPrimeiroCortado: number | null }
+    {
+      candidatos: number;
+      roster: number;
+      liquidezDoCorte: number | null;
+      liquidezDoPrimeiroCortado: number | null;
+    }
   >;
   /** Liquidez do último que entrou, no roster inteiro. */
   liquidezDoCorte: number | null;
@@ -736,14 +741,18 @@ export function montarRoster(
     cortadosPorTeto += fora.length;
     escolhidos.push(...dentro);
     const primeiroFora = fora[0];
-    if (primeiroFora !== undefined && (maiorCortado === null || primeiroFora.liquidez > maiorCortado)) {
+    if (
+      primeiroFora !== undefined &&
+      (maiorCortado === null || primeiroFora.liquidez > maiorCortado)
+    ) {
       maiorCortado = primeiroFora.liquidez;
     }
 
     porCategoria[tema] = {
       candidatos: lista.length,
       roster: dentro.length,
-      liquidezDoCorte: dentro.length === 0 ? null : (dentro[dentro.length - 1] as RadarCandidate).liquidez,
+      liquidezDoCorte:
+        dentro.length === 0 ? null : (dentro[dentro.length - 1] as RadarCandidate).liquidez,
       liquidezDoPrimeiroCortado: fora.length === 0 ? null : (fora[0] as RadarCandidate).liquidez,
     };
   }
@@ -753,7 +762,10 @@ export function montarRoster(
   const roster = ordenados.slice(0, rules.rosterMax);
   const cortados = ordenados.slice(rules.rosterMax);
   const primeiroDoBackstop = cortados[0];
-  if (primeiroDoBackstop !== undefined && (maiorCortado === null || primeiroDoBackstop.liquidez > maiorCortado)) {
+  if (
+    primeiroDoBackstop !== undefined &&
+    (maiorCortado === null || primeiroDoBackstop.liquidez > maiorCortado)
+  ) {
     maiorCortado = primeiroDoBackstop.liquidez;
   }
 
@@ -776,14 +788,15 @@ export function montarRoster(
     cortadosPorTeto,
     cortadosPeloBackstop: cortados.length,
     porCategoria,
-    liquidezDoCorte: roster.length === 0 ? null : (roster[roster.length - 1] as RadarCandidate).liquidez,
+    liquidezDoCorte:
+      roster.length === 0 ? null : (roster[roster.length - 1] as RadarCandidate).liquidez,
     liquidezDoPrimeiroCortado: maiorCortado,
     espelhos: detectarEspelhos(roster),
     assuntos: grupos.length,
     porTema,
-    comUmLadoSo: roster.filter(c => c.lados === 1).length,
-    mantidosPorMarca: roster.filter(c => c.lados === 0).length,
-    liquidezComUmLadoSo: resumoDeLiquidez(roster.filter(c => c.lados === 1)),
+    comUmLadoSo: roster.filter((c) => c.lados === 1).length,
+    mantidosPorMarca: roster.filter((c) => c.lados === 0).length,
+    liquidezComUmLadoSo: resumoDeLiquidez(roster.filter((c) => c.lados === 1)),
   };
 }
 
@@ -792,7 +805,7 @@ function resumoDeLiquidez(
   cands: readonly RadarCandidate[],
 ): { min: number; mediana: number; max: number } | null {
   if (cands.length === 0) return null;
-  const ordenada = cands.map(c => c.liquidez).sort((a, b) => a - b);
+  const ordenada = cands.map((c) => c.liquidez).sort((a, b) => a - b);
   return {
     min: ordenada[0] as number,
     mediana: ordenada[Math.floor((ordenada.length - 1) / 2)] as number,
@@ -837,7 +850,9 @@ export function bestLevels(
   const topoAsk = asks?.[asks.length - 1];
   if (topoBid === undefined && topoAsk === undefined) return SEM_LIVRO;
 
-  const lado = (nivel: NivelLivro | undefined): { preco: number | null; dolares: number | null } => {
+  const lado = (
+    nivel: NivelLivro | undefined,
+  ): { preco: number | null; dolares: number | null } => {
     if (nivel === undefined) return { preco: null, dolares: null };
     const preco = Number(nivel.price);
     const tamanho = Number(nivel.size);

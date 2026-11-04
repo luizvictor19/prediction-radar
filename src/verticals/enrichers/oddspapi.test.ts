@@ -590,7 +590,13 @@ test('fixture encontrada apaga o carimbo, venha de onde vier a lista', () => {
     { oddspapi_missing_at: '2026-08-10T00:00:00.000Z' },
     {
       kind: 'found',
-      link: { fixtureId: 'f7', aliasesA: ['NAVI'], aliasesB: ['Spirit'], sideAIndex: 2, tier: 'canonical' },
+      link: {
+        fixtureId: 'f7',
+        aliasesA: ['NAVI'],
+        aliasesB: ['Spirit'],
+        sideAIndex: 2,
+        tier: 'canonical',
+      },
     },
     now,
   );
@@ -753,7 +759,11 @@ test('a fronteira do bloco NÃO depende de "hoje"', () => {
 
   const realNow = Date.now;
   try {
-    for (const fakeNow of ['2026-08-09T00:00:00Z', '2026-08-14T23:00:00Z', '2027-01-01T00:00:00Z']) {
+    for (const fakeNow of [
+      '2026-08-09T00:00:00Z',
+      '2026-08-14T23:00:00Z',
+      '2027-01-01T00:00:00Z',
+    ]) {
       Date.now = () => Date.parse(fakeNow);
       assert.deepEqual(discoveryWindow(partida), esperada, `mudou com "hoje" = ${fakeNow}`);
     }

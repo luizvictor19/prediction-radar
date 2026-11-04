@@ -43,7 +43,7 @@ describe('o piso de achados, na fronteira', () => {
     // A sequência inteira, e não só o destino: 20 sozinho passaria mesmo se o
     // piso fosse 19, e 21 sozinho passaria com qualquer piso abaixo dele.
     const classes = [19, 20, 21].map(
-      a => vereditoDoNivelamento(textos, a, comGanhoDe30PorCento(a)).classe,
+      (a) => vereditoDoNivelamento(textos, a, comGanhoDe30PorCento(a)).classe,
     );
     assert.deepEqual(classes, ['amostra_curta', 'confirma', 'confirma']);
   });
@@ -66,7 +66,7 @@ describe('o piso de textos, na fronteira', () => {
   });
 
   it('a fronteira é 19 -> 20 e não 20 -> 21', () => {
-    const classes = [19, 20, 21].map(t => vereditoDoNivelamento(t, antes, depois).classe);
+    const classes = [19, 20, 21].map((t) => vereditoDoNivelamento(t, antes, depois).classe);
     assert.deepEqual(classes, ['amostra_curta', 'confirma', 'confirma']);
   });
 });

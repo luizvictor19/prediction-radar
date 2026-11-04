@@ -52,8 +52,8 @@ export async function customTrackConversation(
 
     await ctx.reply(
       `*Tese própria — ${members.length} legs disponíveis*\n` +
-      `Pra cada leg, escolha Yes, No ou Pular. Depois informe o stake.\n` +
-      `Preço de entrada vem do metadata do sinal.`,
+        `Pra cada leg, escolha Yes, No ou Pular. Depois informe o stake.\n` +
+        `Preço de entrada vem do metadata do sinal.`,
       { parse_mode: 'Markdown' },
     );
 
@@ -66,8 +66,8 @@ export async function customTrackConversation(
 
       await ctx.reply(
         `Leg ${i + 1}/${members.length}: *${shortTitle(member.title, 50)}*\n` +
-        `Yes: \`${yesPrice.toFixed(3)}\` | No: \`${noPrice.toFixed(3)}\`\n` +
-        `Operar nesta?`,
+          `Yes: \`${yesPrice.toFixed(3)}\` | No: \`${noPrice.toFixed(3)}\`\n` +
+          `Operar nesta?`,
         { parse_mode: 'Markdown', reply_markup: OUTCOME_KBD },
       );
 
@@ -145,7 +145,11 @@ export async function customTrackConversation(
       .single();
 
     if (betErr || !bet) {
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `track_custom my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+      await logEvent({
+        component: 'telegram_bot',
+        status: 'error',
+        message: `track_custom my_bets insert failed: ${betErr?.message ?? 'no data'}`,
+      });
       await ctx.reply('Erro ao registrar. Tenta de novo.');
       return;
     }
@@ -164,7 +168,11 @@ export async function customTrackConversation(
       }
     } catch (err) {
       await supabase.from('my_bets').delete().eq('id', bet.id);
-      await logEvent({ component: 'telegram_bot', status: 'error', message: `track_custom my_bet_legs insert failed: ${String(err)}` });
+      await logEvent({
+        component: 'telegram_bot',
+        status: 'error',
+        message: `track_custom my_bet_legs insert failed: ${String(err)}`,
+      });
       await ctx.reply('Erro ao registrar. Tenta de novo.');
       return;
     }
@@ -185,7 +193,11 @@ export async function customTrackConversation(
       { parse_mode: 'Markdown' },
     );
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `customTrackConversation error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `customTrackConversation error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

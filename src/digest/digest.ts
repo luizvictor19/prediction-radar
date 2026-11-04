@@ -203,8 +203,7 @@ export function estimateOne(
 
   const prompt = build(input);
   const inputTokens = Math.ceil((prompt.system.length + prompt.user.length) / CHARS_PER_TOKEN);
-  const usd =
-    (inputTokens * price.input + EXPECTED_OUTPUT_TOKENS * price.output) / 1_000_000;
+  const usd = (inputTokens * price.input + EXPECTED_OUTPUT_TOKENS * price.output) / 1_000_000;
 
   return {
     inputTokens,
@@ -389,7 +388,10 @@ function readPegadinhas(
 
     const texto = requiredString(record, 'texto', 'pegadinha');
     const severidade = record['severidade'];
-    if (typeof severidade !== 'string' || !(SEVERIDADES as readonly string[]).includes(severidade)) {
+    if (
+      typeof severidade !== 'string' ||
+      !(SEVERIDADES as readonly string[]).includes(severidade)
+    ) {
       throw new DigestError(
         'severidade_invalida',
         `severidade fora da lista (${SEVERIDADES.join(' | ')}): ${JSON.stringify(severidade)}`,
@@ -528,9 +530,7 @@ function podar(
   // A ordem original sobrevive: o primeiro item de uma lista costuma ser o mais
   // forte, e essa hipótese só se mede se a ordem não for embaralhada pela poda.
   const sobreviventes = new Set(porTrecho.values());
-  return vivas
-    .filter(p => sobreviventes.has(p))
-    .map(p => rebaixarSemCenario(p, descartes));
+  return vivas.filter((p) => sobreviventes.has(p)).map((p) => rebaixarSemCenario(p, descartes));
 }
 
 /**
@@ -768,10 +768,13 @@ export function detectarOpiniao(output: DigestOutput): OpiniaoHit | null {
     ['fonte', output.fonte === null ? [] : [output.fonte]],
     ['anula_se', output.anulaSe],
     ['prazo', output.prazo === null ? [] : [output.prazo]],
-    ['pegadinhas', output.pegadinhas.map(p => p.texto)],
+    ['pegadinhas', output.pegadinhas.map((p) => p.texto)],
     [
       'ambiguidades',
-      output.ambiguidades.flatMap(a => [a.leituraA, ...(a.leituraB === null ? [] : [a.leituraB])]),
+      output.ambiguidades.flatMap((a) => [
+        a.leituraA,
+        ...(a.leituraB === null ? [] : [a.leituraB]),
+      ]),
     ],
   ];
 
@@ -833,7 +836,7 @@ export function parseDigest(raw: unknown, version = 'v1', descricao = ''): Parse
     prazo: readNullableString(record['prazo'], 'prazo'),
     pegadinhas: estruturado
       ? readPegadinhas(record['pegadinhas'], version, descricao, descartes)
-      : readStringList(record['pegadinhas'], 'pegadinhas').map(texto => ({
+      : readStringList(record['pegadinhas'], 'pegadinhas').map((texto) => ({
           texto,
           severidade: null,
           trecho: null,
@@ -841,7 +844,7 @@ export function parseDigest(raw: unknown, version = 'v1', descricao = ''): Parse
         })),
     ambiguidades: estruturado
       ? readAmbiguidades(record['ambiguidades'], version, descricao, descartes)
-      : readStringList(record['ambiguidades'], 'ambiguidades').map(leituraA => ({
+      : readStringList(record['ambiguidades'], 'ambiguidades').map((leituraA) => ({
           tipo: null,
           trecho: null,
           trechoConflito: null,

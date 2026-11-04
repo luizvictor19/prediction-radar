@@ -30,7 +30,9 @@ export interface EsportsSnapshotRow {
 }
 
 /** Volume 24h do market, `null` quando a Gamma não manda nenhuma das variantes. */
-export function gammaVolume24h(market: Pick<GammaMarket, 'volume24hr' | 'volume24hrClob'>): number | null {
+export function gammaVolume24h(
+  market: Pick<GammaMarket, 'volume24hr' | 'volume24hrClob'>,
+): number | null {
   const raw = market.volume24hr ?? market.volume24hrClob;
   return raw == null || Number.isNaN(Number(raw)) ? null : Number(raw);
 }
@@ -40,7 +42,9 @@ export function gammaVolume24h(market: Pick<GammaMarket, 'volume24hr' | 'volume2
  * book (acontece, e muito, no market recém-nascido) e não pode se confundir com
  * "a API não disse".
  */
-export function gammaLiquidity(market: Pick<GammaMarket, 'liquidityNum' | 'liquidity'>): number | null {
+export function gammaLiquidity(
+  market: Pick<GammaMarket, 'liquidityNum' | 'liquidity'>,
+): number | null {
   const raw = market.liquidityNum ?? market.liquidity;
   return raw == null || Number.isNaN(Number(raw)) ? null : Number(raw);
 }
@@ -78,7 +82,9 @@ async function esportsTableAvailable(): Promise<boolean> {
   tableAvailable = !error;
 
   if (error) {
-    console.warn(`[esports_snapshots] indisponível (${error.message}) — gravando em polymarket_snapshots`);
+    console.warn(
+      `[esports_snapshots] indisponível (${error.message}) — gravando em polymarket_snapshots`,
+    );
   } else {
     console.log('[esports_snapshots] disponível — série de esports migrada');
   }

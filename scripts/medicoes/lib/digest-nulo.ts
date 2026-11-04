@@ -66,7 +66,7 @@ export const CAUSAS: readonly Causa[] = [
 ];
 
 export function causaDe(codigo: string): Causa | null {
-  return CAUSAS.find(c => c.codigos.includes(codigo)) ?? null;
+  return CAUSAS.find((c) => c.codigos.includes(codigo)) ?? null;
 }
 
 /**
@@ -152,7 +152,7 @@ export function cabecalhoDoMd(md: string): { linhas: string[]; rodouEm: string |
   const ate = md.indexOf('\n## ');
   const topo = ate === -1 ? md : md.slice(0, ate);
   return {
-    linhas: topo.split('\n').filter(l => l.startsWith('- **')),
+    linhas: topo.split('\n').filter((l) => l.startsWith('- **')),
     rodouEm: /- \*\*rodou em:\*\* (.+)/.exec(topo)?.[1]?.trim() ?? null,
   };
 }
@@ -175,6 +175,6 @@ export function divergencias(
   doMd: ReadonlyMap<string, number>,
 ): string[] {
   return [...new Set([...doJson.keys(), ...doMd.keys()])]
-    .filter(k => (doJson.get(k) ?? 0) !== (doMd.get(k) ?? 0))
-    .map(k => `${k}: ${doJson.get(k) ?? 0} no .json, ${doMd.get(k) ?? 0} no .md`);
+    .filter((k) => (doJson.get(k) ?? 0) !== (doMd.get(k) ?? 0))
+    .map((k) => `${k}: ${doJson.get(k) ?? 0} no .json, ${doMd.get(k) ?? 0} no .md`);
 }

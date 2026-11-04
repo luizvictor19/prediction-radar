@@ -202,19 +202,19 @@ export function decideMarket(market: MoneylineMarket): MarketVerdict {
  * outros não a apaga.
  */
 export function combineVerdicts(verdicts: readonly MarketVerdict[]): MarketVerdict {
-  const ambiguous = verdicts.find((v): v is Extract<MarketVerdict, { kind: 'ambiguous' }> =>
-    v.kind === 'ambiguous',
+  const ambiguous = verdicts.find(
+    (v): v is Extract<MarketVerdict, { kind: 'ambiguous' }> => v.kind === 'ambiguous',
   );
   if (ambiguous) return ambiguous;
 
-  const winners = verdicts.filter((v): v is Extract<MarketVerdict, { kind: 'winner' }> =>
-    v.kind === 'winner',
+  const winners = verdicts.filter(
+    (v): v is Extract<MarketVerdict, { kind: 'winner' }> => v.kind === 'winner',
   );
-  const voids = verdicts.filter((v): v is Extract<MarketVerdict, { kind: 'void' }> =>
-    v.kind === 'void',
+  const voids = verdicts.filter(
+    (v): v is Extract<MarketVerdict, { kind: 'void' }> => v.kind === 'void',
   );
 
-  const sides = new Set(winners.map(v => v.side));
+  const sides = new Set(winners.map((v) => v.side));
   if (sides.size > 1) {
     return {
       kind: 'ambiguous',
@@ -230,15 +230,16 @@ export function combineVerdicts(verdicts: readonly MarketVerdict[]): MarketVerdi
     return {
       kind: 'winner',
       side: first.side,
-      resolvedAt: earliest(winners.map(v => v.resolvedAt)),
+      resolvedAt: earliest(winners.map((v) => v.resolvedAt)),
     };
   }
-  if (voids.length > 0) return { kind: 'void', resolvedAt: earliest(voids.map(v => v.resolvedAt)) };
+  if (voids.length > 0)
+    return { kind: 'void', resolvedAt: earliest(voids.map((v) => v.resolvedAt)) };
 
   // Estado B antes de "pendente": a partida cujo índice falta TEM desfecho, só
   // não tem como orientá-lo. Contar como pendente esconderia o que o recompute
   // semanal ainda deve a este passo.
-  if (verdicts.some(v => v.kind === 'no_index')) return { kind: 'no_index' };
+  if (verdicts.some((v) => v.kind === 'no_index')) return { kind: 'no_index' };
   return { kind: 'pending' };
 }
 
@@ -271,10 +272,7 @@ export interface MatchSides {
  * `esports_matches_winner_is_a_side` rejeitaria a escrita de qualquer jeito —
  * melhor contar e seguir do que perder o lote inteiro num chunk.
  */
-export function decideMatch(
-  sides: MatchSides,
-  markets: readonly MoneylineMarket[],
-): MatchOutcome {
+export function decideMatch(sides: MatchSides, markets: readonly MoneylineMarket[]): MatchOutcome {
   if (markets.length === 0) return { kind: 'no_moneyline' };
 
   const verdict = combineVerdicts(markets.map(decideMarket));
@@ -415,7 +413,7 @@ async function loadCandidates(
   if (error) return { rows: [], error: `leitura de esports_matches: ${error.message}` };
 
   return {
-    rows: (data ?? []).map(row => ({
+    rows: (data ?? []).map((row) => ({
       id: row['id'] as string,
       matchSlug: (row['match_slug'] as string | null) ?? '(sem slug)',
       teamAId: (row['team_a_id'] as string | null) ?? null,
@@ -457,7 +455,7 @@ async function loadMoneylines(
   if (linkRows.length === 0) return byMatch;
 
   const eventById = new Map<string, Record<string, unknown>>();
-  for (const chunk of chunks([...new Set(linkRows.map(l => l.eventId))], IN_CHUNK)) {
+  for (const chunk of chunks([...new Set(linkRows.map((l) => l.eventId))], IN_CHUNK)) {
     const { data, error } = await supabase
       .from('events')
       .select('id, status, resolved_outcome, resolved_at, outcomes')
@@ -574,9 +572,7 @@ function sample(stats: OutcomeStats, match: CandidateMatch, outcome: MatchOutcom
  * offset ingênuo pularia exatamente uma partida por conclusão. Em `dryRun` nada
  * sai, e o offset avança pela página inteira.
  */
-export async function propagateMatchOutcomes(
-  options: OutcomeOptions = {},
-): Promise<OutcomeStats> {
+export async function propagateMatchOutcomes(options: OutcomeOptions = {}): Promise<OutcomeStats> {
   const stats = emptyOutcomeStats();
   const dryRun = options.dryRun === true;
   const limit = Math.max(options.limit ?? 500, 1);
@@ -601,7 +597,10 @@ export async function propagateMatchOutcomes(
     }
     if (rows.length === 0) break;
 
-    const moneylines = await loadMoneylines(rows.map(r => r.id), stats.errors);
+    const moneylines = await loadMoneylines(
+      rows.map((r) => r.id),
+      stats.errors,
+    );
     let removed = 0;
 
     for (const match of rows) {

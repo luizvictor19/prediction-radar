@@ -26,9 +26,9 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
       .gte('metadata->>last_seen_at', freshCutoff)
       .or(
         `signal_type.eq.calendar_driven,` +
-        `signal_type.eq.hype_reality_gap,` +
-        `signal_type.eq.early_market,` +
-        `metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`,
+          `signal_type.eq.hype_reality_gap,` +
+          `signal_type.eq.early_market,` +
+          `metadata->>expected_edge_pct.gte.${config.min_expected_edge_pct}`,
       );
 
     const [
@@ -61,10 +61,7 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
         .select('result, pnl_usd')
         .not('closed_at', 'is', null)
         .gte('closed_at', thirtyDaysAgo),
-      supabase
-        .from('my_bet_legs')
-        .select('result, pnl_usd')
-        .not('closed_at', 'is', null),
+      supabase.from('my_bet_legs').select('result, pnl_usd').not('closed_at', 'is', null),
       supabase
         .from('my_bets')
         .select('id', { count: 'exact', head: true })
@@ -103,8 +100,8 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
     const activeSignals = activeRaw.count ?? 0;
 
     function calcMetrics(rows: Array<{ result: string | null; pnl_usd: number | null }>) {
-      const wins = rows.filter(r => r.result === 'win').length;
-      const decisive = rows.filter(r => r.result === 'win' || r.result === 'loss').length;
+      const wins = rows.filter((r) => r.result === 'win').length;
+      const decisive = rows.filter((r) => r.result === 'win' || r.result === 'loss').length;
       const winRate = decisive > 0 ? ((wins / decisive) * 100).toFixed(0) : '-';
       const pnl = rows.reduce((s, r) => s + (Number(r.pnl_usd) || 0), 0);
       return { pnl, winRate };
@@ -169,7 +166,11 @@ export async function statusHandler(ctx: BotContext): Promise<void> {
 
     await ctx.reply(text, { parse_mode: 'Markdown' });
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `statusHandler error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `statusHandler error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

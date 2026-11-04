@@ -56,9 +56,18 @@ test('resposta bem formada vira análise', () => {
 test('probabilidade fora de [0,1] falha alto — a API não checa faixa', () => {
   // `minimum`/`maximum` não são suportados em structured outputs e o SDK os
   // remove do schema antes de enviar. Esta é a única checagem que existe.
-  assert.equal(codeOf(() => parseAnalysis(response({ probability: 1.4 }), LABELS)), 'probability_range');
-  assert.equal(codeOf(() => parseAnalysis(response({ probability: -0.1 }), LABELS)), 'probability_range');
-  assert.equal(codeOf(() => parseAnalysis(response({ confidence: 2 }), LABELS)), 'confidence_range');
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ probability: 1.4 }), LABELS)),
+    'probability_range',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ probability: -0.1 }), LABELS)),
+    'probability_range',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ confidence: 2 }), LABELS)),
+    'confidence_range',
+  );
 
   // Os extremos são válidos: 0 e 1 são convicções legítimas.
   assert.equal(parseAnalysis(response({ probability: 0 }), LABELS).probability, 0);
@@ -75,8 +84,14 @@ test('citação de fragmento inexistente é rejeitada, não ignorada', () => {
 });
 
 test('tese sem afirmação rastreável não é análise', () => {
-  assert.equal(codeOf(() => parseAnalysis(response({ claims: [] }), LABELS)), 'no_claims');
-  assert.equal(codeOf(() => parseAnalysis(response({ thesis: '  ' }), LABELS)), 'missing_thesis');
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ claims: [] }), LABELS)),
+    'no_claims',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ thesis: '  ' }), LABELS)),
+    'missing_thesis',
+  );
 });
 
 test('abstenção é resposta válida — mas exige motivo', () => {
@@ -105,10 +120,22 @@ test('abstenção é resposta válida — mas exige motivo', () => {
 });
 
 test('forma inválida cai em schema, não em exceção genérica', () => {
-  assert.equal(codeOf(() => parseAnalysis(null, LABELS)), 'schema');
-  assert.equal(codeOf(() => parseAnalysis(response({ abstain: 'sim' }), LABELS)), 'schema');
-  assert.equal(codeOf(() => parseAnalysis(response({ claims: 'F1' }), LABELS)), 'schema');
-  assert.equal(codeOf(() => parseAnalysis(response({ probability: null }), LABELS)), 'schema');
+  assert.equal(
+    codeOf(() => parseAnalysis(null, LABELS)),
+    'schema',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ abstain: 'sim' }), LABELS)),
+    'schema',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ claims: 'F1' }), LABELS)),
+    'schema',
+  );
+  assert.equal(
+    codeOf(() => parseAnalysis(response({ probability: null }), LABELS)),
+    'schema',
+  );
 });
 
 // ---------------------------------------------------------------------------

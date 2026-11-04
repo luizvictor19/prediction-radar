@@ -43,17 +43,15 @@ test('mercado do radar sem aposta nenhuma continua sendo checado', () => {
   const tracks = planTracks({ legs: [], prefixes: [], ...JANELA });
 
   assert.ok(
-    tracks.some(t => t.name === 'roster'),
-    `sem trilha do roster: ${JSON.stringify(tracks.map(t => t.name))}`,
+    tracks.some((t) => t.name === 'roster'),
+    `sem trilha do roster: ${JSON.stringify(tracks.map((t) => t.name))}`,
   );
 });
 
 test('a trilha do roster não é prioritária', () => {
   // Prioritário habilita o fallback por preço extremo, que ESCREVE resolução a
   // partir de snapshot. Isso é para onde há dinheiro, não para o roster inteiro.
-  const roster = planTracks({ legs: [], prefixes: [], ...JANELA }).find(
-    t => t.name === 'roster',
-  );
+  const roster = planTracks({ legs: [], prefixes: [], ...JANELA }).find((t) => t.name === 'roster');
 
   assert.equal(roster?.priority, false);
 });
@@ -66,7 +64,7 @@ test('leg aberta é a única trilha prioritária', () => {
   });
 
   assert.deepEqual(
-    tracks.filter(t => t.priority).map(t => t.name),
+    tracks.filter((t) => t.priority).map((t) => t.name),
     ['open_leg'],
   );
 });
@@ -79,10 +77,10 @@ test('leg fechada entra em any_leg e não em open_leg', () => {
   });
 
   assert.equal(
-    tracks.some(t => t.name === 'open_leg'),
+    tracks.some((t) => t.name === 'open_leg'),
     false,
   );
-  const anyLeg = tracks.find(t => t.name === 'any_leg');
+  const anyLeg = tracks.find((t) => t.name === 'any_leg');
   assert.deepEqual(anyLeg && 'eventIds' in anyLeg ? anyLeg.eventIds : null, ['e1']);
 });
 
@@ -91,7 +89,7 @@ test('sem prefixo configurado não existe trilha da vertical', () => {
   const tracks = planTracks({ legs: [], prefixes: [], ...JANELA });
 
   assert.equal(
-    tracks.some(t => t.name === 'vertical'),
+    tracks.some((t) => t.name === 'vertical'),
     false,
   );
 });
@@ -101,7 +99,7 @@ test('a trilha do roster é paginada, não limitada', () => {
   // ficam marcados: `radar_tracked` acumula, e em 22/08/2026 já eram 1054. Um
   // teto numa requisição só cortaria o excedente em silêncio — e o PostgREST
   // corta em 1000 de qualquer jeito.
-  const roster = planTracks({ legs: [], prefixes: [], ...JANELA }).find(t => t.name === 'roster');
+  const roster = planTracks({ legs: [], prefixes: [], ...JANELA }).find((t) => t.name === 'roster');
 
   assert.ok(roster && 'pageSize' in roster, 'trilha do roster sem pageSize');
   assert.equal('limit' in (roster as object), false, 'trilha do roster com teto de requisição');

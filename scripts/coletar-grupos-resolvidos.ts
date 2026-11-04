@@ -1,6 +1,14 @@
 import 'dotenv/config';
 
-import { SPACING_MS, callCounts, call, isRecord, section, table, totalCalls } from './lib/probe-net.js';
+import {
+  SPACING_MS,
+  callCounts,
+  call,
+  isRecord,
+  section,
+  table,
+  totalCalls,
+} from './lib/probe-net.js';
 import { DEFAULT_PAIRING_CONFIG, generateCandidates } from './lib/market-pairing.js';
 import type { PairingMarket } from './lib/market-pairing.js';
 import { lerDesfecho, type Desfecho } from '../src/relacoes/desfecho.js';
@@ -306,7 +314,9 @@ function mediana(valores: readonly number[]): number {
   if (valores.length === 0) return 0;
   const s = [...valores].sort((a, b) => a - b);
   const meio = Math.floor(s.length / 2);
-  return s.length % 2 === 0 ? ((s[meio - 1] as number) + (s[meio] as number)) / 2 : (s[meio] as number);
+  return s.length % 2 === 0
+    ? ((s[meio - 1] as number) + (s[meio] as number)) / 2
+    : (s[meio] as number);
 }
 
 main().catch((err: unknown) => {

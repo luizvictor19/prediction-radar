@@ -94,7 +94,11 @@ async function findActiveSignalForEvent(eventId: string): Promise<string | null>
   return data?.id ?? null;
 }
 
-async function waitConfirm(conversation: BotConversation, ctx: BotContext, text: string): Promise<boolean> {
+async function waitConfirm(
+  conversation: BotConversation,
+  ctx: BotContext,
+  text: string,
+): Promise<boolean> {
   await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: SIM_NAO_KBD });
   const btnCtx = await conversation.waitFor('callback_query:data');
   await btnCtx.answerCallbackQuery();
@@ -149,9 +153,7 @@ async function perguntarProbabilidade(
     if (lida.ok) return lida.prob;
 
     if (tentativa === 0) {
-      await ctx.reply(
-        `Não entendi (${lida.motivo}). Um número de 0 a 100, em %. Ex: 72`,
-      );
+      await ctx.reply(`Não entendi (${lida.motivo}). Um número de 0 a 100, em %. Ex: 72`);
     }
   }
 
@@ -246,7 +248,9 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     matchedCategory = match.polymarket_category;
     matchedTitle = match.title;
     signalIdMatch = await findActiveSignalForEvent(match.id);
-    const catDisplay = match.polymarket_category ? catLabel(match.polymarket_category) : 'sem categoria';
+    const catDisplay = match.polymarket_category
+      ? catLabel(match.polymarket_category)
+      : 'sem categoria';
     await ctx.reply(`✅ Evento encontrado: ${match.title}\nCategoria: ${catDisplay}`);
   } else if (matches.length >= 2) {
     const kbd = new InlineKeyboard();
@@ -262,13 +266,15 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
 
     if (chosen !== 'match_event:none') {
       const chosenId = chosen.replace('match_event:', '');
-      const chosenMatch = matches.find(m => m.id === chosenId) ?? null;
+      const chosenMatch = matches.find((m) => m.id === chosenId) ?? null;
       if (chosenMatch) {
         eventIdMatch = chosenMatch.id;
         matchedCategory = chosenMatch.polymarket_category;
         matchedTitle = chosenMatch.title;
         signalIdMatch = await findActiveSignalForEvent(chosenMatch.id);
-        const catDisplay = chosenMatch.polymarket_category ? catLabel(chosenMatch.polymarket_category) : 'sem categoria';
+        const catDisplay = chosenMatch.polymarket_category
+          ? catLabel(chosenMatch.polymarket_category)
+          : 'sem categoria';
         await ctx.reply(`✅ Evento encontrado: ${chosenMatch.title}\nCategoria: ${catDisplay}`);
       }
     }
@@ -295,9 +301,7 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   if (eventIdMatch) {
     const norm = await normalizeOutcome(eventIdMatch, rawOutcome);
     if (!norm.ok) {
-      await ctx.reply(
-        `Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`,
-      );
+      await ctx.reply(`Outcome não encontrado.\nDisponíveis: ${norm.available.join(', ')}`);
       return;
     }
     outcome = norm.outcome;
@@ -315,7 +319,9 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   }
 
   // e. To win
-  await ctx.reply('Valor a receber se ganhar (em USD):\nEx: 6.88 (vem do Polymarket no campo "to win")');
+  await ctx.reply(
+    'Valor a receber se ganhar (em USD):\nEx: 6.88 (vem do Polymarket no campo "to win")',
+  );
   const priceCtx = await conversation.waitFor('message:text');
   const toWin = parseFloat(priceCtx.message.text.trim());
   if (isNaN(toWin) || toWin <= 0) {
@@ -324,7 +330,9 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
   }
   const entryPrice = stakeUsd / toWin;
   if (entryPrice <= 0 || entryPrice > 1) {
-    await ctx.reply(`Preço calculado inválido (${entryPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`);
+    await ctx.reply(
+      `Preço calculado inválido (${entryPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`,
+    );
     return;
   }
 
@@ -413,7 +421,11 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
     .single();
 
   if (betErr || !bet) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `register my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `register my_bets insert failed: ${betErr?.message ?? 'no data'}`,
+    });
     await ctx.reply('Erro ao registrar. Tenta de novo.');
     return;
   }
@@ -431,17 +443,18 @@ async function registerSingleLeg(conversation: BotConversation, ctx: BotContext)
 
   if (legErr) {
     await supabase.from('my_bets').delete().eq('id', bet.id);
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `register my_bet_legs insert failed: ${legErr.message}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `register my_bet_legs insert failed: ${legErr.message}`,
+    });
     await ctx.reply('Erro ao registrar. Tenta de novo.');
     return;
   }
 
   // Marcar sinal como acted_on se houve match
   if (signalIdMatch) {
-    await supabase
-      .from('detected_signals')
-      .update({ acted_on: true })
-      .eq('id', signalIdMatch);
+    await supabase.from('detected_signals').update({ acted_on: true }).eq('id', signalIdMatch);
 
     await logEvent({
       component: 'bot_command',
@@ -508,7 +521,12 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
       return;
     }
 
-    legInputs.push({ outcome, stake_usd: stakeUsd, entry_price: entryPrice, shares: stakeUsd / entryPrice });
+    legInputs.push({
+      outcome,
+      stake_usd: stakeUsd,
+      entry_price: entryPrice,
+      shares: stakeUsd / entryPrice,
+    });
   }
 
   // e. Probabilidade (na tese da basket como um todo)
@@ -588,7 +606,11 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     .single();
 
   if (betErr || !bet) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `register basket my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `register basket my_bets insert failed: ${betErr?.message ?? 'no data'}`,
+    });
     await ctx.reply('Erro ao registrar. Tenta de novo.');
     return;
   }
@@ -607,7 +629,11 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
     }
   } catch (err) {
     await supabase.from('my_bets').delete().eq('id', bet.id);
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `register basket my_bet_legs insert failed: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `register basket my_bet_legs insert failed: ${String(err)}`,
+    });
     await ctx.reply('Erro ao registrar. Tenta de novo.');
     return;
   }
@@ -616,7 +642,9 @@ async function registerBasket(conversation: BotConversation, ctx: BotContext): P
   await adjustCash(-totalStake);
 
   // k. Resposta
-  await ctx.reply(`✅ Basket registrada com ${n} legs.\nCash decrementado: -$${totalStake.toFixed(2)}`);
+  await ctx.reply(
+    `✅ Basket registrada com ${n} legs.\nCash decrementado: -$${totalStake.toFixed(2)}`,
+  );
 }
 
 export async function registerConversation(
@@ -634,7 +662,11 @@ export async function registerConversation(
       await registerBasket(conversation, ctx);
     }
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `registerConversation error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `registerConversation error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

@@ -60,7 +60,7 @@ const FRAGMENT_READ_LIMIT = 200;
 const PAUSE_BETWEEN_CALLS_MS = 500;
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +99,11 @@ export interface MarketSnapshot {
 
 export type GateVerdict =
   | { ok: true }
-  | { ok: false; reason: 'no_price' | 'low_liquidity' | 'wide_spread' | 'insufficient_context'; detail: string };
+  | {
+      ok: false;
+      reason: 'no_price' | 'low_liquidity' | 'wide_spread' | 'insufficient_context';
+      detail: string;
+    };
 
 export interface GateThresholds {
   minLiquidityUsd: number;
@@ -213,8 +217,8 @@ function payloadString(payload: unknown, key: string): string | null {
  * construção, e de quebra elimina uma consulta por partida.
  */
 export function marketFrom(fragments: readonly StoredFragment[]): MarketSnapshot {
-  const odds = fragments.find(f => f.kind === 'odds');
-  const liquidity = fragments.find(f => f.kind === 'liquidity');
+  const odds = fragments.find((f) => f.kind === 'odds');
+  const liquidity = fragments.find((f) => f.kind === 'liquidity');
 
   return {
     mid: odds ? payloadNumber(odds.payload, 'mid_price') : null,
@@ -315,7 +319,7 @@ async function loadCandidates(
   if (error) return { rows: [], error: `leitura de esports_matches: ${error.message}` };
 
   return {
-    rows: (data ?? []).map(row => ({
+    rows: (data ?? []).map((row) => ({
       matchId: row['id'] as string,
       verticalId: row['vertical_id'] as string,
       matchSlug: row['match_slug'] as string,
@@ -346,7 +350,7 @@ async function loadFragments(matchId: string, asOf: Date): Promise<StoredFragmen
     return [];
   }
 
-  return (data ?? []).map(row => ({
+  return (data ?? []).map((row) => ({
     id: Number(row['id']),
     enricherId: row['enricher_id'] as string,
     kind: row['kind'] as string,
@@ -423,8 +427,7 @@ async function loadTeamNames(ids: readonly string[]): Promise<Map<string, string
 
   for (const row of data ?? []) {
     const label =
-      ((row['display_name'] as string | null) ?? '').trim() ||
-      (row['polymarket_code'] as string);
+      ((row['display_name'] as string | null) ?? '').trim() || (row['polymarket_code'] as string);
     names.set(row['id'] as string, label);
   }
   return names;
@@ -547,7 +550,7 @@ async function runCycle(): Promise<void> {
   const { rows, error } = await loadCandidates(from, to);
   if (error !== null) stats.errors.push(error);
 
-  const done = await loadDoneCheckpoints(rows.map(r => r.matchId));
+  const done = await loadDoneCheckpoints(rows.map((r) => r.matchId));
   if (done.has('*')) {
     stats.errors.push('estado de checkpoints ilegível — ciclo suspenso');
     await report(stats, checkpoints);
@@ -606,7 +609,7 @@ async function analyseOne(
   const fragments = latestPerKind(await loadFragments(candidate.matchId, now));
   const market = marketFrom(fragments);
   const fingerprint = fingerprintFragments(
-    fragments.map(f => ({ fragmentId: f.id, asOf: f.asOf })),
+    fragments.map((f) => ({ fragmentId: f.id, asOf: f.asOf })),
   );
 
   const base = {
@@ -731,8 +734,10 @@ async function analyseOne(
 
   const byLabel = new Map(promptFragments.map((f, i) => [f.label, fragments[i] as StoredFragment]));
   const claims = output.claims
-    .map(claim => ({ claim: claim.claim, fragment: byLabel.get(claim.fragment) }))
-    .filter((entry): entry is { claim: string; fragment: StoredFragment } => entry.fragment !== undefined);
+    .map((claim) => ({ claim: claim.claim, fragment: byLabel.get(claim.fragment) }))
+    .filter(
+      (entry): entry is { claim: string; fragment: StoredFragment } => entry.fragment !== undefined,
+    );
 
   stats.analyzed++;
   await persist(

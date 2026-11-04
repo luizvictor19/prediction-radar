@@ -93,7 +93,13 @@ interface Args {
 }
 
 function parseArgs(argv: readonly string[]): Args | { error: string } {
-  const args: Args = { dryRun: false, fase: 'varredura', maxPaginas: Infinity, amostra: 50, write: true };
+  const args: Args = {
+    dryRun: false,
+    fase: 'varredura',
+    maxPaginas: Infinity,
+    amostra: 50,
+    write: true,
+  };
   for (const arg of argv) {
     if (arg === '--dry-run') {
       args.dryRun = true;
@@ -251,9 +257,40 @@ interface Compacto {
 
 /** Palavras que não distinguem pergunta nenhuma no Polymarket. */
 const VAZIAS = new Set([
-  'will', 'the', 'a', 'an', 'be', 'in', 'on', 'at', 'to', 'of', 'by', 'for', 'is', 'are',
-  'this', 'that', 'it', 'or', 'and', 'do', 'does', 'did', 'have', 'has', 'with', 'from',
-  'up', 'down', 'market', 'yes', 'no', 'than', 'as', 'any',
+  'will',
+  'the',
+  'a',
+  'an',
+  'be',
+  'in',
+  'on',
+  'at',
+  'to',
+  'of',
+  'by',
+  'for',
+  'is',
+  'are',
+  'this',
+  'that',
+  'it',
+  'or',
+  'and',
+  'do',
+  'does',
+  'did',
+  'have',
+  'has',
+  'with',
+  'from',
+  'up',
+  'down',
+  'market',
+  'yes',
+  'no',
+  'than',
+  'as',
+  'any',
 ]);
 
 function tokens(texto: string): string[] {
@@ -458,7 +495,10 @@ async function varredura(args: Args): Promise<void> {
           eventoTitulo: evento?.title ?? '',
           padroes: naPergunta,
           padroesNaDescricao: naDescricao,
-          faixa: naPergunta.length === 1 && naPergunta[0] === 'and' && FAIXA.test(pergunta.toLowerCase()),
+          faixa:
+            naPergunta.length === 1 &&
+            naPergunta[0] === 'and' &&
+            FAIXA.test(pergunta.toLowerCase()),
           tokenId: primeiroToken(m),
           volume24h: m.volume24hr ?? 0,
           bestBid: typeof m.bestBid === 'number' ? m.bestBid : null,
@@ -472,7 +512,9 @@ async function varredura(args: Args): Promise<void> {
     }
 
     if (pagina >= args.maxPaginas) {
-      console.error(`[${LABEL}] teto --max-paginas=${args.maxPaginas} atingido no estrato ${i + 1}`);
+      console.error(
+        `[${LABEL}] teto --max-paginas=${args.maxPaginas} atingido no estrato ${i + 1}`,
+      );
       break;
     }
     if ((i + 1) % 10 === 0) {
@@ -500,7 +542,14 @@ async function varredura(args: Args): Promise<void> {
       'gamma',
     );
     bytes += res.bytes;
-    await writeSnapshot(LABEL, `${DIR}/gamma-markets-open.json`, 'gamma-markets-open-snapshot', '/markets', { ...OPEN_FILTER, limit: '10' }, res);
+    await writeSnapshot(
+      LABEL,
+      `${DIR}/gamma-markets-open.json`,
+      'gamma-markets-open-snapshot',
+      '/markets',
+      { ...OPEN_FILTER, limit: '10' },
+      res,
+    );
   }
 
   // --- contagem por padrão --------------------------------------------------
@@ -553,7 +602,11 @@ async function varredura(args: Args): Promise<void> {
     const { writeFile } = await import('node:fs/promises');
     await writeFile(
       `${DIR}/amostra-50.json`,
-      `${JSON.stringify(amostra.map((c) => ({ id: c.id, question: c.question, padroes: c.padroes })), null, 2)}\n`,
+      `${JSON.stringify(
+        amostra.map((c) => ({ id: c.id, question: c.question, padroes: c.padroes })),
+        null,
+        2,
+      )}\n`,
       'utf8',
     );
   }
@@ -598,7 +651,8 @@ async function varredura(args: Args): Promise<void> {
     '  sorteio simples, que gastaria 46 das 50 conferências em "FDV after launch".',
     '',
     ...amostra.map(
-      (c, i) => `  ${String(i + 1).padStart(2)}. [${c.id}] (${principal(c.padroes)})  ${c.question}`,
+      (c, i) =>
+        `  ${String(i + 1).padStart(2)}. [${c.id}] (${principal(c.padroes)})  ${c.question}`,
     ),
     '',
     `  Escreva o veredito em ${ARQ_ROTULOS}:`,
@@ -641,8 +695,14 @@ function partir(pergunta: string): [string, string] | null {
   }
   if (corte === -1) return null;
 
-  const a = pergunta.slice(0, corte).replace(/^\s*will\s+/i, '').trim();
-  const b = pergunta.slice(corte + tamanho).replace(/\?+$/, '').trim();
+  const a = pergunta
+    .slice(0, corte)
+    .replace(/^\s*will\s+/i, '')
+    .trim();
+  const b = pergunta
+    .slice(corte + tamanho)
+    .replace(/\?+$/, '')
+    .trim();
   if (a.length < 3 || b.length < 3) return null;
   return [a, b];
 }
@@ -751,7 +811,9 @@ async function pernas(_args: Args): Promise<void> {
   try {
     rotulos = JSON.parse(await readFile(ARQ_ROTULOS, 'utf8')) as typeof rotulos;
   } catch {
-    console.error(`[${LABEL}] ${ARQ_ROTULOS} não existe. Rode a fase 1 e classifique os 50 primeiro.`);
+    console.error(
+      `[${LABEL}] ${ARQ_ROTULOS} não existe. Rode a fase 1 e classifique os 50 primeiro.`,
+    );
     process.exit(2);
     return;
   }
@@ -765,9 +827,7 @@ async function pernas(_args: Args): Promise<void> {
   // precisão do casador: ela dá a `both` (raro) o mesmo peso que a ` after `
   // (92% dos casados). A precisão que vale é a média das precisões por padrão,
   // pesada pelo tamanho de cada padrão na POPULAÇÃO.
-  const casadosLimpos = casados.filter(
-    (c) => c.padroes.length > 0 && !c.faixa,
-  );
+  const casadosLimpos = casados.filter((c) => c.padroes.length > 0 && !c.faixa);
   const rotuloDe = new Map<string, boolean>([
     ...rotulos.verdadeiros.map((id) => [id, true] as [string, boolean]),
     ...rotulos.falsos.map((id) => [id, false] as [string, boolean]),
@@ -821,7 +881,9 @@ async function pernas(_args: Args): Promise<void> {
   // --- as pernas dos verdadeiros --------------------------------------------
 
   const porId = new Map(casados.map((c) => [c.id, c]));
-  const verdadeiros = rotulos.verdadeiros.map((id) => porId.get(id)).filter((c): c is Casado => c !== undefined);
+  const verdadeiros = rotulos.verdadeiros
+    .map((id) => porId.get(id))
+    .filter((c): c is Casado => c !== undefined);
 
   /** Abaixo disto o "candidato" é ruído: compartilha data e mais nada. */
   const LIMIAR = 0.5;
@@ -964,8 +1026,22 @@ async function pernas(_args: Args): Promise<void> {
     `  ... trio inteiro com livro:        ${trios.length}  (composto E as duas pernas)`,
     '',
     `  volume 24h do composto, US$:  ${volumes.length === 0 ? '—' : distribuicao(volumes, 0)}`,
-    `  profundidade no topo, US$:    ${comLivro.length === 0 ? '—' : distribuicao(comLivro.map((l) => l.profundidade), 0)}`,
-    `  spread do composto, ¢:        ${comLivro.length === 0 ? '—' : distribuicao(comLivro.map((l) => l.spread as number), 2)}`,
+    `  profundidade no topo, US$:    ${
+      comLivro.length === 0
+        ? '—'
+        : distribuicao(
+            comLivro.map((l) => l.profundidade),
+            0,
+          )
+    }`,
+    `  spread do composto, ¢:        ${
+      comLivro.length === 0
+        ? '—'
+        : distribuicao(
+            comLivro.map((l) => l.spread as number),
+            2,
+          )
+    }`,
     '',
     '  (profundidade = o menor entre os dólares no melhor bid e no melhor ask; é ele',
     '   que limita a ida E a volta, e a volta é metade da operação)',

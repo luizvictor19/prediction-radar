@@ -100,7 +100,7 @@ export function chavesDoAchado(sha: string, a: Identificavel): string[] {
 
   const subtipos = (a.subtipos ?? []).length === 0 ? [null] : (a.subtipos as string[]);
   const chaves = subtipos
-    .map(s => chaveDaLinha(sha, 'ambiguidade', s, a.trecho, a.trecho_conflito))
+    .map((s) => chaveDaLinha(sha, 'ambiguidade', s, a.trecho, a.trecho_conflito))
     .filter((k): k is string => k !== null);
   return [...new Set(chaves)];
 }

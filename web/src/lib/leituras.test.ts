@@ -1,9 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MINIMO_LEITURAS, seloDeConfirmacao, seloDeCobertura,
-  procedencia,
-} from './leituras.js';
+import { MINIMO_LEITURAS, seloDeConfirmacao, seloDeCobertura, procedencia } from './leituras.js';
 
 /**
  * O gate de exibição do selo de confirmação.

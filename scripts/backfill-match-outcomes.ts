@@ -1,8 +1,5 @@
 import 'dotenv/config';
-import {
-  propagateMatchOutcomes,
-  type OutcomeStats,
-} from '../src/verticals/match-outcome.js';
+import { propagateMatchOutcomes, type OutcomeStats } from '../src/verticals/match-outcome.js';
 
 /**
  * Backfill do desfecho das partidas: `events` → `esports_matches`.
@@ -46,7 +43,9 @@ const LABEL = 'backfill-outcomes';
 const DEFAULT_LIMIT = 100_000;
 
 function flag(name: string): string | null {
-  const hit = process.argv.slice(2).find(arg => arg === `--${name}` || arg.startsWith(`--${name}=`));
+  const hit = process.argv
+    .slice(2)
+    .find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
   if (hit === undefined) return null;
   const [, value] = hit.split('=');
   return value ?? '';
@@ -145,7 +144,7 @@ async function main(): Promise<void> {
   if (stats.errors.length > 0 || stats.writeFailed > 0) process.exit(1);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(`[${LABEL}] Fatal:`, err);
   process.exit(1);
 });

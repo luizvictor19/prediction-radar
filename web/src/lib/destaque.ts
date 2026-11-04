@@ -166,8 +166,10 @@ export function destacar<T extends PedidoDeDestaque>(
 
   // Cada ponta de intervalo é uma fronteira. Entre duas fronteiras vizinhas a
   // cobertura é constante, que é o que torna o resultado plano por construção.
-  const fronteiras = [...new Set([0, regulamento.length, ...intervalos.flatMap(i => [i.ini, i.fim])])]
-    .filter(i => i >= 0 && i <= regulamento.length)
+  const fronteiras = [
+    ...new Set([0, regulamento.length, ...intervalos.flatMap((i) => [i.ini, i.fim])]),
+  ]
+    .filter((i) => i >= 0 && i <= regulamento.length)
     .sort((a, b) => a - b);
 
   const segmentos: Segmento[] = [];
@@ -176,11 +178,16 @@ export function destacar<T extends PedidoDeDestaque>(
     const fim = fronteiras[k + 1] as number;
     if (fim <= ini) continue;
 
-    const cobrindo = intervalos.filter(i => i.ini <= ini && i.fim >= fim);
+    const cobrindo = intervalos.filter((i) => i.ini <= ini && i.fim >= fim);
     segmentos.push({
       texto: regulamento.slice(ini, fim),
-      marca: cobrindo.length === 0 ? null : cobrindo.some(i => i.marca === 'forte') ? 'forte' : 'clara',
-      ids: [...new Set(cobrindo.map(i => i.id))].sort(),
+      marca:
+        cobrindo.length === 0
+          ? null
+          : cobrindo.some((i) => i.marca === 'forte')
+            ? 'forte'
+            : 'clara',
+      ids: [...new Set(cobrindo.map((i) => i.id))].sort(),
     });
   }
 

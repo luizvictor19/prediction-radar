@@ -169,7 +169,10 @@ function lerRelacao(bruto: unknown, rotulosConhecidos: ReadonlySet<string>): Rel
 
   const mercados = registro['mercados'];
   if (!Array.isArray(mercados) || mercados.some((m) => typeof m !== 'string')) {
-    throw new ExtratorError('schema', `mercados não é lista de string: ${JSON.stringify(mercados)}`);
+    throw new ExtratorError(
+      'schema',
+      `mercados não é lista de string: ${JSON.stringify(mercados)}`,
+    );
   }
   const rotulos = (mercados as string[]).map((m) => m.trim());
 
@@ -189,7 +192,10 @@ function lerRelacao(bruto: unknown, rotulosConhecidos: ReadonlySet<string>): Rel
   // conteúdo vazio, e passaria pela conferência de desfecho como compatível
   // sempre — um acerto de graça que inflaria a precisão.
   if (new Set(rotulos).size !== rotulos.length) {
-    throw new ExtratorError('rotulo_repetido', `relação com rótulo repetido: ${rotulos.join(', ')}`);
+    throw new ExtratorError(
+      'rotulo_repetido',
+      `relação com rótulo repetido: ${rotulos.join(', ')}`,
+    );
   }
 
   const aridade = ARIDADE[tipo];

@@ -77,8 +77,14 @@ test('o herdado mais confirmado fica abaixo do acusado menos confirmado', () => 
   // would open the list and the accused 2/30 would follow it. The split is what
   // prevents that, and it does not look at `vezes_encontrado`: the origin is
   // the primary key, always.
-  assert.deepEqual(acusados.map(a => a.achado_id), ['acusado-fraco']);
-  assert.deepEqual(herdados.map(a => a.achado_id), ['herdado-forte']);
+  assert.deepEqual(
+    acusados.map((a) => a.achado_id),
+    ['acusado-fraco'],
+  );
+  assert.deepEqual(
+    herdados.map((a) => a.achado_id),
+    ['herdado-forte'],
+  );
 });
 
 test('em qualquer ordem de entrada, nenhum herdado precede um acusado', () => {
@@ -89,10 +95,14 @@ test('em qualquer ordem de entrada, nenhum herdado precede um acusado', () => {
     item({ achado_id: 'a2', vezes_encontrado: 1 }),
   ];
 
-  for (const ordem of [entrada, [...entrada].reverse(), [entrada[2]!, entrada[0]!, entrada[3]!, entrada[1]!]]) {
+  for (const ordem of [
+    entrada,
+    [...entrada].reverse(),
+    [entrada[2]!, entrada[0]!, entrada[3]!, entrada[1]!],
+  ]) {
     const { acusados, herdados } = separarHerdados(ordem);
     const tela = [...acusados, ...herdados];
-    const origens = tela.map(a => a.origem);
+    const origens = tela.map((a) => a.origem);
     const primeiroHerdado = origens.indexOf('herdado');
 
     // No accused finding after the first inherited one: once the block starts,
@@ -100,7 +110,7 @@ test('em qualquer ordem de entrada, nenhum herdado precede um acusado', () => {
     assert.ok(primeiroHerdado !== -1);
     assert.ok(
       !origens.slice(primeiroHerdado).includes('acusado'),
-      `${JSON.stringify(tela.map(a => a.achado_id))}`,
+      `${JSON.stringify(tela.map((a) => a.achado_id))}`,
     );
   }
 });
@@ -121,8 +131,8 @@ test('nada é apagado: os dois grupos somam a entrada', () => {
 
   assert.equal(acusados.length + herdados.length, entrada.length);
   assert.deepEqual(
-    [...acusados, ...herdados].map(a => a.achado_id).sort(),
-    entrada.map(a => a.achado_id).sort(),
+    [...acusados, ...herdados].map((a) => a.achado_id).sort(),
+    entrada.map((a) => a.achado_id).sort(),
   );
 });
 
@@ -140,7 +150,10 @@ test('um acusado sem prosa continua no grupo principal', () => {
 
   const { acusados, herdados } = separarHerdados([lacônico, HERDADO_FORTE]);
 
-  assert.deepEqual(acusados.map(a => a.achado_id), ['acusado-sem-prosa']);
+  assert.deepEqual(
+    acusados.map((a) => a.achado_id),
+    ['acusado-sem-prosa'],
+  );
   assert.equal(herdados.length, 1);
 });
 
@@ -174,8 +187,14 @@ test('a ordem dentro de cada grupo é a da entrada', () => {
 
   const { acusados, herdados } = separarHerdados(entrada);
 
-  assert.deepEqual(acusados.map(a => a.achado_id), ['a1', 'a2']);
-  assert.deepEqual(herdados.map(a => a.achado_id), ['h1', 'h2']);
+  assert.deepEqual(
+    acusados.map((a) => a.achado_id),
+    ['a1', 'a2'],
+  );
+  assert.deepEqual(
+    herdados.map((a) => a.achado_id),
+    ['h1', 'h2'],
+  );
 });
 
 // ---------------------------------------------------------------------------

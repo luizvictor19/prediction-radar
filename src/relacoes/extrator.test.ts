@@ -70,7 +70,10 @@ test('ressalva preenchida sobrevive; string vazia vira null', () => {
 
 test('rótulo não entregue invalida a resposta INTEIRA, não só a entrada', () => {
   const resposta = { relacoes: [relacao(), relacao({ mercados: ['M1', 'M9'] })] };
-  assert.equal(codigoDe(() => parseRelacoes(resposta, ROTULOS)), 'rotulo_desconhecido');
+  assert.equal(
+    codigoDe(() => parseRelacoes(resposta, ROTULOS)),
+    'rotulo_desconhecido',
+  );
 });
 
 test('rótulo repetido na mesma relação é recusado', () => {
@@ -96,7 +99,10 @@ test('tipo fora da lista fechada é recusado', () => {
 test('conjuncao exige exatamente três mercados', () => {
   assert.equal(
     codigoDe(() =>
-      parseRelacoes({ relacoes: [relacao({ tipo: 'conjuncao', mercados: ['M1', 'M2'] })] }, ROTULOS),
+      parseRelacoes(
+        { relacoes: [relacao({ tipo: 'conjuncao', mercados: ['M1', 'M2'] })] },
+        ROTULOS,
+      ),
     ),
     'aridade',
   );
@@ -109,7 +115,9 @@ test('conjuncao exige exatamente três mercados', () => {
 
 test('implica com três mercados é recusado', () => {
   assert.equal(
-    codigoDe(() => parseRelacoes({ relacoes: [relacao({ mercados: ['M1', 'M2', 'M3'] })] }, ROTULOS)),
+    codigoDe(() =>
+      parseRelacoes({ relacoes: [relacao({ mercados: ['M1', 'M2', 'M3'] })] }, ROTULOS),
+    ),
     'aridade',
   );
 });
@@ -141,8 +149,14 @@ test('justificativa vazia é recusada', () => {
 });
 
 test('resposta que não é objeto, ou sem lista, é recusada', () => {
-  assert.equal(codigoDe(() => parseRelacoes('nada', ROTULOS)), 'schema');
-  assert.equal(codigoDe(() => parseRelacoes({ relacoes: 'nada' }, ROTULOS)), 'schema');
+  assert.equal(
+    codigoDe(() => parseRelacoes('nada', ROTULOS)),
+    'schema',
+  );
+  assert.equal(
+    codigoDe(() => parseRelacoes({ relacoes: 'nada' }, ROTULOS)),
+    'schema',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -239,7 +253,10 @@ test('o módulo de prompt não importa o de desfecho', async () => {
 test('modelo sem preço não roda — sem preço não há teto de gasto', () => {
   assert.equal(modeloConhecido('claude-sonnet-4-6'), true);
   assert.equal(modeloConhecido('modelo-inventado'), false);
-  assert.equal(estimarCustoUsd('modelo-inventado', { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }), null);
+  assert.equal(
+    estimarCustoUsd('modelo-inventado', { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }),
+    null,
+  );
 });
 
 test('a conta de custo reproduz o medido em esports_analyses', () => {
@@ -322,7 +339,11 @@ test('modelo desconhecido para antes de gastar a chamada', async () => {
   const espiao: LlmClient = {
     async complete() {
       chamou = true;
-      return { text: '{}', stop: 'ok', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+      return {
+        text: '{}',
+        stop: 'ok',
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      };
     },
   };
   await assert.rejects(

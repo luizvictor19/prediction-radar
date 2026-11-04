@@ -51,10 +51,11 @@ test('lê o bloco context_* em snake_case e em camelCase', () => {
     { description: 'texto', updatedAt: '2026-08-06T15:01:18.892Z', requiresRegen: true },
   );
 
-  assert.deepEqual(
-    readContextBlock({ contextDescription: 'texto', contextRequiresRegen: false }),
-    { description: 'texto', updatedAt: null, requiresRegen: false },
-  );
+  assert.deepEqual(readContextBlock({ contextDescription: 'texto', contextRequiresRegen: false }), {
+    description: 'texto',
+    updatedAt: null,
+    requiresRegen: false,
+  });
 });
 
 test('sem texto não há bloco — e metadata nulo não explode', () => {
@@ -131,7 +132,10 @@ test('carimbo ilegível é recusa, não palpite', () => {
 test('carimbo igual = texto igual: não regrava', () => {
   const asOf = new Date('2026-08-06T15:01:18.892Z');
   assert.equal(shouldSkipRewrite(asOf, asOf, 'source', 3_600), true);
-  assert.equal(shouldSkipRewrite(new Date('2026-08-06T12:00:00.000Z'), asOf, 'source', 3_600), false);
+  assert.equal(
+    shouldSkipRewrite(new Date('2026-08-06T12:00:00.000Z'), asOf, 'source', 3_600),
+    false,
+  );
   assert.equal(shouldSkipRewrite(null, asOf, 'source', 3_600), false);
 });
 

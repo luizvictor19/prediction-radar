@@ -1772,7 +1772,10 @@ export function resetOrphanCounts(): void {
  * observação que rebaixasse o ciclo para `partial` recriaria, por outro caminho,
  * exatamente o ruído que a declaração existe para acabar.
  */
-async function refreshOrphanCounts(prefixes: readonly string[], stats: ResolveStats): Promise<void> {
+async function refreshOrphanCounts(
+  prefixes: readonly string[],
+  stats: ResolveStats,
+): Promise<void> {
   // Sem prefixo a contar — todas as verticais coletadas foram habilitadas — o
   // cache tem que sumir junto. Deixá-lo de pé publicaria no metadata um número
   // de órfãos que já foi linkado.

@@ -1,6 +1,20 @@
 import type { CallResult } from './lib/probe-net.js';
-import { SPACING_MS, call, callCounts, isRecord, num, section, table, totalCalls } from './lib/probe-net.js';
-import { DEFAULT_PAIRING_CONFIG, extractEntities, jaccard, tokenize } from './lib/market-pairing.js';
+import {
+  SPACING_MS,
+  call,
+  callCounts,
+  isRecord,
+  num,
+  section,
+  table,
+  totalCalls,
+} from './lib/probe-net.js';
+import {
+  DEFAULT_PAIRING_CONFIG,
+  extractEntities,
+  jaccard,
+  tokenize,
+} from './lib/market-pairing.js';
 
 /**
  * Lista candidata do radar — a frente que troca prever por vigiar.
@@ -200,7 +214,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     else args.maxTagCalls = Math.round(value);
   }
 
-  if (args.semanaMin >= args.semanaMax) return { error: '--semana-min precisa ser menor que --semana-max' };
+  if (args.semanaMin >= args.semanaMax)
+    return { error: '--semana-min precisa ser menor que --semana-max' };
   return args;
 }
 
@@ -256,7 +271,8 @@ function asArray(body: unknown, key: string): unknown[] {
  */
 function toMarket(raw: unknown): GammaMarket | null {
   if (!isRecord(raw)) return null;
-  const evento = Array.isArray(raw['events']) && isRecord(raw['events'][0]) ? raw['events'][0] : null;
+  const evento =
+    Array.isArray(raw['events']) && isRecord(raw['events'][0]) ? raw['events'][0] : null;
 
   return {
     id: str(raw['id']),
@@ -298,7 +314,8 @@ async function get(path: string, params: Record<string, string> | string): Promi
   const query = typeof params === 'string' ? params : new URLSearchParams(params).toString();
   const res = await call(`${GAMMA}${path}?${query}`, 'gamma');
   bytesDownloaded += res.bytes;
-  if (res.status !== 200) throw new Error(`Gamma HTTP ${res.status} em ${path} — ${res.text.slice(0, 160)}`);
+  if (res.status !== 200)
+    throw new Error(`Gamma HTTP ${res.status} em ${path} — ${res.text.slice(0, 160)}`);
   return res;
 }
 
@@ -339,7 +356,8 @@ const MESES = [
  */
 function datasDoTexto(texto: string): number[] {
   const encontradas: number[] = [];
-  const re = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/gi;
+  const re =
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/gi;
 
   for (const m of texto.matchAll(re)) {
     const mes = MESES.indexOf((m[1] ?? '').toLowerCase());
@@ -443,9 +461,15 @@ async function contarFatia(from: string, to: string): Promise<number | null> {
  * limitado a 2000, uma fatia saturada é invisível pela metade — e o silêncio
  * pareceria "a janela tem 2000 mercados".
  */
-async function coletarJanela(from: string, to: string, janelas: { n: number }): Promise<GammaMarket[]> {
+async function coletarJanela(
+  from: string,
+  to: string,
+  janelas: { n: number },
+): Promise<GammaMarket[]> {
   if (janelas.n >= MAX_JANELAS) {
-    console.error(`[${LABEL}] AVISO: teto de ${MAX_JANELAS} sub-janelas atingido; fatia ${from}..${to} NÃO coletada`);
+    console.error(
+      `[${LABEL}] AVISO: teto de ${MAX_JANELAS} sub-janelas atingido; fatia ${from}..${to} NÃO coletada`,
+    );
     return [];
   }
   janelas.n += 1;
@@ -460,7 +484,9 @@ async function coletarJanela(from: string, to: string, janelas: { n: number }): 
   // Saiu do laço com todas as páginas cheias: a fatia satura. Parte no meio.
   const meio = iso(Math.floor((Date.parse(from) + Date.parse(to)) / 2));
   if (meio === from || meio === to) {
-    console.error(`[${LABEL}] AVISO: fatia ${from}..${to} satura e não dá para partir; lista incompleta`);
+    console.error(
+      `[${LABEL}] AVISO: fatia ${from}..${to} satura e não dá para partir; lista incompleta`,
+    );
     return out;
   }
   console.error(`[${LABEL}] fatia ${from}..${to} saturou o offset — partindo em ${meio}`);
@@ -518,7 +544,10 @@ function categoriaDeTags(tags: readonly string[]): string {
   return tags[0] ?? 'sem-tag';
 }
 
-async function buscarTags(eventIds: readonly string[], maxCalls: number): Promise<Map<string, string>> {
+async function buscarTags(
+  eventIds: readonly string[],
+  maxCalls: number,
+): Promise<Map<string, string>> {
   const mapa = new Map<string, string>();
   let calls = 0;
 
@@ -555,14 +584,19 @@ async function buscarTags(eventIds: readonly string[], maxCalls: number): Promis
       break;
     }
     const lote = faltam.slice(i, i + TAG_BATCH);
-    const query = [...lote.map((id) => `id=${encodeURIComponent(id)}`), `limit=${TAG_BATCH}`].join('&');
+    const query = [...lote.map((id) => `id=${encodeURIComponent(id)}`), `limit=${TAG_BATCH}`].join(
+      '&',
+    );
     const res = await get('/events', query);
     calls += 1;
 
     for (const raw of asArray(res.body, 'events')) {
       if (!isRecord(raw)) continue;
       const tags = Array.isArray(raw['tags'])
-        ? raw['tags'].filter(isRecord).map((t) => str(t['slug'])).filter((s) => s !== '')
+        ? raw['tags']
+            .filter(isRecord)
+            .map((t) => str(t['slug']))
+            .filter((s) => s !== '')
         : [];
       cache.set(str(raw['id']), tags);
       mapa.set(str(raw['id']), categoriaDeTags(tags));
@@ -617,7 +651,9 @@ function precoYes(m: GammaMarket): number | null {
   const precos = parseJsonArray(m.outcomePrices).map(Number);
   const p = precos[0];
   if (typeof p === 'number' && Number.isFinite(p) && p > 0 && p < 1) return p;
-  return m.lastTradePrice !== null && m.lastTradePrice > 0 && m.lastTradePrice < 1 ? m.lastTradePrice : null;
+  return m.lastTradePrice !== null && m.lastTradePrice > 0 && m.lastTradePrice < 1
+    ? m.lastTradePrice
+    : null;
 }
 
 function sanidadeDeBook(m: GammaMarket): boolean {
@@ -798,7 +834,10 @@ function agruparPorAssunto(cands: readonly Candidato[]): GrupoAssunto[] {
     // Heterogêneo mostra as DUAS chaves mais compartilhadas. Uma chave só
     // rotulava de "russia" um grupo que continha Fed e Banco do Japão — o rótulo
     // mentia com mais confiança do que o agrupamento errava.
-    const rotulo = heterogeneo && segunda !== undefined ? `${melhor[0]}+${segunda[0]}*` : melhor[0] + (heterogeneo ? '*' : '');
+    const rotulo =
+      heterogeneo && segunda !== undefined
+        ? `${melhor[0]}+${segunda[0]}*`
+        : melhor[0] + (heterogeneo ? '*' : '');
     return { rotulo, membros };
   });
 }
@@ -830,9 +869,16 @@ function papelDe(descLen: number, corte: number): 'tese' | 'controle' {
 // Relatório
 // ---------------------------------------------------------------------------
 
-function quantis(valores: readonly number[]): { n: number; p10: number; mediana: number; media: number; p90: number } {
+function quantis(valores: readonly number[]): {
+  n: number;
+  p10: number;
+  mediana: number;
+  media: number;
+  p90: number;
+} {
   const ord = [...valores].sort((a, b) => a - b);
-  const q = (p: number): number => ord[Math.min(ord.length - 1, Math.max(0, Math.floor(p * ord.length)))] ?? 0;
+  const q = (p: number): number =>
+    ord[Math.min(ord.length - 1, Math.max(0, Math.floor(p * ord.length)))] ?? 0;
   const media = ord.length === 0 ? 0 : ord.reduce((s, v) => s + v, 0) / ord.length;
   return { n: ord.length, p10: q(0.1), mediana: q(0.5), media, p90: q(0.9) };
 }
@@ -869,10 +915,17 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   if (args.reuse) {
     const { readFile } = await import('node:fs/promises');
-    const cache = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as { coletadaEm: string; mercados: GammaMarket[] };
+    const cache = JSON.parse(await readFile(CACHE_FILE, 'utf8')) as {
+      coletadaEm: string;
+      mercados: GammaMarket[];
+    };
     console.log(section('0. Janela reaproveitada do disco'));
-    console.log(`  ${CACHE_FILE} — ${cache.mercados.length} mercados, coletada em ${cache.coletadaEm}`);
-    console.log('  ZERO chamadas de coleta. Preço envelheceu: serve para calibrar filtro, não para decidir.');
+    console.log(
+      `  ${CACHE_FILE} — ${cache.mercados.length} mercados, coletada em ${cache.coletadaEm}`,
+    );
+    console.log(
+      '  ZERO chamadas de coleta. Preço envelheceu: serve para calibrar filtro, não para decidir.',
+    );
     await relatorio(args, cache.mercados, agora, de, ate, cache.coletadaEm);
     return;
   }
@@ -893,7 +946,12 @@ async function main(): Promise<void> {
         `~${(paginas ?? 20) + 12} chamadas de coleta + até ${args.maxTagCalls} de categoria.`,
     );
     console.log(section('Chamadas'));
-    console.log(table(['host', 'chamadas'], callCounts().map(([h, n]) => [h, String(n)])));
+    console.log(
+      table(
+        ['host', 'chamadas'],
+        callCounts().map(([h, n]) => [h, String(n)]),
+      ),
+    );
     return;
   }
 
@@ -903,7 +961,9 @@ async function main(): Promise<void> {
   const brutos = await coletarJanela(de, ate, { n: 0 });
   const universo = [...new Map(brutos.map((m) => [m.id, m])).values()];
   console.log(section('1. Coleta'));
-  console.log(`  ${universo.length} mercados abertos na janela (${brutos.length - universo.length} duplicatas)`);
+  console.log(
+    `  ${universo.length} mercados abertos na janela (${brutos.length - universo.length} duplicatas)`,
+  );
 
   const { mkdir, writeFile } = await import('node:fs/promises');
   const { dirname } = await import('node:path');
@@ -965,7 +1025,8 @@ async function relatorio(
   const comData = universo.length - semData;
   const vencidos = universo.filter((m) => m.endDate !== null && Date.parse(m.endDate) < agora);
   const revisados = universo.filter((m) => m.hasReviewedDates).length;
-  const pct = (n: number, de: number): string => `${n} (${((100 * n) / Math.max(1, de)).toFixed(0)}%)`;
+  const pct = (n: number, de: number): string =>
+    `${n} (${((100 * n) / Math.max(1, de)).toFixed(0)}%)`;
 
   console.log(
     table(
@@ -999,7 +1060,11 @@ async function relatorio(
       ];
     });
   console.log(
-    table(['pergunta', 'endDate', 'desvio p/ data citada', 'backstop da regra', 'liquidez'], conhecidos, [0]),
+    table(
+      ['pergunta', 'endDate', 'desvio p/ data citada', 'backstop da regra', 'liquidez'],
+      conhecidos,
+      [0],
+    ),
   );
 
   // -------------------------------------------------------------------------
@@ -1091,7 +1156,9 @@ async function relatorio(
   const qLiq = quantis(naFaixa.map((x) => x.liquidez));
   const qVol = quantis(naFaixa.map((x) => x.volume24h));
   const qSpr = quantis(naFaixa.map((x) => x.spread));
-  console.log(`\n  Distribuição entre os ${naFaixa.length} mercados negociáveis na faixa de preço —`);
+  console.log(
+    `\n  Distribuição entre os ${naFaixa.length} mercados negociáveis na faixa de preço —`,
+  );
   console.log('  é contra ela que o piso de liquidez e o teto de spread se justificam:\n');
   console.log(
     table(
@@ -1132,7 +1199,11 @@ async function relatorio(
   // 4. Categoria — só para quem passou, e do mais comprido para o mais curto
   // -------------------------------------------------------------------------
   passaram.sort((a, b) => b.descLen - a.descLen);
-  const eventIds = [...new Set(passaram.map((c) => c.m.eventId).filter((id): id is string => id !== null && id !== ''))];
+  const eventIds = [
+    ...new Set(
+      passaram.map((c) => c.m.eventId).filter((id): id is string => id !== null && id !== ''),
+    ),
+  ];
   const tags = await buscarTags(eventIds, args.maxTagCalls);
   for (const c of passaram) c.categoria = tags.get(c.m.eventId ?? '') ?? 'sem-tag';
 
@@ -1191,7 +1262,9 @@ async function relatorio(
           [0, 2],
         ),
   );
-  console.log(`\n  ${descartadosEspelho.size} descartados por espelho; sobram ${semEspelho.length}`);
+  console.log(
+    `\n  ${descartadosEspelho.size} descartados por espelho; sobram ${semEspelho.length}`,
+  );
 
   // -------------------------------------------------------------------------
   // 6. Assunto
@@ -1207,7 +1280,9 @@ async function relatorio(
 
   console.log(section('6. Assuntos'));
   console.log(`  ${grupos.length} assuntos distintos entre os ${semEspelho.length} candidatos.`);
-  const multi = grupos.filter((g) => g.membros.length > 1).sort((a, b) => b.membros.length - a.membros.length);
+  const multi = grupos
+    .filter((g) => g.membros.length > 1)
+    .sort((a, b) => b.membros.length - a.membros.length);
   console.log(
     multi.length === 0
       ? '  Nenhum assunto com mais de um mercado.'
@@ -1262,7 +1337,9 @@ async function relatorio(
   // que restava tinha volume zero. Por volume porque um controle que não negocia
   // não serve de comparação — ele não teria como reagir à notícia nem se a
   // leitura ajudasse.
-  const controles = semEspelho.filter((c) => c.papel === 'controle').sort((a, b) => b.volume24h - a.volume24h);
+  const controles = semEspelho
+    .filter((c) => c.papel === 'controle')
+    .sort((a, b) => b.volume24h - a.volume24h);
   for (const c of controles) {
     if (escolhidos.length >= Math.min(args.alvoControle, args.n)) break;
     tentar(c);
@@ -1284,7 +1361,8 @@ async function relatorio(
 
   const daTese = escolhidos.filter((c) => c.papel === 'tese');
   const doControle = escolhidos.filter((c) => c.papel === 'controle');
-  const medianaVol = (lista: readonly Candidato[]): number => quantis(lista.map((c) => c.volume24h)).mediana;
+  const medianaVol = (lista: readonly Candidato[]): number =>
+    quantis(lista.map((c) => c.volume24h)).mediana;
 
   console.log(section('7. Seleção'));
   console.log(
@@ -1292,7 +1370,11 @@ async function relatorio(
       ['categoria', 'escolhidos', 'disponíveis'],
       [...porCategoria.entries()]
         .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => [k, String(v), String(semEspelho.filter((c) => c.categoria === k).length)]),
+        .map(([k, v]) => [
+          k,
+          String(v),
+          String(semEspelho.filter((c) => c.categoria === k).length),
+        ]),
       [0],
     ),
   );
@@ -1310,7 +1392,12 @@ async function relatorio(
     table(
       ['papel', 'escolhidos', 'disponíveis', 'volume 24h mediano'],
       [
-        ['tese', String(daTese.length), String(semEspelho.filter((c) => c.papel === 'tese').length), usd(medianaVol(daTese))],
+        [
+          'tese',
+          String(daTese.length),
+          String(semEspelho.filter((c) => c.papel === 'tese').length),
+          usd(medianaVol(daTese)),
+        ],
         [
           'controle',
           String(doControle.length),
@@ -1347,9 +1434,30 @@ async function relatorio(
     table(
       ['conjunto', 'n', 'p10', 'mediana', 'média', 'p90'],
       [
-        ['universo da janela', qUniverso.n, qUniverso.p10, qUniverso.mediana, Math.round(qUniverso.media), qUniverso.p90],
-        ['passaram nos filtros', qPassaram.n, qPassaram.p10, qPassaram.mediana, Math.round(qPassaram.media), qPassaram.p90],
-        ['os escolhidos', qEscolhidos.n, qEscolhidos.p10, qEscolhidos.mediana, Math.round(qEscolhidos.media), qEscolhidos.p90],
+        [
+          'universo da janela',
+          qUniverso.n,
+          qUniverso.p10,
+          qUniverso.mediana,
+          Math.round(qUniverso.media),
+          qUniverso.p90,
+        ],
+        [
+          'passaram nos filtros',
+          qPassaram.n,
+          qPassaram.p10,
+          qPassaram.mediana,
+          Math.round(qPassaram.media),
+          qPassaram.p90,
+        ],
+        [
+          'os escolhidos',
+          qEscolhidos.n,
+          qEscolhidos.p10,
+          qEscolhidos.mediana,
+          Math.round(qEscolhidos.media),
+          qEscolhidos.p90,
+        ],
       ].map((r) => r.map(String)),
       [0],
     ),
@@ -1416,7 +1524,9 @@ async function relatorio(
         `${dia(de)} e ${dia(ate)} (${args.semanaMin} a ${args.semanaMax} dias).`,
       `- Preço do YES entre ${args.precoMin} e ${args.precoMax}.`,
       `- Liquidez ≥ ${usd(args.liqMin)} USD e **volume 24h ≥ ${usd(args.vol24Min)} USD**.` +
-        (args.book ? `  Book de dois lados com spread ≤ ${args.spreadMax}.` : '  Sanidade de book DESLIGADA.'),
+        (args.book
+          ? `  Book de dois lados com spread ≤ ${args.spreadMax}.`
+          : '  Sanidade de book DESLIGADA.'),
       `- Espelhos removidos: dentro do mesmo evento, dois mercados com YES somando 0,97–1,03 são um só. ` +
         `Caíram ${descartadosEspelho.size}.`,
       `- Tetos: ${args.tetoAssunto} por assunto, ${args.tetoEvento} por evento, ${args.tetoCategoria} por categoria. ` +
@@ -1452,8 +1562,16 @@ async function relatorio(
   }
 
   console.log(section('Chamadas'));
-  console.log(table(['host', 'chamadas'], callCounts().map(([h, n]) => [h, String(n)]), [0]));
-  console.log(`\n  total: ${totalCalls()} chamadas, ${(bytesDownloaded / 1024 / 1024).toFixed(1)} MB`);
+  console.log(
+    table(
+      ['host', 'chamadas'],
+      callCounts().map(([h, n]) => [h, String(n)]),
+      [0],
+    ),
+  );
+  console.log(
+    `\n  total: ${totalCalls()} chamadas, ${(bytesDownloaded / 1024 / 1024).toFixed(1)} MB`,
+  );
 }
 
 await main();

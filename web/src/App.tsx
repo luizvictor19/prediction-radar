@@ -40,7 +40,7 @@ export function App() {
 
   const selecionado = useMemo(() => {
     const id = mercadoDaRota(rota);
-    return id === null ? null : (mercados?.find(m => m.id === id) ?? null);
+    return id === null ? null : (mercados?.find((m) => m.id === id) ?? null);
   }, [mercados, rota]);
 
   /**
@@ -59,12 +59,11 @@ export function App() {
         <h1>Não deu para ler o banco</h1>
         <pre>{erro}</pre>
         <p>
-          Esta tela lê o banco através do proxy do dev server (<code>/sb</code>), porque o
-          Supabase recusa service key vinda de navegador. Duas causas prováveis:{' '}
-          <code>web/.env.local</code> sem <code>SUPABASE_URL</code> /{' '}
-          <code>SUPABASE_SERVICE_KEY</code> (sem o prefixo <code>VITE_</code>), ou a página
-          aberta a partir de um build em vez de <code>npm run dev</code> — aí não existe
-          proxy.
+          Esta tela lê o banco através do proxy do dev server (<code>/sb</code>), porque o Supabase
+          recusa service key vinda de navegador. Duas causas prováveis: <code>web/.env.local</code>{' '}
+          sem <code>SUPABASE_URL</code> / <code>SUPABASE_SERVICE_KEY</code> (sem o prefixo{' '}
+          <code>VITE_</code>), ou a página aberta a partir de um build em vez de{' '}
+          <code>npm run dev</code> — aí não existe proxy.
         </p>
       </div>
     );
@@ -91,10 +90,7 @@ export function App() {
   return (
     <div className="app">
       {rota.tela === 'hoje' && (
-        <Hoje
-          mercados={mercados}
-          onAbrirRegra={id => ir({ tela: 'regra', mercadoId: id })}
-        />
+        <Hoje mercados={mercados} onAbrirRegra={(id) => ir({ tela: 'regra', mercadoId: id })} />
       )}
       {rota.tela === 'regra' && selecionado && (
         <Regra

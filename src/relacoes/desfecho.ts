@@ -41,7 +41,10 @@ export type Desfecho = 'sim' | 'nao';
  * fabricar gabarito, e gabarito fabricado é pior que gabarito ausente: o
  * ausente aparece como "não testável" e o fabricado aparece como precisão.
  */
-export function lerDesfecho(outcomes: readonly string[], precos: readonly string[]): Desfecho | null {
+export function lerDesfecho(
+  outcomes: readonly string[],
+  precos: readonly string[],
+): Desfecho | null {
   if (outcomes.length !== 2 || precos.length !== 2) return null;
 
   const a = precos[0]?.trim();
@@ -151,7 +154,9 @@ const CONFERENCIAS: Record<Exclude<TipoRelacao, 'nenhuma'>, Regra> = {
     const [rc, ra, rb] = r as [string, string, string];
     const esperado: Desfecho = a === 'sim' && b === 'sim' ? 'sim' : 'nao';
     return c === esperado
-      ? COMPATIVEL(`${rc}=${c.toUpperCase()} bate com ${ra}=${a.toUpperCase()} e ${rb}=${b.toUpperCase()}`)
+      ? COMPATIVEL(
+          `${rc}=${c.toUpperCase()} bate com ${ra}=${a.toUpperCase()} e ${rb}=${b.toUpperCase()}`,
+        )
       : REFUTADA(
           `${rc}=${c.toUpperCase()} mas ${ra}=${a.toUpperCase()} e ${rb}=${b.toUpperCase()} pedem ${esperado.toUpperCase()}`,
         );

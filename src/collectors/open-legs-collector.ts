@@ -29,7 +29,9 @@ export async function collectOpenLegMarkets(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckSeconds = Math.round(lockToken.staleTakeoverMs / 1000);
-    console.warn(`[open-legs] Previous cycle stuck for ${stuckSeconds}s — assuming dead, starting a new one`);
+    console.warn(
+      `[open-legs] Previous cycle stuck for ${stuckSeconds}s — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: 'open_legs_collector',
       status: 'partial',
@@ -61,11 +63,18 @@ async function _collect(): Promise<void> {
     .is('closed_at', null);
 
   if (legsErr) {
-    await logEvent({ component: 'open_legs_collector', status: 'error', message: `query failed: ${legsErr.message}` });
+    await logEvent({
+      component: 'open_legs_collector',
+      status: 'error',
+      message: `query failed: ${legsErr.message}`,
+    });
     return;
   }
 
-  const legs = (legsData ?? []) as unknown as Array<{ event_id: string; events: { polymarket_id: string } }>;
+  const legs = (legsData ?? []) as unknown as Array<{
+    event_id: string;
+    events: { polymarket_id: string };
+  }>;
   if (legs.length === 0) {
     // Sem aposta aberta este coletor não loga nada — é o estado normal na maior
     // parte do tempo. O batimento é o que impede o monitor de ler esse silêncio
@@ -75,78 +84,82 @@ async function _collect(): Promise<void> {
   }
 
   // O join já traz o event_id: dispensa um SELECT em events por market.
-  const eventIdByPolymarketId = new Map(legs.map(l => [l.events.polymarket_id, l.event_id]));
+  const eventIdByPolymarketId = new Map(legs.map((l) => [l.events.polymarket_id, l.event_id]));
   const polymarketIds = [...eventIdByPolymarketId.keys()];
 
   let fetchErrors = 0;
   const snapshotRows: Record<string, unknown>[] = [];
 
-  await Promise.all(polymarketIds.map(async (pmId) => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      let res: Response;
+  await Promise.all(
+    polymarketIds.map(async (pmId) => {
       try {
-        res = await fetch(`${GAMMA_URL}/markets/${pmId}`, { signal: controller.signal });
-      } finally {
-        clearTimeout(timeoutId);
-      }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        let res: Response;
+        try {
+          res = await fetch(`${GAMMA_URL}/markets/${pmId}`, { signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
-      if (!res.ok) {
+        if (!res.ok) {
+          fetchErrors++;
+          return;
+        }
+        const market = (await res.json()) as GammaMarket;
+
+        if (market.closed) return;
+
+        const eventId = eventIdByPolymarketId.get(pmId);
+        if (!eventId) return;
+
+        const outcomes = JSON.parse(market.outcomes) as string[];
+        const [primary, secondary] = outcomes;
+        if (primary == null || secondary == null) return;
+
+        const { bestBid, bestAsk, spread } = market;
+
+        // Calculate mid only when both sides are present. Save snapshot regardless,
+        // so we don't lose visibility on markets approaching resolution (one side
+        // often loses liquidity right before resolving).
+        const midPrimary = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
+        const midSecondary = midPrimary != null ? 1 - midPrimary : null;
+        const capturedAt = new Date().toISOString();
+        const volume24h = market.volume24hr ?? null;
+
+        snapshotRows.push(
+          {
+            event_id: eventId,
+            outcome: primary,
+            best_bid: bestBid,
+            best_ask: bestAsk,
+            mid_price: midPrimary,
+            spread,
+            volume_24h: volume24h,
+            captured_at: capturedAt,
+          },
+          {
+            event_id: eventId,
+            outcome: secondary,
+            best_bid: bestAsk != null ? 1 - bestAsk : null,
+            best_ask: bestBid != null ? 1 - bestBid : null,
+            mid_price: midSecondary,
+            spread,
+            volume_24h: volume24h,
+            captured_at: capturedAt,
+          },
+        );
+      } catch {
         fetchErrors++;
-        return;
       }
-      const market = await res.json() as GammaMarket;
-
-      if (market.closed) return;
-
-      const eventId = eventIdByPolymarketId.get(pmId);
-      if (!eventId) return;
-
-      const outcomes = JSON.parse(market.outcomes) as string[];
-      const [primary, secondary] = outcomes;
-      if (primary == null || secondary == null) return;
-
-      const { bestBid, bestAsk, spread } = market;
-
-      // Calculate mid only when both sides are present. Save snapshot regardless,
-      // so we don't lose visibility on markets approaching resolution (one side
-      // often loses liquidity right before resolving).
-      const midPrimary = bestBid != null && bestAsk != null ? (bestBid + bestAsk) / 2 : null;
-      const midSecondary = midPrimary != null ? 1 - midPrimary : null;
-      const capturedAt = new Date().toISOString();
-      const volume24h = market.volume24hr ?? null;
-
-      snapshotRows.push(
-        {
-          event_id: eventId,
-          outcome: primary,
-          best_bid: bestBid,
-          best_ask: bestAsk,
-          mid_price: midPrimary,
-          spread,
-          volume_24h: volume24h,
-          captured_at: capturedAt,
-        },
-        {
-          event_id: eventId,
-          outcome: secondary,
-          best_bid: bestAsk != null ? 1 - bestAsk : null,
-          best_ask: bestBid != null ? 1 - bestBid : null,
-          mid_price: midSecondary,
-          spread,
-          volume_24h: volume24h,
-          captured_at: capturedAt,
-        },
-      );
-    } catch {
-      fetchErrors++;
-    }
-  }));
+    }),
+  );
 
   // captured_at é fixado por market no fetch, então um único insert no fim do
   // ciclo não distorce a série temporal.
-  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'open_legs' });
+  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, {
+    label: 'open_legs',
+  });
   const snapshotsInserted = snapResult.written;
 
   const durationMs = Date.now() - startedAt;
@@ -154,7 +167,8 @@ async function _collect(): Promise<void> {
     component: 'open_legs_collector',
     status: snapResult.errors.length > 0 ? 'partial' : 'success',
     message: `collected ${snapshotsInserted} snapshots from ${polymarketIds.length} markets (${fetchErrors} errors) in ${durationMs}ms`,
-    metadata: snapResult.errors.length > 0 ? { write_errors: snapResult.errors.slice(0, 10) } : undefined,
+    metadata:
+      snapResult.errors.length > 0 ? { write_errors: snapResult.errors.slice(0, 10) } : undefined,
   });
 
   await beat(

@@ -23,7 +23,11 @@ function shortTitle(title: string, maxLen = 35): string {
   return clean.length <= maxLen ? clean : clean.slice(0, maxLen - 1) + '…';
 }
 
-async function waitConfirm(conversation: BotConversation, ctx: BotContext, text: string): Promise<boolean> {
+async function waitConfirm(
+  conversation: BotConversation,
+  ctx: BotContext,
+  text: string,
+): Promise<boolean> {
   await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: SIM_NAO_KBD });
   const btnCtx = await conversation.waitFor('callback_query:data');
   await btnCtx.answerCallbackQuery();
@@ -56,7 +60,8 @@ async function singleLegTrack(
     suggestedStake = calcStake(bankrollState.bankroll, stakeCap, 5);
   } else {
     // cross_market_inter etc — uses expected_edge_pct from metadata
-    const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+    const meta = ((signal['metadata'] as Record<string, unknown>) ??
+      {}) as Partial<CrossMarketInterSignalMetadata>;
     const edgePct = meta.expected_edge_pct ?? 0;
     suggestedStake = calcStake(bankrollState.bankroll, stakeCap, edgePct);
   }
@@ -81,14 +86,17 @@ async function singleLegTrack(
     await ctx.reply('Não há stake sugerido: a carteira não está marcada. Digite um valor.');
     return;
   }
-  const stakeUsd = stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
+  const stakeUsd =
+    stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
   if (isNaN(stakeUsd) || stakeUsd <= 0) {
     await ctx.reply('Valor inválido. Operação cancelada.');
     return;
   }
 
   // Step 2: to win
-  await ctx.reply('Valor a receber se ganhar (em USD):\nEx: 6.88 (vem do Polymarket no campo "to win")');
+  await ctx.reply(
+    'Valor a receber se ganhar (em USD):\nEx: 6.88 (vem do Polymarket no campo "to win")',
+  );
   const priceCtx = await conversation.waitFor('message:text');
   const toWin = parseFloat(priceCtx.message.text.trim());
   if (isNaN(toWin) || toWin <= 0) {
@@ -98,7 +106,9 @@ async function singleLegTrack(
   const shares = toWin;
   const entryPrice = stakeUsd / toWin;
   if (entryPrice <= 0 || entryPrice > 1) {
-    await ctx.reply(`Preço calculado inválido (${entryPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`);
+    await ctx.reply(
+      `Preço calculado inválido (${entryPrice.toFixed(4)}). Verifique stake e to win. Operação cancelada.`,
+    );
     return;
   }
 
@@ -137,7 +147,9 @@ async function singleLegTrack(
   }
 
   const category =
-    ((signal['metadata'] as Record<string, unknown>) ?? {})['polymarket_category'] as string | null ?? null;
+    (((signal['metadata'] as Record<string, unknown>) ?? {})['polymarket_category'] as
+      | string
+      | null) ?? null;
 
   const { data: bet, error: betErr } = await supabase
     .from('my_bets')
@@ -155,7 +167,11 @@ async function singleLegTrack(
     .single();
 
   if (betErr || !bet) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `my_bets insert failed: ${betErr?.message ?? 'no data'}`,
+    });
     await ctx.reply('Erro ao registrar operação. Tenta de novo.');
     return;
   }
@@ -171,7 +187,11 @@ async function singleLegTrack(
 
   if (legErr) {
     await supabase.from('my_bets').delete().eq('id', bet.id);
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `my_bet_legs insert failed: ${legErr.message}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `my_bet_legs insert failed: ${legErr.message}`,
+    });
     await ctx.reply('Erro ao registrar operação. Tenta de novo.');
     return;
   }
@@ -199,7 +219,8 @@ async function basketTrack(
   signalId: string,
   config: SystemConfig,
 ): Promise<void> {
-  const meta = ((signal['metadata'] as Record<string, unknown>) ?? {}) as Partial<CrossMarketInterSignalMetadata>;
+  const meta = ((signal['metadata'] as Record<string, unknown>) ??
+    {}) as Partial<CrossMarketInterSignalMetadata>;
   const stakeCap = getStakeCap(config, signal['signal_type'] as string);
   const bankrollState = await getBankrollState();
   const edgePct = meta.expected_edge_pct ?? 0;
@@ -221,7 +242,8 @@ async function basketTrack(
     await ctx.reply('Não há stake sugerido: a carteira não está marcada. Digite um valor.');
     return;
   }
-  const stakeTotal = stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
+  const stakeTotal =
+    stakeRaw === 'ok' && suggestedStake !== null ? suggestedStake : parseFloat(stakeRaw);
   if (isNaN(stakeTotal) || stakeTotal <= 0) {
     await ctx.reply('Valor inválido. Operação cancelada.');
     return;
@@ -248,7 +270,7 @@ async function basketTrack(
   if (direction === 'under') {
     // Buy Yes in all: shares_per_leg = stake_total / price_sum_yes
     sharesPerLeg = priceSum > 0 ? stakeTotal / priceSum : 0;
-    computedLegs = members.map(m => ({
+    computedLegs = members.map((m) => ({
       event_id: m.event_id,
       title: m.title,
       outcome: 'Yes' as const,
@@ -260,7 +282,7 @@ async function basketTrack(
     // Buy No in all: shares_per_leg = stake_total / price_sum_no
     const priceSumNo = groupSize - priceSum;
     sharesPerLeg = priceSumNo > 0 ? stakeTotal / priceSumNo : 0;
-    computedLegs = members.map(m => {
+    computedLegs = members.map((m) => {
       const noPrice = 1 - m.yes_price;
       return {
         event_id: m.event_id,
@@ -279,13 +301,12 @@ async function basketTrack(
   let execMsg = '';
   if (direction === 'under') {
     execMsg +=
-      '⚠️ Atenção: basket under pode conter cenário \'cancelamento/nenhum vence\' não precificado. ' +
+      "⚠️ Atenção: basket under pode conter cenário 'cancelamento/nenhum vence' não precificado. " +
       'Verifica no Polymarket se a soma cobre todos os outcomes possíveis.\n\n';
   }
   execMsg += 'Pra executar:\n';
   for (const leg of computedLegs) {
-    execMsg +=
-      `• ${shortTitle(leg.title)}: $${leg.stake_usd.toFixed(2)} → ${leg.shares.toFixed(2)} shares @ ${leg.entry_price.toFixed(2)}\n`;
+    execMsg += `• ${shortTitle(leg.title)}: $${leg.stake_usd.toFixed(2)} → ${leg.shares.toFixed(2)} shares @ ${leg.entry_price.toFixed(2)}\n`;
   }
   execMsg += `Total: $${actualTotal.toFixed(2)} | Shares por leg: ${sharesPerLeg.toFixed(2)}`;
 
@@ -327,7 +348,11 @@ async function basketTrack(
     .single();
 
   if (betErr || !bet) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `my_bets insert failed: ${betErr?.message ?? 'no data'}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `my_bets insert failed: ${betErr?.message ?? 'no data'}`,
+    });
     await ctx.reply('Erro ao registrar operação. Tenta de novo.');
     return;
   }
@@ -346,7 +371,11 @@ async function basketTrack(
     }
   } catch (err) {
     await supabase.from('my_bets').delete().eq('id', bet.id);
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `my_bet_legs insert failed: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `my_bet_legs insert failed: ${String(err)}`,
+    });
     await ctx.reply('Erro ao registrar operação. Tenta de novo.');
     return;
   }
@@ -374,8 +403,10 @@ export async function trackConversation(
 ): Promise<void> {
   try {
     const colonIndex = signalIdWithOutcome.indexOf(':');
-    const signalId = colonIndex === -1 ? signalIdWithOutcome : signalIdWithOutcome.slice(0, colonIndex);
-    const forcedOutcome: string | undefined = colonIndex === -1 ? undefined : (signalIdWithOutcome.slice(colonIndex + 1) || undefined);
+    const signalId =
+      colonIndex === -1 ? signalIdWithOutcome : signalIdWithOutcome.slice(0, colonIndex);
+    const forcedOutcome: string | undefined =
+      colonIndex === -1 ? undefined : signalIdWithOutcome.slice(colonIndex + 1) || undefined;
     const config = await getSystemConfig();
 
     const { data: signal, error: sigErr } = await supabase
@@ -392,10 +423,21 @@ export async function trackConversation(
     if (signal.signal_type === 'cross_market_inter') {
       await basketTrack(conversation, ctx, signal as Record<string, unknown>, signalId, config);
     } else {
-      await singleLegTrack(conversation, ctx, signal as Record<string, unknown>, signalId, forcedOutcome, config);
+      await singleLegTrack(
+        conversation,
+        ctx,
+        signal as Record<string, unknown>,
+        signalId,
+        forcedOutcome,
+        config,
+      );
     }
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `trackConversation error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `trackConversation error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

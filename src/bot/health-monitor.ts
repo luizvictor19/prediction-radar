@@ -66,16 +66,32 @@ const TABLE_RETRY_MS = 10 * 60_000;
 
 /** Componentes vigiados, com a chave de limiar de cada um em `system_config`. */
 export const MONITORED_COMPONENTS = [
-  { component: 'discovery_collector', label: 'Descoberta',    thresholdKey: 'health_stale_discovery_minutes' },
-  { component: 'watchlist_collector', label: 'Watchlist',     thresholdKey: 'health_stale_watchlist_minutes' },
-  { component: 'resolved_detector',   label: 'Auto-resolver', thresholdKey: 'health_stale_resolved_detector_minutes' },
-  { component: 'open_legs_collector', label: 'Open legs',     thresholdKey: 'health_stale_open_legs_minutes' },
+  {
+    component: 'discovery_collector',
+    label: 'Descoberta',
+    thresholdKey: 'health_stale_discovery_minutes',
+  },
+  {
+    component: 'watchlist_collector',
+    label: 'Watchlist',
+    thresholdKey: 'health_stale_watchlist_minutes',
+  },
+  {
+    component: 'resolved_detector',
+    label: 'Auto-resolver',
+    thresholdKey: 'health_stale_resolved_detector_minutes',
+  },
+  {
+    component: 'open_legs_collector',
+    label: 'Open legs',
+    thresholdKey: 'health_stale_open_legs_minutes',
+  },
   // O radar entra vigiado mesmo nascendo desligado, e não é contradição: o
   // caminho do desligamento BATE (`beat(..., 'desligado por config')`), então
   // componente parado por config tem batimento fresco e não alerta. O que o
   // limiar pega é o ciclo que morreu — que é o mesmo risco de sempre, e maior
   // aqui porque a foto de 15 min pode faltar por horas sem ninguém notar.
-  { component: 'radar_collector',     label: 'Radar',         thresholdKey: 'health_stale_radar_minutes' },
+  { component: 'radar_collector', label: 'Radar', thresholdKey: 'health_stale_radar_minutes' },
 ] as const satisfies ReadonlyArray<{
   component: string;
   label: string;
@@ -210,9 +226,14 @@ export function buildDownMessage(outcomes: readonly Outcome[]): string {
   }
 
   // Quando os quatro caem juntos, o problema quase nunca é dos quatro.
-  const downCount = outcomes.filter(o => o.action.kind === 'alert' || o.action.kind === 'remind').length;
+  const downCount = outcomes.filter(
+    (o) => o.action.kind === 'alert' || o.action.kind === 'remind',
+  ).length;
   if (downCount === MONITORED_COMPONENTS.length) {
-    lines.push('', '⚠️ _Todos os coletores pararam juntos — provavelmente o processo caiu, não um coletor._');
+    lines.push(
+      '',
+      '⚠️ _Todos os coletores pararam juntos — provavelmente o processo caiu, não um coletor._',
+    );
   }
 
   return lines.join('\n');
@@ -258,7 +279,9 @@ export async function runHealthCheck(bot: Bot<BotContext>): Promise<void> {
     if (!chatId) return;
 
     const [beats, states] = await Promise.all([
-      supabase.from('collector_heartbeats').select('component, last_cycle_at, last_status, last_detail'),
+      supabase
+        .from('collector_heartbeats')
+        .select('component, last_cycle_at, last_status, last_detail'),
       supabase.from('collector_health_alerts').select('component, state, since, last_notified_at'),
     ]);
 
@@ -278,13 +301,13 @@ export async function runHealthCheck(bot: Bot<BotContext>): Promise<void> {
     }
 
     const beatByComponent = new Map(
-      (beats.data ?? []).map(r => [r.component as string, r as HeartbeatRow]),
+      (beats.data ?? []).map((r) => [r.component as string, r as HeartbeatRow]),
     );
     const stateByComponent = new Map(
-      (states.data ?? []).map(r => [r.component as string, r as AlertStateRow]),
+      (states.data ?? []).map((r) => [r.component as string, r as AlertStateRow]),
     );
 
-    const outcomes: Outcome[] = MONITORED_COMPONENTS.map(m => {
+    const outcomes: Outcome[] = MONITORED_COMPONENTS.map((m) => {
       const heartbeat = beatByComponent.get(m.component);
       return {
         label: m.label,
@@ -300,8 +323,8 @@ export async function runHealthCheck(bot: Bot<BotContext>): Promise<void> {
       };
     });
 
-    const down = outcomes.filter(o => o.action.kind === 'alert' || o.action.kind === 'remind');
-    const recovered = outcomes.filter(o => o.action.kind === 'recovered');
+    const down = outcomes.filter((o) => o.action.kind === 'alert' || o.action.kind === 'remind');
+    const recovered = outcomes.filter((o) => o.action.kind === 'recovered');
 
     // Uma mensagem por grupo, e não uma por componente: quando o processo cai,
     // os quatro ficam obsoletos no mesmo minuto, e quatro mensagens idênticas
@@ -310,7 +333,9 @@ export async function runHealthCheck(bot: Bot<BotContext>): Promise<void> {
       await sendLongMessage(bot, chatId, buildDownMessage(down), { parseMode: 'Markdown' });
     }
     if (recovered.length > 0) {
-      await sendLongMessage(bot, chatId, buildRecoveredMessage(recovered), { parseMode: 'Markdown' });
+      await sendLongMessage(bot, chatId, buildRecoveredMessage(recovered), {
+        parseMode: 'Markdown',
+      });
     }
 
     await persistOutcomes(outcomes, now);
@@ -330,11 +355,10 @@ export async function runHealthCheck(bot: Bot<BotContext>): Promise<void> {
       await logEvent({
         component: 'health_monitor',
         status: down.length > 0 ? 'error' : 'success',
-        message:
-          `saúde: ${down.length} parado(s), ${recovered.length} normalizado(s)`,
+        message: `saúde: ${down.length} parado(s), ${recovered.length} normalizado(s)`,
         metadata: {
-          down: down.map(o => o.component),
-          recovered: recovered.map(o => o.component),
+          down: down.map((o) => o.component),
+          recovered: recovered.map((o) => o.component),
         },
       });
     }

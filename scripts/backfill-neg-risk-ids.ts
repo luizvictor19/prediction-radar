@@ -60,7 +60,11 @@ async function main() {
         await supabase.from('events').update({ status: 'inactive' }).eq('id', event.id);
         skipped++;
       } else {
-        const series = market['series'] as Array<{ id: string; slug: string; recurrence?: string }> | null;
+        const series = market['series'] as Array<{
+          id: string;
+          slug: string;
+          recurrence?: string;
+        }> | null;
 
         await supabase
           .from('events')
@@ -88,13 +92,17 @@ async function main() {
     processed++;
 
     if (processed % 10 === 0) {
-      console.log(`[backfill-neg-risk] Progress: ${processed}/${rows.length} — updated=${updated} skipped=${skipped} errors=${errors}`);
+      console.log(
+        `[backfill-neg-risk] Progress: ${processed}/${rows.length} — updated=${updated} skipped=${skipped} errors=${errors}`,
+      );
     }
 
     await sleep(RATE_LIMIT_MS);
   }
 
-  console.log(`[backfill-neg-risk] Done. Total=${rows.length} updated=${updated} skipped=${skipped} errors=${errors}`);
+  console.log(
+    `[backfill-neg-risk] Done. Total=${rows.length} updated=${updated} skipped=${skipped} errors=${errors}`,
+  );
 }
 
 main().catch((err) => {

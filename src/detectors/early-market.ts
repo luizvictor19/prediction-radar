@@ -5,7 +5,7 @@ import { batchInsert } from '../lib/batch-write.js';
 
 const FILTERS = {
   min_volume_24h: 3000,
-  min_price_distance_from_default: 0.10,
+  min_price_distance_from_default: 0.1,
   max_spread: 0.05,
   min_liquidity: 5000,
   // Cauda extrema: mercado já calibrou, sem oportunidade
@@ -32,7 +32,9 @@ export async function detectEarlyMarkets(): Promise<void> {
     const offset = pageCount * PAGE_SIZE;
     const { data: page, error: pageErr } = await supabase
       .from('events')
-      .select('id, polymarket_id, title, start_date, end_date, outcomes, volume_24h, liquidity, polymarket_category')
+      .select(
+        'id, polymarket_id, title, start_date, end_date, outcomes, volume_24h, liquidity, polymarket_category',
+      )
       .eq('is_new_market', true)
       .eq('status', 'active')
       .gt('end_date', nowIso)
@@ -85,11 +87,29 @@ export async function detectEarlyMarkets(): Promise<void> {
     const volume24h = Number(event.volume_24h ?? 0);
     const liquidity = Number(event.liquidity ?? 0);
 
-    if (volume24h < FILTERS.min_volume_24h) { skippedFilters++; continue; }
-    if (Math.abs(currentPrice - 0.5) < FILTERS.min_price_distance_from_default) { skippedFilters++; continue; }
-    if (currentPrice < FILTERS.min_price_for_signal || currentPrice > FILTERS.max_price_for_signal) { skippedFilters++; continue; }
-    if (spread >= FILTERS.max_spread) { skippedFilters++; continue; }
-    if (liquidity < FILTERS.min_liquidity) { skippedFilters++; continue; }
+    if (volume24h < FILTERS.min_volume_24h) {
+      skippedFilters++;
+      continue;
+    }
+    if (Math.abs(currentPrice - 0.5) < FILTERS.min_price_distance_from_default) {
+      skippedFilters++;
+      continue;
+    }
+    if (
+      currentPrice < FILTERS.min_price_for_signal ||
+      currentPrice > FILTERS.max_price_for_signal
+    ) {
+      skippedFilters++;
+      continue;
+    }
+    if (spread >= FILTERS.max_spread) {
+      skippedFilters++;
+      continue;
+    }
+    if (liquidity < FILTERS.min_liquidity) {
+      skippedFilters++;
+      continue;
+    }
 
     const cooldownCutoff = new Date(Date.now() - COOLDOWN_AFTER_DISMISS_MS).toISOString();
     const { data: existing } = await supabase

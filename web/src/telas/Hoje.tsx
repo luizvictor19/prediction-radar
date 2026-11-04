@@ -69,12 +69,12 @@ export function Hoje({
 
     if (tema !== 'todos') {
       const antes = atual.length;
-      atual = atual.filter(m => (m.tema ?? '(sem tema)') === tema);
+      atual = atual.filter((m) => (m.tema ?? '(sem tema)') === tema);
       conta(antes, 'tema');
     }
     if (faixa !== 'todos') {
       const antes = atual.length;
-      atual = atual.filter(m => {
+      atual = atual.filter((m) => {
         const d = m.dias_restantes;
         if (d === null) return false;
         if (faixa === 'mais') return d > 30;
@@ -84,13 +84,13 @@ export function Hoje({
     }
     if (soContradicao) {
       const antes = atual.length;
-      atual = atual.filter(m => (somaDigest(m, 'contradicoes') ?? 0) > 0);
+      atual = atual.filter((m) => (somaDigest(m, 'contradicoes') ?? 0) > 0);
       conta(antes, 'contradição');
     }
 
     // A ordem sai da constante, não de um ternário aqui: assim o teste que trava
     // o invariante vê exatamente o que a tela usa.
-    const opcao = ORDENS.find(o => o.chave === ordem) ?? ORDENS[0]!;
+    const opcao = ORDENS.find((o) => o.chave === ordem) ?? ORDENS[0]!;
     const ordenada = ordenar(atual, opcao.valor, opcao.dir);
 
     return { lista: ordenada, derrubados };
@@ -101,8 +101,8 @@ export function Hoje({
       <div className="controles">
         <label>
           ordenar por{' '}
-          <select value={ordem} onChange={e => setOrdem(e.target.value as Ordem)}>
-            {ORDENS.map(o => (
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)}>
+            {ORDENS.map((o) => (
               <option key={o.chave} value={o.chave}>
                 {o.rotulo}
               </option>
@@ -111,9 +111,9 @@ export function Hoje({
         </label>
         <label>
           tema{' '}
-          <select value={tema} onChange={e => setTema(e.target.value)}>
+          <select value={tema} onChange={(e) => setTema(e.target.value)}>
             <option value="todos">todos</option>
-            {temas.map(t => (
+            {temas.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -122,8 +122,8 @@ export function Hoje({
         </label>
         <label>
           prazo{' '}
-          <select value={faixa} onChange={e => setFaixa(e.target.value as Faixa)}>
-            {FAIXAS.map(f => (
+          <select value={faixa} onChange={(e) => setFaixa(e.target.value as Faixa)}>
+            {FAIXAS.map((f) => (
               <option key={f.chave} value={f.chave}>
                 {f.rotulo}
               </option>
@@ -134,7 +134,7 @@ export function Hoje({
           <input
             type="checkbox"
             checked={soContradicao}
-            onChange={e => setSoContradicao(e.target.checked)}
+            onChange={(e) => setSoContradicao(e.target.checked)}
           />{' '}
           só com contradição
         </label>
@@ -147,7 +147,7 @@ export function Hoje({
       </div>
 
       <ul className="cards">
-        {lista.map(m => (
+        {lista.map((m) => (
           <li key={m.id} className="card">
             <div className="cabeca">
               <h2>{m.pergunta}</h2>
@@ -159,9 +159,7 @@ export function Hoje({
                 preço{' '}
                 <strong>
                   {preco(m.mid_price)}
-                  {m.mid_price === null && (
-                    <em className="nota-nulo"> livro de um lado só</em>
-                  )}
+                  {m.mid_price === null && <em className="nota-nulo"> livro de um lado só</em>}
                 </strong>
                 {m.outcome && <em className="lado"> ({m.outcome})</em>}
               </span>
@@ -188,15 +186,14 @@ export function Hoje({
               {temDigestao(m) ? (
                 <>
                   <span>
-                    {somaDigest(m, 'achados_total')} achados (
-                    {somaDigest(m, 'achados_acusados')} acusados,{' '}
-                    {somaDigest(m, 'achados_herdados')} herdados)
+                    {somaDigest(m, 'achados_total')} achados ({somaDigest(m, 'achados_acusados')}{' '}
+                    acusados, {somaDigest(m, 'achados_herdados')} herdados)
                   </span>
                   {(somaDigest(m, 'contradicoes') ?? 0) > 0 && (
                     <span className="selo">contradição na regra</span>
                   )}
                   {(() => {
-                    const cob = seloDeCobertura(m.digests.map(d => d.leituras_do_texto));
+                    const cob = seloDeCobertura(m.digests.map((d) => d.leituras_do_texto));
                     return cob === null ? null : (
                       <span className="selo nao-comparavel">{cob.texto}</span>
                     );
@@ -218,7 +215,11 @@ export function Hoje({
             <div className="acoes">
               <button onClick={() => onAbrirRegra(m.id)}>ler a regra</button>
               {urlPolymarket(m.slug, m.event_group_slug) && (
-                <a href={urlPolymarket(m.slug, m.event_group_slug)!} target="_blank" rel="noreferrer">
+                <a
+                  href={urlPolymarket(m.slug, m.event_group_slug)!}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Polymarket ↗
                 </a>
               )}

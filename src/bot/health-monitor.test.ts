@@ -22,7 +22,12 @@ function evaluate(overrides: Partial<Parameters<typeof evaluateComponent>[0]> = 
   return evaluateComponent({
     thresholdMinutes: 15,
     cooldownMinutes: 60,
-    heartbeat: { component: 'c', last_cycle_at: minutesAgo(1), last_status: 'success', last_detail: null },
+    heartbeat: {
+      component: 'c',
+      last_cycle_at: minutesAgo(1),
+      last_status: 'success',
+      last_detail: null,
+    },
     alertState: undefined,
     now: NOW,
     ...overrides,
@@ -41,7 +46,12 @@ test('exatamente no limiar ainda não alerta — só passar dele conta', () => {
 });
 
 function beatAt(min: number) {
-  return { component: 'c', last_cycle_at: minutesAgo(min), last_status: 'success', last_detail: null };
+  return {
+    component: 'c',
+    last_cycle_at: minutesAgo(min),
+    last_status: 'success',
+    last_detail: null,
+  };
 }
 
 // --- primeira detecção -----------------------------------------------------
@@ -59,7 +69,12 @@ test('ainda parado dentro do cooldown fica em silêncio', () => {
   // componente, enquanto o incidente durar.
   const action = evaluate({
     heartbeat: beatAt(120),
-    alertState: { component: 'c', state: 'alerting', since: minutesAgo(105), last_notified_at: minutesAgo(30) },
+    alertState: {
+      component: 'c',
+      state: 'alerting',
+      since: minutesAgo(105),
+      last_notified_at: minutesAgo(30),
+    },
   });
   assert.deepEqual(action, { kind: 'none' });
 });
@@ -67,7 +82,12 @@ test('ainda parado dentro do cooldown fica em silêncio', () => {
 test('cooldown vencido gera lembrete, não novo alerta', () => {
   const action = evaluate({
     heartbeat: beatAt(120),
-    alertState: { component: 'c', state: 'alerting', since: minutesAgo(105), last_notified_at: minutesAgo(61) },
+    alertState: {
+      component: 'c',
+      state: 'alerting',
+      since: minutesAgo(105),
+      last_notified_at: minutesAgo(61),
+    },
   });
   assert.equal(action.kind, 'remind');
 });
@@ -75,7 +95,12 @@ test('cooldown vencido gera lembrete, não novo alerta', () => {
 test('alerting sem last_notified_at avisa — incidente sem aviso é pior que aviso a mais', () => {
   const action = evaluate({
     heartbeat: beatAt(120),
-    alertState: { component: 'c', state: 'alerting', since: minutesAgo(105), last_notified_at: null },
+    alertState: {
+      component: 'c',
+      state: 'alerting',
+      since: minutesAgo(105),
+      last_notified_at: null,
+    },
   });
   assert.equal(action.kind, 'remind');
 });
@@ -85,7 +110,12 @@ test('alerting sem last_notified_at avisa — incidente sem aviso é pior que av
 test('voltou a bater depois de alertar gera a mensagem de normalização', () => {
   const action = evaluate({
     heartbeat: beatAt(1),
-    alertState: { component: 'c', state: 'alerting', since: minutesAgo(134), last_notified_at: minutesAgo(5) },
+    alertState: {
+      component: 'c',
+      state: 'alerting',
+      since: minutesAgo(134),
+      last_notified_at: minutesAgo(5),
+    },
   });
   assert.equal(action.kind, 'recovered');
   assert.equal(action.kind === 'recovered' && action.downMs, 134 * 60_000);
@@ -94,7 +124,12 @@ test('voltou a bater depois de alertar gera a mensagem de normalização', () =>
 test('recuperação não espera cooldown — o aviso de volta é imediato', () => {
   const action = evaluate({
     heartbeat: beatAt(1),
-    alertState: { component: 'c', state: 'alerting', since: minutesAgo(20), last_notified_at: minutesAgo(0) },
+    alertState: {
+      component: 'c',
+      state: 'alerting',
+      since: minutesAgo(20),
+      last_notified_at: minutesAgo(0),
+    },
   });
   assert.equal(action.kind, 'recovered');
 });
@@ -125,7 +160,12 @@ test('componente que nunca bateu não alerta', () => {
 test('timestamp ilegível não vira alerta', () => {
   // Problema de dado não é prova de que o coletor caiu.
   const action = evaluate({
-    heartbeat: { component: 'c', last_cycle_at: 'não é data', last_status: null, last_detail: null },
+    heartbeat: {
+      component: 'c',
+      last_cycle_at: 'não é data',
+      last_status: null,
+      last_detail: null,
+    },
   });
   assert.deepEqual(action, { kind: 'none' });
 });
@@ -151,7 +191,12 @@ test('sem nenhum dos dois, não há para onde mandar', () => {
 const outcome = (component: string, label: string, staleMin: number) => ({
   component,
   label,
-  heartbeat: { component, last_cycle_at: minutesAgo(staleMin), last_status: 'partial', last_detail: 'stop: page_cap' },
+  heartbeat: {
+    component,
+    last_cycle_at: minutesAgo(staleMin),
+    last_status: 'partial',
+    last_detail: 'stop: page_cap',
+  },
   action: { kind: 'alert' as const, staleMs: staleMin * 60_000, thresholdMs: 15 * 60_000 },
 });
 
@@ -166,7 +211,7 @@ test('a mensagem nomeia o componente, o tempo parado e o limiar', () => {
 
 test('todos parados juntos aponta para o processo, não para os coletores', () => {
   // Quando os quatro caem no mesmo minuto o problema quase nunca é dos quatro.
-  const all = MONITORED_COMPONENTS.map(m => outcome(m.component, m.label, 30));
+  const all = MONITORED_COMPONENTS.map((m) => outcome(m.component, m.label, 30));
   assert.match(buildDownMessage(all), /processo caiu/);
 
   const one = [outcome('discovery_collector', 'Descoberta', 30)];

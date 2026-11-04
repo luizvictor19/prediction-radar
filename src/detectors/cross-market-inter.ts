@@ -50,7 +50,9 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
   const { data: events, error: fetchError } = await supabase
     .from('events')
-    .select('id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h, polymarket_category, polymarket_fee_rate, end_date, sports_market_type, line')
+    .select(
+      'id, polymarket_id, title, outcomes, neg_risk_market_id, volume_24h, polymarket_category, polymarket_fee_rate, end_date, sports_market_type, line',
+    )
     .eq('status', 'active')
     .eq('tracked', true)
     .not('neg_risk_market_id', 'is', null)
@@ -210,7 +212,7 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     }
 
     const MIN_YES_PRICE_PER_MEMBER = 0.05;
-    const eligibleMembers = validMembers.filter(m => m.yesPrice >= MIN_YES_PRICE_PER_MEMBER);
+    const eligibleMembers = validMembers.filter((m) => m.yesPrice >= MIN_YES_PRICE_PER_MEMBER);
 
     if (validMembers.length > eligibleMembers.length) {
       groupsWithDroppedMembers++;
@@ -232,8 +234,9 @@ export async function runCrossMarketInterDetector(): Promise<void> {
 
     // Category + fee rate = taken from member with highest volume_24h
     // (all members in a negRisk group share the same feeType and feeSchedule)
-    const leadByVolume = eligibleMembers
-      .sort((a, b) => (b.event.volume_24h ?? 0) - (a.event.volume_24h ?? 0))[0]!;
+    const leadByVolume = eligibleMembers.sort(
+      (a, b) => (b.event.volume_24h ?? 0) - (a.event.volume_24h ?? 0),
+    )[0]!;
     const groupCategory = leadByVolume.event.polymarket_category ?? null;
     const directFeeRate = leadByVolume.event.polymarket_fee_rate ?? null;
 
@@ -258,14 +261,22 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const yesPrices = eligibleMembers.map((m) => m.yesPrice);
     const priceSum = yesPrices.reduce((sum, p) => sum + p, 0);
     const grossDeviation = Math.abs(priceSum - 1.0);
-    const { edgePct: expectedEdgePct, direction } = calculateExpectedEdgePct(priceSum, feeRate, yesPrices);
-    const estimatedFeeCost = direction === 'over'
-      ? estimateBuyNoBasketFeeCost(feeRate, yesPrices)
-      : estimateBuyYesBasketFeeCost(feeRate, yesPrices);
+    const { edgePct: expectedEdgePct, direction } = calculateExpectedEdgePct(
+      priceSum,
+      feeRate,
+      yesPrices,
+    );
+    const estimatedFeeCost =
+      direction === 'over'
+        ? estimateBuyNoBasketFeeCost(feeRate, yesPrices)
+        : estimateBuyYesBasketFeeCost(feeRate, yesPrices);
 
     if (direction === 'under' && priceSum < 0.7) {
       groupsSkippedLowSum++;
-      sample(lowSumSample, `${negRiskMarketId}: sum ${priceSum.toFixed(3)}, ${eligibleMembers.length} membros`);
+      sample(
+        lowSumSample,
+        `${negRiskMarketId}: sum ${priceSum.toFixed(3)}, ${eligibleMembers.length} membros`,
+      );
       continue;
     }
 
@@ -311,7 +322,9 @@ export async function runCrossMarketInterDetector(): Promise<void> {
     const leader = sortedMembers[0]!;
     const top3 = sortedMembers
       .slice(0, 3)
-      .map((m) => `${m.event.title.split(' ')[1] ?? m.event.title} ${(m.yesPrice * 100).toFixed(1)}%`)
+      .map(
+        (m) => `${m.event.title.split(' ')[1] ?? m.event.title} ${(m.yesPrice * 100).toFixed(1)}%`,
+      )
       .join(', ');
 
     const categoryLabel = groupCategory ?? 'categoria desconhecida';
@@ -441,7 +454,8 @@ export async function runCrossMarketInterDetector(): Promise<void> {
       low_sum_sample: lowSumSample.length > 0 ? lowSumSample : null,
       no_yes_price_sample: noYesPriceSample.length > 0 ? noYesPriceSample : null,
       dedup_query_errors: dedupQueryErrors.length,
-      query_error_sample: dedupQueryErrors.length > 0 ? dedupQueryErrors.slice(0, SAMPLE_LIMIT) : null,
+      query_error_sample:
+        dedupQueryErrors.length > 0 ? dedupQueryErrors.slice(0, SAMPLE_LIMIT) : null,
       flagged: flaggedCount,
       high_confidence: highConfidenceCount,
       deduped: dedupedCount,

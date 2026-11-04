@@ -167,7 +167,5 @@ export async function listDeepseekModels(timeoutMs = 15_000): Promise<string[]> 
   }
 
   const payload = (await response.json()) as { data?: Array<{ id?: string }> };
-  return (payload.data ?? [])
-    .map(m => m.id)
-    .filter((id): id is string => typeof id === 'string');
+  return (payload.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string');
 }

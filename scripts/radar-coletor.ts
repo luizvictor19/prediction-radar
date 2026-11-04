@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   const dryRun = argv.includes('--dry-run');
   const lista = argv.includes('--lista');
 
-  const desconhecido = argv.find(a => !['--dry-run', '--lista'].includes(a));
+  const desconhecido = argv.find((a) => !['--dry-run', '--lista'].includes(a));
   if (desconhecido !== undefined) {
     console.error(`[${LABEL}] argumento desconhecido: ${desconhecido}`);
     process.exit(1);
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     `  cadência: foto a cada ${config.radar_snapshot_interval_minutes} min ` +
       `(padrão ${INTERVALO_FOTO_PADRAO}), roster a cada ${config.radar_roster_interval_minutes} min`,
   );
-  console.log(`  temas: ${temas.map(t => `${t.tema} [${t.tags.join(', ')}]`).join('  |  ')}\n`);
+  console.log(`  temas: ${temas.map((t) => `${t.tema} [${t.tags.join(', ')}]`).join('  |  ')}\n`);
 
   if (!dryRun && !config.radar_collector_enabled) {
     console.error(
@@ -136,7 +136,9 @@ async function main(): Promise<void> {
             String(v.candidatos),
             String(v.roster),
             v.liquidezDoCorte === null ? '—' : usd(v.liquidezDoCorte),
-            v.liquidezDoPrimeiroCortado === null ? '— (não mordeu)' : usd(v.liquidezDoPrimeiroCortado),
+            v.liquidezDoPrimeiroCortado === null
+              ? '— (não mordeu)'
+              : usd(v.liquidezDoPrimeiroCortado),
           ]),
         [0, 4],
       ),
@@ -152,7 +154,7 @@ async function main(): Promise<void> {
       g.n += 1;
       porGrupo.set(c.grupoId, g);
     }
-    const grandes = [...porGrupo.values()].filter(g => g.n > 1).sort((a, b) => b.n - a.n);
+    const grandes = [...porGrupo.values()].filter((g) => g.n > 1).sort((a, b) => b.n - a.n);
 
     if (grandes.length > 0) {
       console.log(
@@ -162,7 +164,7 @@ async function main(): Promise<void> {
       console.log(
         table(
           ['assunto', 'mercados'],
-          grandes.slice(0, 15).map(g => [g.rotulo, String(g.n)]),
+          grandes.slice(0, 15).map((g) => [g.rotulo, String(g.n)]),
           [0],
         ),
       );
@@ -179,7 +181,7 @@ async function main(): Promise<void> {
           ['mercado A', 'mercado B', 'soma'],
           renovacao.espelhos
             .slice(0, 10)
-            .map(p => [
+            .map((p) => [
               p.a.market.question.slice(0, 46),
               p.b.market.question.slice(0, 46),
               p.soma.toFixed(2),
@@ -197,7 +199,9 @@ async function main(): Promise<void> {
       );
     }
     if (renovacao.tagsDesconhecidas.length > 0) {
-      console.log(`\n  AVISO: tags que a Gamma não conhece: ${renovacao.tagsDesconhecidas.join(', ')}`);
+      console.log(
+        `\n  AVISO: tags que a Gamma não conhece: ${renovacao.tagsDesconhecidas.join(', ')}`,
+      );
     }
     if (renovacao.marcadosNoBanco !== null) {
       console.log(`\n  events com radar_tracked no banco: ${renovacao.marcadosNoBanco}`);
@@ -257,7 +261,7 @@ async function main(): Promise<void> {
       console.log(
         table(
           ['outcome', 'bid', 'ask', 'mid', 'spread', 'bid $', 'ask $', 'vol 24h'],
-          foto.amostra.map(r => [
+          foto.amostra.map((r) => [
             r.outcome,
             r.best_bid?.toFixed(3) ?? '—',
             r.best_ask?.toFixed(3) ?? '—',

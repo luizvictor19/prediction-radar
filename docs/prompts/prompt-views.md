@@ -17,16 +17,16 @@ Uma linha por mercado do roster (`radar_tracked = true`, ativo).
 
 Colunas:
 
-| coluna | de onde |
-| --- | --- |
-| id, pergunta, categoria, `radar_tema`, `radar_subject` | `events` |
-| preço agora (bid, ask, mid, spread, profundidade) | último snapshot |
-| **variação 1h / 24h / 7d** | snapshot de então contra agora |
-| volume 24h, liquidez | `events` |
-| fecha em, dias restantes | `events` |
-| tamanho da `description` | `events` |
-| tenho posição aberta? | `my_bet_legs` |
-| minha última probabilidade e quando | `my_bets` |
+| coluna                                                 | de onde                        |
+| ------------------------------------------------------ | ------------------------------ |
+| id, pergunta, categoria, `radar_tema`, `radar_subject` | `events`                       |
+| preço agora (bid, ask, mid, spread, profundidade)      | último snapshot                |
+| **variação 1h / 24h / 7d**                             | snapshot de então contra agora |
+| volume 24h, liquidez                                   | `events`                       |
+| fecha em, dias restantes                               | `events`                       |
+| tamanho da `description`                               | `events`                       |
+| tenho posição aberta?                                  | `my_bet_legs`                  |
+| minha última probabilidade e quando                    | `my_bets`                      |
 
 ### Regras que não podem ser quebradas
 

@@ -2,12 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Livro } from './lado-oposto.js';
-import {
-  derivarOposto,
-  ladoDaLeg,
-  podeDerivar,
-  rotulosDoMercado,
-} from './lado-oposto.js';
+import { derivarOposto, ladoDaLeg, podeDerivar, rotulosDoMercado } from './lado-oposto.js';
 
 /** Nada aqui toca a rede: aritmética e um jsonb copiado do banco. */
 

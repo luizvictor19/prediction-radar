@@ -16,7 +16,11 @@ export async function configHandler(ctx: BotContext): Promise<void> {
 
     await ctx.reply(text, { parse_mode: 'Markdown' });
   } catch (err) {
-    await logEvent({ component: 'telegram_bot', status: 'error', message: `configHandler error: ${String(err)}` });
+    await logEvent({
+      component: 'telegram_bot',
+      status: 'error',
+      message: `configHandler error: ${String(err)}`,
+    });
     await ctx.reply('Erro interno. Tenta de novo em alguns segundos.');
   }
 }

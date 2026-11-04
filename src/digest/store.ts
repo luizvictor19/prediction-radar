@@ -80,7 +80,7 @@ function readOutcomes(raw: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
 
   const names = value
-    .map(entry => {
+    .map((entry) => {
       if (typeof entry === 'string') return entry;
       if (typeof entry === 'object' && entry !== null && 'name' in entry) {
         const name = (entry as { name: unknown }).name;

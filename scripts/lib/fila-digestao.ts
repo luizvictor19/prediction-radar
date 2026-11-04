@@ -75,7 +75,7 @@ export function montarElegiveis<T extends MercadoFiltravel>(
   embaralhados: readonly T[],
   excluidos: ReadonlySet<string>,
 ): Descarte<T> {
-  return filtrarDigeriveis(embaralhados.filter(m => !excluidos.has(m.eventId)));
+  return filtrarDigeriveis(embaralhados.filter((m) => !excluidos.has(m.eventId)));
 }
 
 /** Uma linha para o log da corrida. Vazio quando nada saiu. */

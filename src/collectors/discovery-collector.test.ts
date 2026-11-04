@@ -7,9 +7,8 @@ import assert from 'node:assert/strict';
 process.env['SUPABASE_URL'] ??= 'http://localhost:54321';
 process.env['SUPABASE_SERVICE_KEY'] ??= 'test-key';
 
-const { hasMatchShape, matchedPrefix, resolveCutoffMs, splitForUpsert, harvestEvents } = await import(
-  './discovery-collector.js'
-);
+const { hasMatchShape, matchedPrefix, resolveCutoffMs, splitForUpsert, harvestEvents } =
+  await import('./discovery-collector.js');
 
 const PREFIXES = ['cs2-', 'lol-', 'dota2-'];
 
@@ -35,7 +34,10 @@ test('descarta slug sem dois times — não há partida', () => {
 });
 
 test('mercado de qualificação não bate prefixo nenhum', () => {
-  assert.equal(matchedPrefix('will-furia-qualify-for-the-cblol-split-2-playoffs-2026', PREFIXES), null);
+  assert.equal(
+    matchedPrefix('will-furia-qualify-for-the-cblol-split-2-playoffs-2026', PREFIXES),
+    null,
+  );
 });
 
 test('mercado fora da vertical não bate prefixo', () => {
@@ -51,7 +53,7 @@ test('ciclo frio usa o lookback como piso', () => {
   assert.equal(new Date(cutoffMs).toISOString(), '2026-08-04T15:40:00.000Z');
 });
 
-test('com marca d\'água recente, pagina só até ela menos a margem', () => {
+test("com marca d'água recente, pagina só até ela menos a margem", () => {
   const now = Date.parse('2026-08-04T16:00:00Z');
   const { cutoffMs, coldStart } = resolveCutoffMs(now, '2026-08-04T15:57:00Z', 20);
   assert.equal(coldStart, false);
@@ -88,14 +90,14 @@ test('cada lote sai com o mesmo conjunto de chaves em todas as linhas', () => {
   const { firstSeen, alreadyKnown } = splitForUpsert(prepared, new Set(['a', 'c']), true);
 
   for (const group of [firstSeen, alreadyKnown]) {
-    const shapes = new Set(group.map(row => Object.keys(row).sort().join(',')));
+    const shapes = new Set(group.map((row) => Object.keys(row).sort().join(',')));
     assert.equal(shapes.size, 1, JSON.stringify([...shapes]));
   }
   assert.equal(firstSeen.length, 2);
   assert.equal(alreadyKnown.length, 1);
 });
 
-test('marca d\'água velha não faz o ciclo furar o teto de offset', () => {
+test("marca d'água velha não faz o ciclo furar o teto de offset", () => {
   // Processo parado 3h: perseguir a marca antiga significaria paginar muito além
   // do offset 2000, que alcança ~36min de markets. O lookback trunca.
   const now = Date.parse('2026-08-04T16:00:00Z');
@@ -130,7 +132,7 @@ test('o filtro de prefixo continua sendo por market, não pela tag do evento', (
   ]);
 
   assert.deepEqual(
-    candidates.map(c => c.market.slug),
+    candidates.map((c) => c.market.slug),
     ['cs2-vita-bw-2026-08-06', 'cs2-vita-bw-2026-08-06-game1'],
   );
 });

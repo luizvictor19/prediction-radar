@@ -47,7 +47,7 @@ test('a concatenação dos segmentos é o regulamento, caractere por caractere',
     pedido({ id: 'b', trecho: 'more than 5 points' }),
   ]);
 
-  assert.equal(segmentos.map(s => s.texto).join(''), REGULAMENTO);
+  assert.equal(segmentos.map((s) => s.texto).join(''), REGULAMENTO);
 });
 
 test('sem pedido nenhum, o texto sai num segmento sem marca', () => {
@@ -66,10 +66,13 @@ test('trecho que não está no regulamento vai para naoLocalizados', () => {
     pedido({ id: 'fantasma', trecho: 'uma cláusula que este texto não tem' }),
   ]);
 
-  assert.deepEqual(naoLocalizados.map(p => p.id), ['fantasma']);
+  assert.deepEqual(
+    naoLocalizados.map((p) => p.id),
+    ['fantasma'],
+  );
   // E o texto continua inteiro, sem marca nenhuma.
-  assert.equal(segmentos.map(s => s.texto).join(''), REGULAMENTO);
-  assert.ok(segmentos.every(s => s.marca === null));
+  assert.equal(segmentos.map((s) => s.texto).join(''), REGULAMENTO);
+  assert.ok(segmentos.every((s) => s.marca === null));
 });
 
 test('achado sem trecho também é contabilizado, não descartado', () => {
@@ -78,7 +81,7 @@ test('achado sem trecho também é contabilizado, não descartado', () => {
     pedido({ id: 'vazio', trecho: '   ' }),
   ]);
 
-  assert.deepEqual(naoLocalizados.map(p => p.id).sort(), ['sem-trecho', 'vazio']);
+  assert.deepEqual(naoLocalizados.map((p) => p.id).sort(), ['sem-trecho', 'vazio']);
 });
 
 test('localizado e não localizado somam os pedidos, sempre', () => {
@@ -89,7 +92,7 @@ test('localizado e não localizado somam os pedidos, sempre', () => {
   ];
 
   const { segmentos, naoLocalizados } = destacar(REGULAMENTO, pedidos);
-  const localizados = new Set(segmentos.flatMap(s => s.ids));
+  const localizados = new Set(segmentos.flatMap((s) => s.ids));
 
   assert.equal(localizados.size + naoLocalizados.length, pedidos.length);
 });
@@ -107,7 +110,10 @@ test('trecho com espaço simples acha o texto quebrado em linhas', () => {
   ]);
 
   assert.equal(naoLocalizados.length, 0);
-  const marcado = segmentos.filter(s => s.marca !== null).map(s => s.texto).join('');
+  const marcado = segmentos
+    .filter((s) => s.marca !== null)
+    .map((s) => s.texto)
+    .join('');
   // Sai com a quebra de linha ORIGINAL dentro, não normalizada.
   assert.ok(marcado.includes('\n'), JSON.stringify(marcado));
   assert.equal(marcado, 'candidates\nare separated by');
@@ -120,7 +126,7 @@ test('espaço repetido no regulamento também casa', () => {
   ]);
 
   assert.equal(naoLocalizados.length, 0);
-  assert.equal(segmentos.find(s => s.marca !== null)?.texto, 'resolve   to    Yes');
+  assert.equal(segmentos.find((s) => s.marca !== null)?.texto, 'resolve   to    Yes');
 });
 
 // ---------------------------------------------------------------------------
@@ -134,7 +140,7 @@ test('no pedaço compartilhado, forte vence clara', () => {
     pedido({ id: 'armadilha', trecho: 'December 31, 2026, 11:59 PM ET', marca: 'forte' }),
   ]);
 
-  const compartilhado = segmentos.find(s => s.texto.includes('11:59'));
+  const compartilhado = segmentos.find((s) => s.texto.includes('11:59'));
   assert.equal(compartilhado?.marca, 'forte');
   // O segmento compartilhado sabe dos DOIS achados: a marca escolhe o tom, não
   // apaga o outro achado da lista de quem cobre aquele pedaço.
@@ -150,9 +156,9 @@ test('a saída é plana: nenhum segmento contém outro', () => {
     pedido({ id: 'armadilha', trecho: 'December 31, 2026, 11:59 PM ET', marca: 'forte' }),
   ]);
 
-  assert.equal(segmentos.map(s => s.texto).join(''), texto);
+  assert.equal(segmentos.map((s) => s.texto).join(''), texto);
   // Nenhum segmento vazio, e a soma dos comprimentos é o texto.
-  assert.ok(segmentos.every(s => s.texto.length > 0));
+  assert.ok(segmentos.every((s) => s.texto.length > 0));
 });
 
 test('sobreposição parcial reparte em três pedaços', () => {
@@ -162,9 +168,9 @@ test('sobreposição parcial reparte em três pedaços', () => {
     pedido({ id: 'dir', trecho: 'bbb ccc ddd', marca: 'forte' }),
   ]);
 
-  assert.equal(segmentos.map(s => s.texto).join(''), texto);
+  assert.equal(segmentos.map((s) => s.texto).join(''), texto);
   assert.deepEqual(
-    segmentos.map(s => [s.texto, s.marca]),
+    segmentos.map((s) => [s.texto, s.marca]),
     [
       ['aaa ', 'clara'],
       ['bbb ccc', 'forte'],
@@ -183,8 +189,11 @@ test('borda de palavra: ET não é destacado dentro de market', () => {
   const texto = 'the market resolves at noon';
   const { segmentos, naoLocalizados } = destacar(texto, [pedido({ id: 'et', trecho: 'et' })]);
 
-  assert.deepEqual(naoLocalizados.map(p => p.id), ['et']);
-  assert.ok(segmentos.every(s => s.marca === null));
+  assert.deepEqual(
+    naoLocalizados.map((p) => p.id),
+    ['et'],
+  );
+  assert.ok(segmentos.every((s) => s.marca === null));
 });
 
 test('todas as ocorrências do mesmo trecho são destacadas', () => {
@@ -195,15 +204,18 @@ test('todas as ocorrências do mesmo trecho são destacadas', () => {
     pedido({ id: 'fuso', trecho: '11:59 PM ET', marca: 'clara' }),
   ]);
 
-  assert.equal(segmentos.filter(s => s.marca === 'clara').length, 2);
-  assert.equal(segmentos.map(s => s.texto).join(''), texto);
+  assert.equal(segmentos.filter((s) => s.marca === 'clara').length, 2);
+  assert.equal(segmentos.map((s) => s.texto).join(''), texto);
 });
 
 test('regulamento vazio não inventa segmento', () => {
   const { segmentos, naoLocalizados } = destacar('', [pedido({ id: 'x', trecho: 'algo' })]);
 
   assert.deepEqual(segmentos, []);
-  assert.deepEqual(naoLocalizados.map(p => p.id), ['x']);
+  assert.deepEqual(
+    naoLocalizados.map((p) => p.id),
+    ['x'],
+  );
 });
 
 test('a entrada não é modificada', () => {
@@ -245,7 +257,7 @@ test('a âncora é o PRIMEIRO segmento do achado, não o último', () => {
 
   const ancoras = ancorasDeSegmentos(segmentos);
   const indiceDoLongo = [...ancoras].find(([, ids]) => ids.includes('longo'))?.[0];
-  const primeiroMarcado = segmentos.findIndex(s => s.ids.includes('longo'));
+  const primeiroMarcado = segmentos.findIndex((s) => s.ids.includes('longo'));
 
   assert.equal(indiceDoLongo, primeiroMarcado);
 });
@@ -260,8 +272,12 @@ test('cada achado destacado tem exatamente uma âncora', () => {
 
   const ancoras = ancorasDeSegmentos(segmentos);
   const todos = [...ancoras.values()].flat();
-  const destacados = new Set(segmentos.flatMap(s => s.ids));
+  const destacados = new Set(segmentos.flatMap((s) => s.ids));
 
   assert.equal(todos.length, new Set(todos).size, 'algum achado tem duas âncoras');
-  assert.deepEqual(todos.slice().sort(), [...destacados].sort(), 'algum destacado ficou sem âncora');
+  assert.deepEqual(
+    todos.slice().sort(),
+    [...destacados].sort(),
+    'algum destacado ficou sem âncora',
+  );
 });

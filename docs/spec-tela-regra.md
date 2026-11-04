@@ -42,11 +42,11 @@ Nada abaixo entra sem número. Estas medições vêm primeiro e o resultado dela
 
 **O corpus envelhece rápido.** Entre a redação desta spec e a medição, os textos foram de 191 para 267 e os mercados digeridos de 728 para 1033, em três dias. Todo número aqui vem com a data, e rodar de novo é um comando.
 
-| | na redação | medido em 22/08/2026 |
-| --- | ---: | ---: |
-| textos distintos | 191 | **267** |
-| mercados digeridos | 728 | **1033** |
-| achados na tela | 12.702 | **20.357** (6.407 acusados / 13.950 herdados) |
+|                    | na redação |                          medido em 22/08/2026 |
+| ------------------ | ---------: | --------------------------------------------: |
+| textos distintos   |        191 |                                       **267** |
+| mercados digeridos |        728 |                                      **1033** |
+| achados na tela    |     12.702 | **20.357** (6.407 acusados / 13.950 herdados) |
 
 **M1 — Frequência de cada tipo de achado sobre textos distintos de regra.**
 
@@ -84,13 +84,13 @@ Mediana, p90 e máximo. Serve para dimensionar quantos itens a seção principal
 
 > **Resultado**, sobre 1033 mercados:
 >
-> | corte | mediana | p90 | máximo |
-> | --- | ---: | ---: | ---: |
-> | total | 16 | 39 | 43 |
-> | acusados | 5 | 10 | 23 |
-> | herdados | 11 | 33 | 37 |
-> | total após a dedup da seção 4 | 10 | 16 | 25 |
-> | armadilhas acusadas (`muda_resultado`/`muda_timing`) | 3 | 6 | 13 |
+> | corte                                                | mediana | p90 | máximo |
+> | ---------------------------------------------------- | ------: | --: | -----: |
+> | total                                                |      16 |  39 |     43 |
+> | acusados                                             |       5 |  10 |     23 |
+> | herdados                                             |      11 |  33 |     37 |
+> | total após a dedup da seção 4                        |      10 |  16 |     25 |
+> | armadilhas acusadas (`muda_resultado`/`muda_timing`) |       3 |   6 |     13 |
 >
 > A última linha é a que dimensiona a seção 2 da hierarquia: o teto de 5 esconde algo em 109 mercados (10,6%), e 14 mercados (1,4%) não têm nenhuma.
 
@@ -127,14 +127,14 @@ Mesmo tipo, mesmo defeito, recorte diferente. E em `fuso_ausente`, `June 30, 202
 
 **Continência, e não sobreposição — a medição mudou esta regra.** A formulação original era "trechos que se sobrepõem", implementada como componentes conexas. Ela corta 46,4% contra 45,3% da absorção, e os 1,1 ponto a mais sai de fundir achados que ninguém consegue justificar olhando o item que sobrou.
 
-O invariante que a regra usa como argumento — *o sobrevivente contém tudo que absorveu* — é o que dá o direito de esconder os absorvidos. Fecho transitivo não o preserva, e **trocar sobreposição por continência não conserta**: `A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente e o sobrevivente `A` não contém o `C`. Medido, isso acontece em 178 fusões com encavalamento e ainda em 129 só com continência. Com absorção, **zero, por construção**.
+O invariante que a regra usa como argumento — _o sobrevivente contém tudo que absorveu_ — é o que dá o direito de esconder os absorvidos. Fecho transitivo não o preserva, e **trocar sobreposição por continência não conserta**: `A ⊃ B` e `C ⊃ B` com `A ⊅ C` põe os três no mesmo componente e o sobrevivente `A` não contém o `C`. Medido, isso acontece em 178 fusões com encavalamento e ainda em 129 só com continência. Com absorção, **zero, por construção**.
 
 **A entrada é o CONJUNTO de leituras, não a contagem.** `vezes_encontrado` da view é um número, e união não se calcula com números. A aproximação `min(soma, leituras_do_texto)` acerta em 94,7% das fusões e infla a concordância nas outras, em até +3 leituras — o máximo acertaria em 1,7%. Inflar concordância por conveniência de apresentação é o que a seção 11 proíbe, então quem chama a função tem que trazer os `digest_id`. Consequência para o item 5: a tela de detalhe passa a precisar das tabelas-filhas, e não só da view.
 
 **Prosa em bloco, e do maior entre os que têm.** São QUATRO campos e não dois — `descricao` e `cenario` são a prosa da pegadinha, `leitura_a` e `leitura_b` são a da ambiguidade e da contradição, e a view marca os quatro como "não viaja". Duas ressalvas que a medição obrigou:
 
-- *Entre os que têm.* Em 9,6% das fusões o de maior concordância é herdado e não tem prosa nenhuma. "Fica o do maior", sem a ressalva, jogaria fora a única prosa existente e deixaria um item marcado `acusado` sem descrição.
-- *Em bloco.* Descrição de uma leitura com cenário de outra é um par que ninguém escreveu, e a tela o apresentaria como se fosse. Prosa fabricada é pior que prosa ausente.
+- _Entre os que têm._ Em 9,6% das fusões o de maior concordância é herdado e não tem prosa nenhuma. "Fica o do maior", sem a ressalva, jogaria fora a única prosa existente e deixaria um item marcado `acusado` sem descrição.
+- _Em bloco._ Descrição de uma leitura com cenário de outra é um par que ninguém escreveu, e a tela o apresentaria como se fosse. Prosa fabricada é pior que prosa ausente.
 
 **Onde mora.** ✅ `web/src/lib/dedup.ts`, função pura e genérica sobre o tipo de quem chama, testada sem banco em `web/src/lib/dedup.test.ts`. Não é view, não é migration.
 
@@ -147,11 +147,11 @@ O invariante que a regra usa como argumento — *o sobrevivente contém tudo que
 
 **Verificado por mutação, nos três eixos** (`22 testes`; cada mutação foi aplicada ao arquivo real e os testes rodados):
 
-| eixo | testes derrubados | os que morderam |
-| --- | ---: | --- |
-| igualdade exata em vez de continência | 10 | `funde trechos que se contêm sem serem iguais` |
-| máximo em vez de união | 3 | `a contagem de leituras do fundido é a UNIÃO` |
-| componentes conexos em vez de absorção | 5 | `dois containers do mesmo trecho continuam dois achados`, `o sobrevivente contém literalmente todo trecho que absorveu` |
+| eixo                                   | testes derrubados | os que morderam                                                                                                         |
+| -------------------------------------- | ----------------: | ----------------------------------------------------------------------------------------------------------------------- |
+| igualdade exata em vez de continência  |                10 | `funde trechos que se contêm sem serem iguais`                                                                          |
+| máximo em vez de união                 |                 3 | `a contagem de leituras do fundido é a UNIÃO`                                                                           |
+| componentes conexos em vez de absorção |                 5 | `dois containers do mesmo trecho continuam dois achados`, `o sobrevivente contém literalmente todo trecho que absorveu` |
 
 Igualdade exata corta **0%** — o `achado_id` da view já colapsou os trechos idênticos normalizados —, então esse eixo mede exatamente o que a regra acrescenta.
 
@@ -173,13 +173,13 @@ Ela **não** vale para o trecho na tela, que é sempre o literal (P1), nem para 
 
 O que a distribuição da chave mascarada mostra, em 267 textos:
 
-| fração | pares |
-| --- | ---: |
-| 47,2% | 1 — `fuso_ausente` sobre `11:59 PM ET` |
-| 42,3% | 1 — `fonte_vaga` sobre `a consensus of credible reporting` |
-| 31,8% | 1 — `fuso_ausente` sobre a data com fuso `ET` |
-| — | **nada entre 9,7% e 31,8%** |
-| ≤ 9,7% | os outros 2.124 |
+| fração |                                                      pares |
+| ------ | ---------------------------------------------------------: |
+| 47,2%  |                     1 — `fuso_ausente` sobre `11:59 PM ET` |
+| 42,3%  | 1 — `fonte_vaga` sobre `a consensus of credible reporting` |
+| 31,8%  |              1 — `fuso_ausente` sobre a data com fuso `ET` |
+| —      |                                **nada entre 9,7% e 31,8%** |
+| ≤ 9,7% |                                            os outros 2.124 |
 
 O vale tem 22,1 pontos de largura e é o maior salto da cauda alta. **20% cai praticamente no meio dele** — 10,3 pontos de folga para baixo, 11,8 para cima —, e é isso que o código tem que dizer ao lado da constante, junto com a data da medição e o comando que a refaz.
 
@@ -201,13 +201,13 @@ Está escrito no comentário de `mascararParaGate` e travado por teste. O motivo
 
 **Verificado por mutação em cinco eixos** (17 testes):
 
-| eixo | testes derrubados |
-| --- | ---: |
-| denominador = só os textos com achado | 5 |
-| contar linhas em vez de textos distintos | 1 |
-| máscara desligada na chave | 3 |
-| máscara vazando para o trecho exibido | 2 |
-| limiar de volta aos 80% chutados | 2 |
+| eixo                                     | testes derrubados |
+| ---------------------------------------- | ----------------: |
+| denominador = só os textos com achado    |                 5 |
+| contar linhas em vez de textos distintos |                 1 |
+| máscara desligada na chave               |                 3 |
+| máscara vazando para o trecho exibido    |                 2 |
+| limiar de volta aos 80% chutados         |                 2 |
 
 ---
 
@@ -219,10 +219,10 @@ Está escrito no comentário de `mascararParaGate` e travado por teste. O motivo
 
 - A explicação do mecanismo aparece **uma vez**, no cabeçalho da seção (P3).
 - Cada item herdado leva apenas um selo curto.
-- Herdados entram **recolhidos por padrão**, num bloco: *"N achados herdados de outros mercados com o mesmo texto de regra"*.
+- Herdados entram **recolhidos por padrão**, num bloco: _"N achados herdados de outros mercados com o mesmo texto de regra"_.
 - Herdado nunca aparece acima de acusado na ordenação. Um achado sem descrição e sem cenário é o menos acionável da tela.
 
-**A chave é `origem`, e NUNCA "ausência de prosa".** A frase acima — *um achado sem descrição e sem cenário é o menos acionável da tela* — é a JUSTIFICATIVA do recolhimento, e é justamente por isso que ela faz "não tem prosa" parecer a chave certa. Não é. Prosa ausente é proxy; `origem` é fato: é o que a view registra, e é o que o cabeçalho do bloco afirma ao dizer *"herdados de outros mercados com o mesmo texto de regra"*. Um acusado sucinto foi lido NESTE mercado, e recolhê-lo por ser sucinto tornaria o cabeçalho falso sobre ele.
+**A chave é `origem`, e NUNCA "ausência de prosa".** A frase acima — _um achado sem descrição e sem cenário é o menos acionável da tela_ — é a JUSTIFICATIVA do recolhimento, e é justamente por isso que ela faz "não tem prosa" parecer a chave certa. Não é. Prosa ausente é proxy; `origem` é fato: é o que a view registra, e é o que o cabeçalho do bloco afirma ao dizer _"herdados de outros mercados com o mesmo texto de regra"_. Um acusado sucinto foi lido NESTE mercado, e recolhê-lo por ser sucinto tornaria o cabeçalho falso sobre ele.
 
 Pelo mesmo motivo só `herdado` recolhe, e qualquer outro valor de `origem` fica visível. `tipos.ts` é escrito à mão, então um valor novo no banco chega até aqui sem quebrar a compilação — recolhê-lo afirmaria uma procedência que ninguém verificou. É o caminho que `separarBoilerplate` já toma quando não tem frequência: na dúvida, o achado aparece.
 
@@ -241,11 +241,11 @@ Pelo mesmo motivo só `herdado` recolhe, e qualquer outro valor de `origem` fica
 
 **Verificado por mutação, nos três eixos** (11 testes; cada mutação foi aplicada ao arquivo real e os testes rodados):
 
-| eixo | testes derrubados | os que morderam |
-| --- | ---: | --- |
-| não separar — o estado de hoje | 6 | `o herdado mais confirmado fica abaixo do acusado menos confirmado` |
-| descartar em vez de recolher | 7 | `nada é apagado: os dois grupos somam a entrada` |
-| separar por prosa ausente em vez de por origem | 4 | `um acusado sem prosa continua no grupo principal`, `origem que o tipo não previu fica VISÍVEL` |
+| eixo                                           | testes derrubados | os que morderam                                                                                 |
+| ---------------------------------------------- | ----------------: | ----------------------------------------------------------------------------------------------- |
+| não separar — o estado de hoje                 |                 6 | `o herdado mais confirmado fica abaixo do acusado menos confirmado`                             |
+| descartar em vez de recolher                   |                 7 | `nada é apagado: os dois grupos somam a entrada`                                                |
+| separar por prosa ausente em vez de por origem |                 4 | `um acusado sem prosa continua no grupo principal`, `origem que o tipo não previu fica VISÍVEL` |
 
 O terceiro eixo é o que importa aqui, e é o único cuja mutação alguém escreveria de boa-fé — lendo a justificativa do recolhimento como se fosse a regra dele.
 
@@ -253,7 +253,7 @@ O terceiro eixo é o que importa aqui, e é o único cuja mutação alguém escr
 
 **Pendência aberta, para o item 5: contradições herdadas.** Elas carregam uma SEGUNDA cópia do parágrafo de mecanismo, em `Contradicao_`, e hoje vivem na seção de Contradições — não na lista que esta separação alimenta. Dois desfechos, e os dois custam:
 
-- elas descem para o bloco recolhido, e aí o estado vazio de Contradições precisa parar de dizer *"nenhuma contradição apontada neste texto"* enquanto algumas estão recolhidas logo abaixo; ou
+- elas descem para o bloco recolhido, e aí o estado vazio de Contradições precisa parar de dizer _"nenhuma contradição apontada neste texto"_ enquanto algumas estão recolhidas logo abaixo; ou
 - aquela seção ganha cabeçalho próprio, e a explicação passa a aparecer duas vezes na tela — que é o que o critério 4 proíbe em letra.
 
 É decisão de desenho, e fica para o item 5.
@@ -275,12 +275,13 @@ O teto de 5 está calibrado: M3 mediu mediana 3 e p90 6, e o "ver mais N" aparec
 **4. A regra, lida.** A leitura estruturada como está hoje. Sem mudança de conteúdo.
 
 **5. Recolhidos, nesta ordem:**
-   - ambiguidades comuns a quase todos os regulamentos (seção 5)
-   - achados herdados (seção 6)
-   - as leituras lado a lado (P4)
-   - o regulamento cru
 
-**Estado vazio importa.** Um mercado com regra lida e nenhuma armadilha encontrada precisa dizer isso — *"3 leituras, nenhuma armadilha que mude o resultado"* — e não simplesmente não mostrar a seção. "Lido e limpo" é informação diferente de "não lido", e essa distinção já existe no `somaDigest` retornando `null` em vez de `0`. A tela tem que honrar isso.
+- ambiguidades comuns a quase todos os regulamentos (seção 5)
+- achados herdados (seção 6)
+- as leituras lado a lado (P4)
+- o regulamento cru
+
+**Estado vazio importa.** Um mercado com regra lida e nenhuma armadilha encontrada precisa dizer isso — _"3 leituras, nenhuma armadilha que mude o resultado"_ — e não simplesmente não mostrar a seção. "Lido e limpo" é informação diferente de "não lido", e essa distinção já existe no `somaDigest` retornando `null` em vez de `0`. A tela tem que honrar isso.
 
 São 14 mercados em 1033 (1,4%). Raro não é motivo para não escrever: é justamente no caso raro que a tela ausente vira "o sistema não leu isto" na cabeça de quem opera.
 
@@ -298,7 +299,7 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 
 **M4 respondeu: a seção tem conteúdo em 78,1% dos mercados** (807 de 1033, com pegadinha `muda_resultado` acusada em ≥ 2/3 das leituras e com `descricao` e `cenario` preenchidos). Não é exceção — mas os ~22% restantes precisam do estado vazio da seção 7 do mesmo jeito.
 
-**A amostra de 20 sustenta a apresentação a partir de `descricao`.** A prosa já vem quase toda no formato exato da seção — *"quem leu só o título espera SIM, mas a regra dá NÃO"*. Exemplo real, do mercado do Ballon d'Or:
+**A amostra de 20 sustenta a apresentação a partir de `descricao`.** A prosa já vem quase toda no formato exato da seção — _"quem leu só o título espera SIM, mas a regra dá NÃO"_. Exemplo real, do mercado do Ballon d'Or:
 
 > Se a cerimônia do Ballon d'Or 2026 for adiada ou o vencedor não for anunciado até 31/12/2026, quem leu só o título espera que o mercado resolva SIM ou NÃO depois, mas a regra resolve 'Other'.
 
@@ -310,11 +311,11 @@ Exemplo construído a partir de dado real, do mercado do urânio iraniano:
 
 **São três camadas com regras diferentes.** A tela hoje mistura as três sem sinalizar, e é isso que parece bagunça.
 
-| Camada | Exemplo | Regra |
-| --- | --- | --- |
-| Evidência | `trecho`, regulamento cru | **Nunca traduz** (P1) |
-| Leitura gerada | "Resolve SIM se...", descrição, cenário | Traduzível, com custo |
-| Cromo | rótulos, `pegadinha`, `fonte_vaga` | Dicionário, custo zero |
+| Camada         | Exemplo                                 | Regra                  |
+| -------------- | --------------------------------------- | ---------------------- |
+| Evidência      | `trecho`, regulamento cru               | **Nunca traduz** (P1)  |
+| Leitura gerada | "Resolve SIM se...", descrição, cenário | Traduzível, com custo  |
+| Cromo          | rótulos, `pegadinha`, `fonte_vaga`      | Dicionário, custo zero |
 
 **O botão de idioma faz duas coisas de custo muito diferente.** O cromo troca na hora. A leitura precisa existir no outro idioma.
 

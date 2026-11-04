@@ -126,7 +126,7 @@ export function Regra({
         // O regulamento sai junto com os achados: ele deixou de ser uma dobra
         // que se abre sob demanda e virou a coluna direita, que abre com a tela.
         lerTextoDaRegra(mercado.id)
-          .then(async texto => {
+          .then(async (texto) => {
             if (!vivo) return;
             // `null` é resposta, não espera: o mercado não tem descrição
             // guardada. Sem distinguir as duas, a coluna ficava para sempre em
@@ -135,18 +135,19 @@ export function Regra({
             const sha = await sha256Hex(texto);
             if (vivo) setDescricao({ fase: 'lido', texto, sha });
           })
-          .catch(e => {
+          .catch((e) => {
             // O erro fica NA COLUNA. Mandá-lo para `erro` derrubava a tela
             // inteira e jogava fora os achados, o veredito e as leituras que já
             // tinham chegado — perder o que funcionou por causa do que falhou.
-            if (vivo) setDescricao({ fase: 'erro', motivo: e instanceof Error ? e.message : String(e) });
+            if (vivo)
+              setDescricao({ fase: 'erro', motivo: e instanceof Error ? e.message : String(e) });
           });
 
         // Em paralelo, e sem travar nada: o índice é do corpus inteiro e chega
         // quando chegar. Falha dele não é erro de tela — é só o gate não
         // recolhendo, que é o estado seguro.
         lerCorpusDigerido()
-          .then(c => {
+          .then((c) => {
             if (vivo) setCorpus(c);
           })
           .catch(() => {});
@@ -163,28 +164,28 @@ export function Regra({
         // own reason -- what the screen has to show first are the findings.
         for (const sha of shas) {
           lerTextoGuardado(sha)
-            .then(g => {
-              if (vivo) setGuardados(antes => new Map(antes).set(sha, g));
+            .then((g) => {
+              if (vivo) setGuardados((antes) => new Map(antes).set(sha, g));
             })
-            .catch(e => {
+            .catch((e) => {
               if (!vivo) return;
               const motivo = e instanceof Error ? e.message : String(e);
-              setGuardados(antes => new Map(antes).set(sha, { fase: 'erro', motivo }));
+              setGuardados((antes) => new Map(antes).set(sha, { fase: 'erro', motivo }));
             });
         }
 
         const [porTexto, contras] = await Promise.all([
-          Promise.all(shas.map(sha => lerLeituras(mercado.id, sha))),
+          Promise.all(shas.map((sha) => lerLeituras(mercado.id, sha))),
           lerContradicoes(
             ls
-              .flatMap(l => l.achados ?? [])
-              .filter(a => a.classe === 'contradicao')
-              .map(a => a.achado_id),
+              .flatMap((l) => l.achados ?? [])
+              .filter((a) => a.classe === 'contradicao')
+              .map((a) => a.achado_id),
           ),
         ]);
         if (!vivo) return;
         setLeituras(leiturasPorTexto(porTexto.flat()));
-        setAlcance(new Map(contras.map(c => [c.defeito_id, c])));
+        setAlcance(new Map(contras.map((c) => [c.defeito_id, c])));
       } catch (e) {
         if (vivo) setErro(e instanceof Error ? e.message : String(e));
       }
@@ -229,7 +230,7 @@ export function Regra({
         </p>
       )}
 
-      {linhas.map(linha => (
+      {linhas.map((linha) => (
         <BlocoDeTexto
           key={linha.description_sha256}
           linha={linha}
@@ -313,7 +314,7 @@ function BlocoDeTexto({
     const fundidos = fundirPorAbsorcao(comLeituras);
     // A concordância exibida passa a ser o tamanho da UNIÃO, não o número da
     // view: é o ponto inteiro da fusão.
-    const comContagem = fundidos.map(a => ({ ...a, vezes_encontrado: a.leituras.length }));
+    const comContagem = fundidos.map((a) => ({ ...a, vezes_encontrado: a.leituras.length }));
 
     return {
       achados: [...comContagem, ...semLeituras] as Achado[],
@@ -331,15 +332,16 @@ function BlocoDeTexto({
   // herdado já está recolhido, e recolhê-lo de novo por ser padrão da casa o
   // faria aparecer em dois blocos ou em nenhum. Índice nulo devolve tudo em
   // `visiveis`, que é o estado enquanto as três consultas não voltaram.
-  const { visiveis: acusadosVisiveis, comuns } = separarBoilerplate(acusados, corpus?.indice ?? null);
+  const { visiveis: acusadosVisiveis, comuns } = separarBoilerplate(
+    acusados,
+    corpus?.indice ?? null,
+  );
 
   const porConcordancia = (a: Achado, b: Achado) => b.vezes_encontrado - a.vezes_encontrado;
-  const armadilhas = acusadosVisiveis
-    .filter(ehArmadilha)
-    .sort(porConcordancia);
-  const contradicoes = acusadosVisiveis.filter(a => a.classe === 'contradicao');
+  const armadilhas = acusadosVisiveis.filter(ehArmadilha).sort(porConcordancia);
+  const contradicoes = acusadosVisiveis.filter((a) => a.classe === 'contradicao');
   const resto = acusadosVisiveis
-    .filter(a => a.classe !== 'contradicao' && !armadilhas.includes(a))
+    .filter((a) => a.classe !== 'contradicao' && !armadilhas.includes(a))
     .sort(porConcordancia);
 
   // O que saiu da vista principal, e é o número do azulejo "recolhidos".
@@ -355,7 +357,7 @@ function BlocoDeTexto({
   const vazioContradicoes = estadoVazio({
     leituras: leituras.length,
     acusados: contradicoes.length,
-    herdados: herdados.filter(a => a.classe === 'contradicao').length,
+    herdados: herdados.filter((a) => a.classe === 'contradicao').length,
   });
 
   const visiveis = todasArmadilhas ? armadilhas : armadilhas.slice(0, TETO_DE_ARMADILHAS);
@@ -387,7 +389,7 @@ function BlocoDeTexto({
           // `forte` = muda o resultado ou o prazo, e só as VISÍVEIS na
           // esquerda: destacar as escondidas atrás do "ver mais" pinta quase
           // todo parágrafo, e destaque que cobre tudo não distingue nada.
-          ...visiveis.map(a => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const })),
+          ...visiveis.map((a) => ({ id: a.achado_id, trecho: a.trecho, marca: 'forte' as const })),
           // `clara` = comum a quase todo regulamento. O gate agora tem as
           // frequências, então este tom finalmente tem fonte — antes dele
           // nada era claro, e a legenda documentava uma cor que não existia.
@@ -401,7 +403,7 @@ function BlocoDeTexto({
         ]
       : [],
   );
-  const destacados = new Set(segmentos.flatMap(s => s.ids));
+  const destacados = new Set(segmentos.flatMap((s) => s.ids));
 
   function irAteOTrecho(id: string) {
     // `data-trecho` e não `id`: um elemento tem UM id, e dois achados que citam
@@ -427,11 +429,11 @@ function BlocoDeTexto({
   });
 
   return (
-        <div className="texto-de-regra">
+    <div className="texto-de-regra">
       {varios && (
         <p className="aviso-dois-textos">
-          Este mercado tem mais de um texto de regra digerido (a descrição foi editada).
-          Bloco do texto <code>{linha.description_sha256.slice(0, 8)}</code>.
+          Este mercado tem mais de um texto de regra digerido (a descrição foi editada). Bloco do
+          texto <code>{linha.description_sha256.slice(0, 8)}</code>.
         </p>
       )}
 
@@ -445,9 +447,9 @@ function BlocoDeTexto({
         // a da view e não a união. Aparece porque um número errado calado é
         // pior que um número errado anunciado.
         <p className="aviso-juncao">
-          <strong>{naoAnexados}</strong> achado{naoAnexados === 1 ? '' : 's'} sem as leituras
-          de origem: a concordância deles é a da view, sem fusão. É falha de junção — o
-          esperado é zero.
+          <strong>{naoAnexados}</strong> achado{naoAnexados === 1 ? '' : 's'} sem as leituras de
+          origem: a concordância deles é a da view, sem fusão. É falha de junção — o esperado é
+          zero.
         </p>
       )}
 
@@ -467,7 +469,7 @@ function BlocoDeTexto({
             <Vazio estado={vazioArmadilhas} o="armadilha que mude o resultado" />
 
             <ul className="achados">
-              {visiveis.map(a => (
+              {visiveis.map((a) => (
                 <AchadoItem
                   key={a.achado_id}
                   achado={a}
@@ -488,7 +490,7 @@ function BlocoDeTexto({
           <section>
             <h2>Contradições internas</h2>
             <Vazio estado={vazioContradicoes} o="contradição interna" />
-            {contradicoes.map(c => (
+            {contradicoes.map((c) => (
               <Contradicao_ key={c.achado_id} achado={c} alcance={alcance.get(c.achado_id)} />
             ))}
           </section>
@@ -502,7 +504,7 @@ function BlocoDeTexto({
             <details className="dobra">
               <summary>Outras ambiguidades acusadas ({resto.length})</summary>
               <ul className="achados">
-                {resto.map(a => (
+                {resto.map((a) => (
                   <AchadoItem
                     key={a.achado_id}
                     achado={a}
@@ -515,14 +517,12 @@ function BlocoDeTexto({
 
           {comuns.length > 0 && (
             <details className="dobra">
-              <summary>
-                {comuns.length} comuns a quase todos os regulamentos
-              </summary>
+              <summary>{comuns.length} comuns a quase todos os regulamentos</summary>
               {/* P3 de novo: o mecanismo se explica UMA vez, no cabeçalho. */}
               <p className="mecanismo">
-                Passagens que aparecem em quase todo regulamento da Polymarket. São texto
-                padrão da plataforma, não característica deste mercado — e a frequência ao
-                lado de cada uma é o que transforma ruído em contexto.
+                Passagens que aparecem em quase todo regulamento da Polymarket. São texto padrão da
+                plataforma, não característica deste mercado — e a frequência ao lado de cada uma é
+                o que transforma ruído em contexto.
               </p>
               <ul className="achados">
                 {comuns.map(({ achado, frequencia }) =>
@@ -555,13 +555,12 @@ function BlocoDeTexto({
                   colado em cada item — dez vezes na mesma tela no mercado do
                   Bolsonaro. É o critério 4 da spec, e é aqui que ele fecha. */}
               <p className="mecanismo">
-                O modelo nunca leu <em>este</em> mercado: estes achados vieram de mercados
-                irmãos com o mesmo texto de regra. Por isso a descrição, o cenário e as duas
-                leituras são nulos aqui — preenchê-los com os do vizinho faria propagação
-                parecer detecção.
+                O modelo nunca leu <em>este</em> mercado: estes achados vieram de mercados irmãos
+                com o mesmo texto de regra. Por isso a descrição, o cenário e as duas leituras são
+                nulos aqui — preenchê-los com os do vizinho faria propagação parecer detecção.
               </p>
               <ul className="achados">
-                {herdados.map(a =>
+                {herdados.map((a) =>
                   // A contradição herdada mantém as DUAS passagens: elas não
                   // estão destacadas na coluna direita, então aqui é o único
                   // lugar onde a evidência dela existe. Tirá-las deixaria o
@@ -644,8 +643,8 @@ function Vazio({ estado, o }: { estado: EstadoVazio | null; o: string }) {
       <p className="nada">
         Nenhuma {o} apontada por uma leitura <em>deste</em> mercado. Há{' '}
         <strong>{estado.herdados}</strong> herdada
-        {estado.herdados === 1 ? '' : 's'} de outros mercados com o mesmo texto — no bloco
-        recolhido abaixo.
+        {estado.herdados === 1 ? '' : 's'} de outros mercados com o mesmo texto — no bloco recolhido
+        abaixo.
       </p>
     );
 
@@ -656,7 +655,6 @@ function Vazio({ estado, o }: { estado: EstadoVazio | null; o: string }) {
   );
 }
 
-
 /**
  * O teto de itens visíveis na seção de armadilhas.
  *
@@ -666,7 +664,6 @@ function Vazio({ estado, o }: { estado: EstadoVazio | null; o: string }) {
  * bastante para não virar ruído, comum o bastante para valer existir.
  */
 const TETO_DE_ARMADILHAS = 5;
-
 
 /**
  * Faixa 1 da primeira dobra: o veredito.
@@ -722,8 +719,8 @@ function MancheteVsRegra({
               linha contava as DESTE mercado. Lado a lado e sem rótulo, os dois
               liam como contradição. */}
           <span>
-            {procedencia(leituras.length, leiturasDoTexto)} ·{' '}
-            {exibida.model}/{exibida.prompt_version}
+            {procedencia(leituras.length, leiturasDoTexto)} · {exibida.model}/
+            {exibida.prompt_version}
           </span>
         </div>
       )}
@@ -749,7 +746,7 @@ function LinhaDeNumeros({
 }) {
   const armadilhas = achados.filter(ehArmadilhaDeResultado).length;
   const contradicoes = achados.filter(
-    a => a.classe === 'contradicao' && a.origem === 'acusado',
+    (a) => a.classe === 'contradicao' && a.origem === 'acusado',
   ).length;
 
   return (
@@ -841,8 +838,7 @@ function ColunaDireita({
       {/* Explicit `{' '}`: JSX eats the newline between the text and the
           element, and without it the header reads "O regulamento3389
           caracteres". */}
-      O regulamento{' '}
-      <span className="proveniencia">{texto.length} caracteres</span>
+      O regulamento <span className="proveniencia">{texto.length} caracteres</span>
     </summary>
   );
 
@@ -858,10 +854,9 @@ function ColunaDireita({
     return (
       <aside className="coluna-direita">
         <p className="aviso-versao">
-          O texto digerido não está guardado e este mercado também não tem descrição
-          atual — não há regulamento nenhum para mostrar. Os achados da esquerda
-          continuam valendo: eles vieram de um texto que existiu quando a digestão
-          rodou.
+          O texto digerido não está guardado e este mercado também não tem descrição atual — não há
+          regulamento nenhum para mostrar. Os achados da esquerda continuam valendo: eles vieram de
+          um texto que existiu quando a digestão rodou.
         </p>
       </aside>
     );
@@ -882,16 +877,15 @@ function ColunaDireita({
   if (regulamento.fase === 'nao-guardado') {
     return (
       <aside className="coluna-direita">
-        <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
+        <details open={aberto} onToggle={(e) => setAberto(e.currentTarget.open)}>
           {cabecalho(regulamento.atual)}
           <p className="aviso-versao">
-            <strong>O texto que produziu estes achados não está guardado.</strong> Eles
-            saíram da versão <code>{shaDoBloco.slice(0, 8)}</code> da regra, digerida antes
-            de o texto passar a ser guardado, e a Polymarket editou a descrição desde
-            então. Abaixo está a descrição atual do mercado,{' '}
-            <strong>sem destaques</strong>: marcar os trechos de uma versão sobre a outra
-            apontaria citação para um texto que não a contém. Nenhum trecho aqui falhou —
-            o que falta é o documento.
+            <strong>O texto que produziu estes achados não está guardado.</strong> Eles saíram da
+            versão <code>{shaDoBloco.slice(0, 8)}</code> da regra, digerida antes de o texto passar
+            a ser guardado, e a Polymarket editou a descrição desde então. Abaixo está a descrição
+            atual do mercado, <strong>sem destaques</strong>: marcar os trechos de uma versão sobre
+            a outra apontaria citação para um texto que não a contém. Nenhum trecho aqui falhou — o
+            que falta é o documento.
           </p>
           <pre className="regulamento">{regulamento.atual}</pre>
         </details>
@@ -899,71 +893,71 @@ function ColunaDireita({
     );
   }
 
-  const tons = new Set(segmentos.map(s => s.marca).filter(Boolean));
+  const tons = new Set(segmentos.map((s) => s.marca).filter(Boolean));
 
   const ancoras = ancorasDeSegmentos(segmentos);
 
   return (
     <aside className="coluna-direita">
-      <details open={aberto} onToggle={e => setAberto(e.currentTarget.open)}>
-      {cabecalho(regulamento.texto)}
+      <details open={aberto} onToggle={(e) => setAberto(e.currentTarget.open)}>
+        {cabecalho(regulamento.texto)}
 
-      {regulamento.fase === 'guardado' && (
-        // The document's provenance, said once. Not decorative: this is the text
-        // the digestion read, and it is here because it was stored -- not because
-        // Polymarket has not touched the description yet.
-        <p className="proveniencia">
-          texto guardado sob o hash <code>{shaDoBloco.slice(0, 8)}</code>
-        </p>
-      )}
-
-      <pre className="regulamento">
-        {segmentos.map((s, i) =>
-          s.marca === null ? (
-            <span key={i}>{s.texto}</span>
-          ) : (
-            <mark
-              key={i}
-              data-trecho={ancoras.get(i)?.join(' ')}
-              className={[
-                s.marca,
-                aceso !== null && s.ids.includes(aceso) ? 'aceso' : '',
-                selecionado !== null && s.ids.includes(selecionado) ? 'selecionado' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            >
-              {s.texto}
-            </mark>
-          ),
+        {regulamento.fase === 'guardado' && (
+          // The document's provenance, said once. Not decorative: this is the text
+          // the digestion read, and it is here because it was stored -- not because
+          // Polymarket has not touched the description yet.
+          <p className="proveniencia">
+            texto guardado sob o hash <code>{shaDoBloco.slice(0, 8)}</code>
+          </p>
         )}
-      </pre>
 
-      {naoLocalizados > 0 && (
-        // A razão de `destacar` devolver duas coisas. Sem isto a coluna
-        // mostraria menos destaques do que a esquerda mostra achados, e
-        // ninguém contaria os dois lados para perceber.
-        <p className="nao-localizado">
-          {naoLocalizados}{' '}
-          {naoLocalizados === 1 ? 'trecho não localizado' : 'trechos não localizados'} no texto
-          acima. A citação desses achados voltou para o item, à esquerda — o que falhou foi a
-          âncora, não a evidência.
-        </p>
-      )}
+        <pre className="regulamento">
+          {segmentos.map((s, i) =>
+            s.marca === null ? (
+              <span key={i}>{s.texto}</span>
+            ) : (
+              <mark
+                key={i}
+                data-trecho={ancoras.get(i)?.join(' ')}
+                className={[
+                  s.marca,
+                  aceso !== null && s.ids.includes(aceso) ? 'aceso' : '',
+                  selecionado !== null && s.ids.includes(selecionado) ? 'selecionado' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {s.texto}
+              </mark>
+            ),
+          )}
+        </pre>
 
-      {/* Cada entrada só aparece se aquele tom estiver REALMENTE na tela.
+        {naoLocalizados > 0 && (
+          // A razão de `destacar` devolver duas coisas. Sem isto a coluna
+          // mostraria menos destaques do que a esquerda mostra achados, e
+          // ninguém contaria os dois lados para perceber.
+          <p className="nao-localizado">
+            {naoLocalizados}{' '}
+            {naoLocalizados === 1 ? 'trecho não localizado' : 'trechos não localizados'} no texto
+            acima. A citação desses achados voltou para o item, à esquerda — o que falhou foi a
+            âncora, não a evidência.
+          </p>
+        )}
+
+        {/* Cada entrada só aparece se aquele tom estiver REALMENTE na tela.
           Legenda de cor ausente descreve algo que o leitor procura e não
           acha. */}
-      {tons.has('forte') && (
-        <p className="legenda">
-          <mark className="forte">tom forte</mark> muda o resultado ou o prazo
-        </p>
-      )}
-      {tons.has('clara') && (
-        <p className="legenda">
-          <mark className="clara">tom claro</mark> comum a quase todo regulamento
-        </p>
-      )}
+        {tons.has('forte') && (
+          <p className="legenda">
+            <mark className="forte">tom forte</mark> muda o resultado ou o prazo
+          </p>
+        )}
+        {tons.has('clara') && (
+          <p className="legenda">
+            <mark className="clara">tom claro</mark> comum a quase todo regulamento
+          </p>
+        )}
       </details>
     </aside>
   );
@@ -974,7 +968,7 @@ function Selos({ achado }: { achado: Achado }) {
     <span className="selos">
       <SeloKN achado={achado} />
       <span className={`origem ${achado.origem}`}>{achado.origem}</span>
-      {(achado.subtipos ?? []).map(s => (
+      {(achado.subtipos ?? []).map((s) => (
         <span key={s} className="subtipo">
           {s}
         </span>
@@ -1046,8 +1040,8 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
 
       {alcance && (
         <p className="alcance">
-          Este defeito de texto atinge <strong>{alcance.mercados_atingidos}</strong> mercados
-          ({alcance.mercados_acusados} acusados, {alcance.mercados_herdados} herdados),{' '}
+          Este defeito de texto atinge <strong>{alcance.mercados_atingidos}</strong> mercados (
+          {alcance.mercados_acusados} acusados, {alcance.mercados_herdados} herdados),{' '}
           {dinheiro(alcance.liquidez_total)} de liquidez somada.
         </p>
       )}
@@ -1112,9 +1106,7 @@ function AchadoItem({
         {/* `pegadinha` e `muda_resultado` lado a lado dizem a mesma coisa. Fica
             o subtipo, que é o mais específico dos dois; a classe só aparece
             quando não há subtipo para falar por ela. */}
-        {(achado.subtipos ?? []).length === 0 && (
-          <span className="classe">{achado.classe}</span>
-        )}
+        {(achado.subtipos ?? []).length === 0 && <span className="classe">{achado.classe}</span>}
         <Selos achado={achado} />
       </div>
 
@@ -1205,14 +1197,14 @@ function CamposDaRegra({ leituras }: { leituras: LeituraRegra[] }) {
           {exibida.prompt_version}
         </span>
         {divergentes.length > 0 && (
-          <button className="selo-divergencia" onClick={() => setAbertas(v => !v)}>
+          <button className="selo-divergencia" onClick={() => setAbertas((v) => !v)}>
             {leituras.length} leituras, divergem em {divergentes.length}{' '}
             {divergentes.length === 1 ? 'campo' : 'campos'} {abertas ? '▲' : '▼'}
           </button>
         )}
       </h2>
 
-      {CAMPOS.map(campo => {
+      {CAMPOS.map((campo) => {
         const itens = valores(exibida, campo.chave);
         const diverge = divergem(leituras, campo.chave);
         return (
@@ -1245,16 +1237,16 @@ function CamposDaRegra({ leituras }: { leituras: LeituraRegra[] }) {
             <thead>
               <tr>
                 <th>campo</th>
-                {leituras.map(l => (
+                {leituras.map((l) => (
                   <th key={l.id}>leitura {l.leitura_n}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {CAMPOS.map(campo => (
+              {CAMPOS.map((campo) => (
                 <tr key={campo.chave} className={divergem(leituras, campo.chave) ? 'difere' : ''}>
                   <th>{campo.rotulo}</th>
-                  {leituras.map(l => {
+                  {leituras.map((l) => {
                     const itens = valores(l, campo.chave);
                     return (
                       <td key={l.id}>
@@ -1279,4 +1271,3 @@ function CamposDaRegra({ leituras }: { leituras: LeituraRegra[] }) {
     </section>
   );
 }
-

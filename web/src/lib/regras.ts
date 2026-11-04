@@ -31,7 +31,7 @@ export function juntarRadarComDigest(
   const porEvento = agruparPorEvento(contagens);
 
   // LEFT join: mercado do radar sem digestão existe e tem que aparecer.
-  return radar.map(m => ({ ...m, digests: porEvento.get(m.id) ?? [] }));
+  return radar.map((m) => ({ ...m, digests: porEvento.get(m.id) ?? [] }));
 }
 
 /**
@@ -104,7 +104,7 @@ export function somaDigest(
  * hash aparece uma vez por mercado por construção.
  */
 export function textosParaLer(linhas: readonly LinhaAchados[]): string[] {
-  return linhas.map(l => l.description_sha256);
+  return linhas.map((l) => l.description_sha256);
 }
 
 /**
@@ -115,9 +115,7 @@ export function textosParaLer(linhas: readonly LinhaAchados[]): string[] {
  * — comparar leituras de textos diferentes acusaria divergência onde há apenas
  * duas regras diferentes.
  */
-export function leiturasPorTexto(
-  leituras: readonly LeituraRegra[],
-): Map<string, LeituraRegra[]> {
+export function leiturasPorTexto(leituras: readonly LeituraRegra[]): Map<string, LeituraRegra[]> {
   const porTexto = new Map<string, LeituraRegra[]>();
   for (const l of leituras) {
     const grupo = porTexto.get(l.description_sha256);
@@ -150,5 +148,5 @@ export function leiturasPorTexto(
 export async function sha256Hex(texto: string): Promise<string> {
   const bytes = new TextEncoder().encode(texto.trim());
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }

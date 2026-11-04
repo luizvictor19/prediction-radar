@@ -15,16 +15,16 @@ it is a record of what was true when it was measured, not a dashboard.
 
 ## The eight hypotheses
 
-| # | hypothesis | what killed it |
-| --- | --- | --- |
-| 1 | The agent forecasts better than the price | skill **−0.029** at n=167 |
-| 2 | Favorite–longshot bias | same bucket +0.027 at T-360, −0.071 at T-60: sign flips are noise |
-| 3 | Correcting the agent's bias | the market carries the same bias (+0.028 vs +0.029): it's sample composition |
-| 4 | A live in-play agent | the live *market* scores 0.016–0.113; the agent scores 0.176 |
-| 5 | Tail events in count markets | overdispersion is real (27.8× Poisson) **and already priced**: implied-SD z of 0.936 / 1.090 |
-| 6 | Reading logical relations between markets | reads at 9.5% refutation, but relations concentrate in table-tennis handicaps |
-| 7 | News lead-lag between linked markets | spread is cheap (0.90¢) but **depth is US$ 11–15** on the slow side |
-| 8 | Composite markets outside Fréchet bounds | ~3,836 composites exist; **the legs do not**: the venue lists the product, not the parts |
+| #   | hypothesis                                | what killed it                                                                               |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | The agent forecasts better than the price | skill **−0.029** at n=167                                                                    |
+| 2   | Favorite–longshot bias                    | same bucket +0.027 at T-360, −0.071 at T-60: sign flips are noise                            |
+| 3   | Correcting the agent's bias               | the market carries the same bias (+0.028 vs +0.029): it's sample composition                 |
+| 4   | A live in-play agent                      | the live _market_ scores 0.016–0.113; the agent scores 0.176                                 |
+| 5   | Tail events in count markets              | overdispersion is real (27.8× Poisson) **and already priced**: implied-SD z of 0.936 / 1.090 |
+| 6   | Reading logical relations between markets | reads at 9.5% refutation, but relations concentrate in table-tennis handicaps                |
+| 7   | News lead-lag between linked markets      | spread is cheap (0.90¢) but **depth is US$ 11–15** on the slow side                          |
+| 8   | Composite markets outside Fréchet bounds  | ~3,836 composites exist; **the legs do not**: the venue lists the product, not the parts     |
 
 The pattern across all eight is one sentence:
 
@@ -68,13 +68,13 @@ At n = 167 scorable forecasts (2026-08-13):
 
 **By prompt version.** `v2` introduced an explicit source hierarchy:
 
-| version | n  | agent  | market | skill  |
-| ------- | -- | ------ | ------ | ------ |
-| v1      | 93 | 0.1500 | 0.1405 | −0.068 |
-| v2      | 74 | 0.2091 | 0.2098 | **+0.004** |
+| version | n   | agent  | market | skill      |
+| ------- | --- | ------ | ------ | ---------- |
+| v1      | 93  | 0.1500 | 0.1405 | −0.068     |
+| v2      | 74  | 0.2091 | 0.2098 | **+0.004** |
 
 `v2` reaches parity, which is a real change. The sample cannot support the claim
-that the prompt caused it: `v2`'s sample is harder (the *market* scores 0.2098
+that the prompt caused it: `v2`'s sample is harder (the _market_ scores 0.2098
 on it versus 0.1405 on `v1`'s) and it is easier to tie a price that is itself
 close to a coin flip. **Parity is not edge.**
 
@@ -84,8 +84,8 @@ head-to-head and recent form rose from 0.6% to 64.0%.
 
 **Is the market itself miscalibrated?** Measured separately, on a market-centric
 dataset with no agent and no gate: 267 matches, 443 rows. Market ECE is 0.0709 on
-the team-A axis and 0.0931 on the label-free favourite axis, so the price *is*
-wrong, by 7–9 percentage points per bucket. It is not, however, *biased*: on the
+the team-A axis and 0.0931 on the label-free favourite axis, so the price _is_
+wrong, by 7–9 percentage points per bucket. It is not, however, _biased_: on the
 favourite axis the conclusive buckets read +0.012, +0.142, −0.205, −0.042,
 +0.162. Signs alternate between neighbours, which is noise. One bucket survives a
 temporal split, and its observed rate (52.4%) equals the base rate of the side
@@ -95,7 +95,7 @@ labelled "team A" (52.1%), a labelling artifact.
 mid; trading happens against the ask. With a mid of 0.50 and a 0.01 spread, an
 estimate of 0.505 is "better than the market" and still loses money. The bar is
 not skill > 0: it is skill positive by enough to clear the spread, on a subset
-declarable *before* the outcome is known. No band clears it.
+declarable _before_ the outcome is known. No band clears it.
 
 **Fidelity.** 802 recorded claims, 802 pointing at a fragment actually in the
 prompt, zero analyses discarded in validation. Enforced structurally: a claim

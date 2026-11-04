@@ -41,13 +41,13 @@ problemas certos:
 
 Cada relação carrega, obrigatoriamente:
 
-| campo | regra |
-| --- | --- |
-| `tipo` | da lista fechada da Parte B — `implica`, `exclui`, `particiona`, `equivale`, `conjuncao`, `nenhuma` |
-| `mercados` | por rótulo, e o rótulo tem que ter sido entregue |
-| `confianca` | número em [0,1] |
-| `justificativa` | uma frase **citando o trecho** das perguntas que sustenta |
-| `ressalvaDeResolucao` | `string \| null` |
+| campo                 | regra                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `tipo`                | da lista fechada da Parte B — `implica`, `exclui`, `particiona`, `equivale`, `conjuncao`, `nenhuma` |
+| `mercados`            | por rótulo, e o rótulo tem que ter sido entregue                                                    |
+| `confianca`           | número em [0,1]                                                                                     |
+| `justificativa`       | uma frase **citando o trecho** das perguntas que sustenta                                           |
+| `ressalvaDeResolucao` | `string \| null`                                                                                    |
 
 **`ressalvaDeResolucao` não é enfeite.** O prompt tem que deixar explícito que
 `null` significa "li as regras de resolução das duas pontas e não vi diferença",
@@ -116,13 +116,13 @@ errado para um prompt de grupo, que é maior.
 
 Para cada relação proposta em grupo resolvido, confira contra o desfecho:
 
-| tipo | o desfecho tem que respeitar |
-| --- | --- |
-| `implica` | A=SIM ⇒ B=SIM |
-| `exclui` | não pode A=SIM e B=SIM |
+| tipo         | o desfecho tem que respeitar      |
+| ------------ | --------------------------------- |
+| `implica`    | A=SIM ⇒ B=SIM                     |
+| `exclui`     | não pode A=SIM e B=SIM            |
 | `particiona` | exatamente um do conjunto deu SIM |
-| `equivale` | A e B deram o mesmo |
-| `conjuncao` | C=SIM ⇔ A=SIM e B=SIM |
+| `equivale`   | A e B deram o mesmo               |
+| `conjuncao`  | C=SIM ⇔ A=SIM e B=SIM             |
 
 Três resultados por relação, não dois:
 

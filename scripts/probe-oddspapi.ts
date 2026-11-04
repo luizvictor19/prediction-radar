@@ -1911,7 +1911,9 @@ async function probeTruncation(center: string): Promise<void> {
   const depois = await readAccount('DEPOIS');
 
   if (!resA.ok || !resB.ok) {
-    console.error(`[${LABEL}] uma das janelas falhou (A=${resA.status} B=${resB.status}) — sem veredito.`);
+    console.error(
+      `[${LABEL}] uma das janelas falhou (A=${resA.status} B=${resB.status}) — sem veredito.`,
+    );
     return;
   }
 
@@ -1979,7 +1981,9 @@ async function probeTruncation(center: string): Promise<void> {
         `[${LABEL}]     de folga do FIM (DISCOVERY_PAD_DAYS) não é consultado — só o do começo.`,
     );
   } else if (aTrouxeTo > 0) {
-    console.log(`[${LABEL}]     \`to\` é INCLUSIVO: A devolveu ${aTrouxeTo} fixture(s) em ${a.to}.`);
+    console.log(
+      `[${LABEL}]     \`to\` é INCLUSIVO: A devolveu ${aTrouxeTo} fixture(s) em ${a.to}.`,
+    );
   } else {
     console.log(
       `[${LABEL}]     INDETERMINADO: não há fixture em ${a.to} nem em A nem em B, então a\n` +

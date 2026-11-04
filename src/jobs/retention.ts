@@ -72,7 +72,10 @@ export async function runRetentionJob(): Promise<void> {
       });
 
       if (error) {
-        return { deleted: total, error: `Batch '${deleteType}' failed at iteration ${i}: ${error.message}` };
+        return {
+          deleted: total,
+          error: `Batch '${deleteType}' failed at iteration ${i}: ${error.message}`,
+        };
       }
 
       const deleted = (data as number) ?? 0;

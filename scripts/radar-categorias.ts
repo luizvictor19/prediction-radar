@@ -57,7 +57,7 @@ const PAGINAS_FORA = 6;
 let lastCallAt = 0;
 let chamadas = 0;
 
-const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function espacar(): Promise<void> {
   const wait = SPACING_MS - (Date.now() - lastCallAt);
@@ -94,10 +94,14 @@ async function buscarTags(eventIds: readonly string[]): Promise<Map<string, stri
 
   for (let i = 0; i < eventIds.length; i += TAG_BATCH) {
     const lote = eventIds.slice(i, i + TAG_BATCH);
-    const query = [...lote.map(id => `id=${encodeURIComponent(id)}`), `limit=${TAG_BATCH}`].join('&');
+    const query = [...lote.map((id) => `id=${encodeURIComponent(id)}`), `limit=${TAG_BATCH}`].join(
+      '&',
+    );
 
     await espacar();
-    const res = await fetch(`${GAMMA}/events?${query}`, { headers: { Accept: 'application/json' } });
+    const res = await fetch(`${GAMMA}/events?${query}`, {
+      headers: { Accept: 'application/json' },
+    });
     if (!res.ok) {
       console.error(`[${LABEL}] tags: HTTP ${res.status} no lote ${i}`);
       continue;
@@ -110,8 +114,12 @@ async function buscarTags(eventIds: readonly string[]): Promise<Map<string, stri
       const ev = bruto as { id?: unknown; tags?: unknown };
       const tags = Array.isArray(ev.tags)
         ? ev.tags
-            .map(t => (typeof t === 'object' && t !== null ? String((t as { slug?: unknown }).slug ?? '') : ''))
-            .filter(s => s !== '')
+            .map((t) =>
+              typeof t === 'object' && t !== null
+                ? String((t as { slug?: unknown }).slug ?? '')
+                : '',
+            )
+            .filter((s) => s !== '')
         : [];
       mapa.set(String(ev.id ?? ''), tags);
     }
@@ -202,7 +210,7 @@ async function main(): Promise<void> {
   // 3. O buraco no mapa: os mais líquidos da janela que NENHUMA tag alcançou.
   console.log(`[${LABEL}] varrendo o que está fora de todas as categorias…`);
   const forasteiros: GammaMarket[] = [];
-  const conhecidos = new Set(universo.map(m => m.id));
+  const conhecidos = new Set(universo.map((m) => m.id));
 
   for (let pagina = 0; pagina < PAGINAS_FORA; pagina++) {
     await espacar();
@@ -251,7 +259,8 @@ async function main(): Promise<void> {
 
   for (const [, lista] of porCategoria) for (const c of lista.slice(0, N)) registrar(c.market);
   for (const [, lista] of cortadosPorCategoria) {
-    for (const c of [...lista].sort((a, b) => b.liquidez - a.liquidez).slice(0, N)) registrar(c.market);
+    for (const c of [...lista].sort((a, b) => b.liquidez - a.liquidez).slice(0, N))
+      registrar(c.market);
   }
   for (const d of [...descartados].sort((a, b) => b.liquidez - a.liquidez).slice(0, N * 3)) {
     registrar(d.market);
@@ -350,7 +359,7 @@ async function main(): Promise<void> {
     }
 
     const caidos = descartados
-      .filter(d => (d.market as { tema?: string }).tema === tema)
+      .filter((d) => (d.market as { tema?: string }).tema === tema)
       .sort((a, b) => b.liquidez - a.liquidez)
       .slice(0, N);
     if (caidos.length > 0) {

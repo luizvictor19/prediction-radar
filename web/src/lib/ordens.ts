@@ -40,7 +40,7 @@ export const ORDENS: OpcaoDeOrdem[] = [
     rotulo: 'vence em breve',
     fato: 'dias_restantes',
     dir: 'asc',
-    valor: m => m.dias_restantes,
+    valor: (m) => m.dias_restantes,
   },
   {
     chave: 'var24',
@@ -49,27 +49,27 @@ export const ORDENS: OpcaoDeOrdem[] = [
     dir: 'desc',
     // Módulo: cair 11 pontos é o mesmo tamanho de movimento que subir 11, e a
     // direção é opinião sobre o que é bom.
-    valor: m => (m.var_24h === null ? null : Math.abs(m.var_24h)),
+    valor: (m) => (m.var_24h === null ? null : Math.abs(m.var_24h)),
   },
   {
     chave: 'var7d',
     rotulo: 'maior variação em 7d',
     fato: 'var_7d',
     dir: 'desc',
-    valor: m => (m.var_7d === null ? null : Math.abs(m.var_7d)),
+    valor: (m) => (m.var_7d === null ? null : Math.abs(m.var_7d)),
   },
   {
     chave: 'contradicao',
     rotulo: 'tem contradição interna',
     fato: 'contradicoes',
     dir: 'desc',
-    valor: m => somaDigest(m, 'contradicoes'),
+    valor: (m) => somaDigest(m, 'contradicoes'),
   },
   {
     chave: 'liquidez',
     rotulo: 'maior liquidez',
     fato: 'liquidez',
     dir: 'desc',
-    valor: m => m.liquidez,
+    valor: (m) => m.liquidez,
   },
 ];

@@ -163,7 +163,8 @@ function parseArgs(argv: readonly string[]): Args | { error: string } {
     }
 
     const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return { error: `--${key}=${value} não é um número positivo` };
+    if (!Number.isFinite(n) || n <= 0)
+      return { error: `--${key}=${value} não é um número positivo` };
 
     if (key === 'minimo') args.minimo = Math.trunc(n);
     else if (key === 'teto') args.teto = n;
@@ -192,16 +193,14 @@ interface Combinacao {
  * Mais de uma combinação gravada não tem default seguro — o script para e
  * pede `--model=` e `--prompt=`. Escolher a maioria seria escolher em silêncio.
  */
-function escolherCombinacao(
-  index: DigestedIndex,
-  args: Args,
-): Combinacao | { error: string } {
+function escolherCombinacao(index: DigestedIndex, args: Args): Combinacao | { error: string } {
   if (args.model !== null && args.prompt !== null) {
     return { model: args.model, promptVersion: args.prompt };
   }
 
   const combos = [...index.combinacoes.entries()].sort((a, b) => b[1] - a[1]);
-  if (combos.length === 0) return { error: 'não há digestão nenhuma gravada — não há o que nivelar.' };
+  if (combos.length === 0)
+    return { error: 'não há digestão nenhuma gravada — não há o que nivelar.' };
 
   if (combos.length > 1) {
     const lista = combos.map(([k, v]) => `    ${k.replace('|', '  ')}  (${v} linhas)`).join('\n');
@@ -275,7 +274,9 @@ function chavesDaSaida(result: DigestResult): string[] {
 
   for (const p of result.output.pegadinhas) {
     if (p.trecho === null || p.trecho.trim() === '') continue;
-    chaves.push(chaveAchado({ classe: 'pegadinha', tipo: null, trecho: p.trecho, trechoConflito: null }));
+    chaves.push(
+      chaveAchado({ classe: 'pegadinha', tipo: null, trecho: p.trecho, trechoConflito: null }),
+    );
   }
   for (const a of result.output.ambiguidades) {
     if (a.trecho === null || a.trecho.trim() === '') continue;
@@ -291,7 +292,12 @@ function chavesDaSaida(result: DigestResult): string[] {
       );
     } else {
       chaves.push(
-        chaveAchado({ classe: 'ambiguidade', tipo: a.tipo, trecho: a.trecho, trechoConflito: null }),
+        chaveAchado({
+          classe: 'ambiguidade',
+          tipo: a.tipo,
+          trecho: a.trecho,
+          trechoConflito: null,
+        }),
       );
     }
   }
@@ -367,7 +373,10 @@ async function achadosPorTexto(): Promise<Map<string, Set<string>>> {
     );
   }
 
-  for (const a of await paginar('digest_ambiguidades', 'id, digest_id, tipo, trecho, trecho_conflito')) {
+  for (const a of await paginar(
+    'digest_ambiguidades',
+    'id, digest_id, tipo, trecho, trecho_conflito',
+  )) {
     const trecho = a['trecho'];
     if (typeof trecho !== 'string' || trecho.trim() === '') continue;
     const tipo = a['tipo'] === null || a['tipo'] === undefined ? null : String(a['tipo']);
@@ -585,10 +594,7 @@ interface Veredito {
   frase: string;
 }
 
-function julgar(
-  antesPorTexto: Map<string, Set<string>>,
-  saidas: readonly Saida[],
-): Veredito {
+function julgar(antesPorTexto: Map<string, Set<string>>, saidas: readonly Saida[]): Veredito {
   const novasPorTexto = new Map<string, Set<string>>();
   for (const s of saidas) {
     if (!s.ok) continue;
@@ -688,8 +694,11 @@ async function conferir(): Promise<number> {
       if (Number(a['vezes_encontrado']) > teto) excedentes += 1;
     }
   }
-  if (excedentes > 0) problemas.push(`${excedentes} achados com vezes_encontrado > leituras_do_texto`);
-  console.log(`  vezes_encontrado <= leituras_do_texto:  ${excedentes === 0 ? 'OK' : `${excedentes} VIOLAÇÕES`}`);
+  if (excedentes > 0)
+    problemas.push(`${excedentes} achados com vezes_encontrado > leituras_do_texto`);
+  console.log(
+    `  vezes_encontrado <= leituras_do_texto:  ${excedentes === 0 ? 'OK' : `${excedentes} VIOLAÇÕES`}`,
+  );
 
   // 3. as contradições das duas views têm que continuar batendo.
   const contradicoesAqui = linhas.reduce((soma, l) => soma + Number(l['contradicoes']), 0);
@@ -741,8 +750,10 @@ async function main(): Promise<void> {
   const config = await getSystemConfig();
 
   console.log(
-    section(`Nivelamento de leituras — mínimo ${parsed.minimo} por texto ` +
-      `(${parsed.dryRun ? 'DRY RUN, nada é chamado' : 'CORRIDA REAL'})`),
+    section(
+      `Nivelamento de leituras — mínimo ${parsed.minimo} por texto ` +
+        `(${parsed.dryRun ? 'DRY RUN, nada é chamado' : 'CORRIDA REAL'})`,
+    ),
   );
 
   const index = await readDigested();
@@ -760,8 +771,12 @@ async function main(): Promise<void> {
   }
   const { model, promptVersion } = combo;
 
-  console.log(`  modelo: ${model}  |  prompt: ${promptVersion}  |  timeout: ${config.digest_timeout_ms} ms`);
-  console.log('  a mesma versão exatamente como está — prompt, taxonomia, severidade e trava intocados.');
+  console.log(
+    `  modelo: ${model}  |  prompt: ${promptVersion}  |  timeout: ${config.digest_timeout_ms} ms`,
+  );
+  console.log(
+    '  a mesma versão exatamente como está — prompt, taxonomia, severidade e trava intocados.',
+  );
 
   // A divergência com a config é DITA, não corrigida e não escondida. Ela é
   // esperada — a config guarda o default do próximo comando, e a passada v4
@@ -775,7 +790,9 @@ async function main(): Promise<void> {
   }
 
   if (!knownModel(model)) {
-    console.error(`\n[${LABEL}] modelo sem preço conhecido: ${model}. Sem preço não há teto, e sem teto não roda.`);
+    console.error(
+      `\n[${LABEL}] modelo sem preço conhecido: ${model}. Sem preço não há teto, e sem teto não roda.`,
+    );
     process.exit(1);
     return;
   }
@@ -854,7 +871,9 @@ async function main(): Promise<void> {
     ),
   );
   if (semEstimativa > 0) {
-    console.log(`\n  AVISO: ${semEstimativa} chamadas sem estimativa (modelo ou prompt desconhecido).`);
+    console.log(
+      `\n  AVISO: ${semEstimativa} chamadas sem estimativa (modelo ou prompt desconhecido).`,
+    );
   }
   console.log(
     '\n  A estimativa é a mesma de `digerir`: 4 caracteres/token na entrada e 12.000 de saída.\n' +
@@ -883,7 +902,7 @@ async function main(): Promise<void> {
   }
 
   if (parsed.dryRun) {
-    const horas = (plano.tarefas.length / CONCORRENCIA) * 103 / 3600;
+    const horas = ((plano.tarefas.length / CONCORRENCIA) * 103) / 3600;
     console.log(
       `\n[${LABEL}] --dry-run: nenhuma chamada paga foi feita.\n` +
         `  Duração estimada: ~${horas.toFixed(1)} h (${plano.tarefas.length} chamadas, ${CONCORRENCIA} em paralelo,\n` +
@@ -917,7 +936,9 @@ async function main(): Promise<void> {
     tetoEfetivo,
     (feito, total, gasto) => {
       if (feito % 10 === 0 || feito === total) {
-        console.log(`  ${feito}/${total} chamadas  |  gasto: ${usd(gasto)}  |  ${new Date().toISOString()}`);
+        console.log(
+          `  ${feito}/${total} chamadas  |  gasto: ${usd(gasto)}  |  ${new Date().toISOString()}`,
+        );
       }
     },
   );
@@ -944,7 +965,7 @@ async function main(): Promise<void> {
         ],
         [
           'latência mediana',
-          `${mediana(sucessos.map(s => s.result.latencyMs))?.toFixed(0) ?? '—'} ms`,
+          `${mediana(sucessos.map((s) => s.result.latencyMs))?.toFixed(0) ?? '—'} ms`,
         ],
         ['duração total', `${((Date.now() - inicio) / 60000).toFixed(1)} min`],
       ],
@@ -1003,7 +1024,7 @@ async function main(): Promise<void> {
   // `leitura_n` vai em cada uma: é o que faz a carga distinguir esta leitura da
   // que já estava lá, e sem ele o artefato seria impossível de carregar.
   await mkdir(dirname(ARTEFATO), { recursive: true });
-  const linhas = corrida.saidas.map(s =>
+  const linhas = corrida.saidas.map((s) =>
     s.ok
       ? buildDigestRows(s.tarefa.market, s.result, promptVersion, model, s.tarefa.leituraN)
       : {

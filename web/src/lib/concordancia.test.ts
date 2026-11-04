@@ -63,15 +63,30 @@ test('a chave ignora caixa e espaço repetido, como o achado_id da view', () => 
 // ---------------------------------------------------------------------------
 
 test('contradição: a ordem das duas passagens não muda a chave', () => {
-  const ida = chaveDaLinha(SHA, 'contradicao', 'contradicao_interna', 'resolve em julho', 'resolve em agosto');
-  const volta = chaveDaLinha(SHA, 'contradicao', 'contradicao_interna', 'resolve em agosto', 'resolve em julho');
+  const ida = chaveDaLinha(
+    SHA,
+    'contradicao',
+    'contradicao_interna',
+    'resolve em julho',
+    'resolve em agosto',
+  );
+  const volta = chaveDaLinha(
+    SHA,
+    'contradicao',
+    'contradicao_interna',
+    'resolve em agosto',
+    'resolve em julho',
+  );
 
   assert.equal(ida, volta);
 });
 
 test('contradição sem a segunda passagem não tem chave', () => {
   // Sem as duas passagens não há defeito de contradição para identificar.
-  assert.equal(chaveDaLinha(SHA, 'contradicao', 'contradicao_interna', 'resolve em julho', null), null);
+  assert.equal(
+    chaveDaLinha(SHA, 'contradicao', 'contradicao_interna', 'resolve em julho', null),
+    null,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -99,8 +114,16 @@ test('ambiguidade com dois subtipos gera uma chave por subtipo', () => {
   });
 
   assert.equal(chaves.length, 2);
-  assert.ok(chaves.includes(chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string));
-  assert.ok(chaves.includes(chaveDaLinha(SHA, 'ambiguidade', 'data_ambigua', '11:59 PM ET', null) as string));
+  assert.ok(
+    chaves.includes(
+      chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string,
+    ),
+  );
+  assert.ok(
+    chaves.includes(
+      chaveDaLinha(SHA, 'ambiguidade', 'data_ambigua', '11:59 PM ET', null) as string,
+    ),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -108,8 +131,14 @@ test('ambiguidade com dois subtipos gera uma chave por subtipo', () => {
 // ---------------------------------------------------------------------------
 
 const PORCHAVE = new Map<string, Set<string>>([
-  [chaveDaLinha(SHA, 'pegadinha', 'muda_resultado', 'at 12:00 PM ET', null) as string, new Set(['l1', 'l2'])],
-  [chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string, new Set(['l3'])],
+  [
+    chaveDaLinha(SHA, 'pegadinha', 'muda_resultado', 'at 12:00 PM ET', null) as string,
+    new Set(['l1', 'l2']),
+  ],
+  [
+    chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string,
+    new Set(['l3']),
+  ],
 ]);
 
 function achado(over: Partial<Parameters<typeof chavesDoAchado>[1]> & { achado_id: string }) {
@@ -137,13 +166,21 @@ test('achado que não casa é REPORTADO, nunca recebe conjunto vazio', () => {
   const { comLeituras, semLeituras } = anexarLeituras(SHA, [orfao], PORCHAVE);
 
   assert.equal(comLeituras.length, 0);
-  assert.deepEqual(semLeituras.map(a => a.achado_id), ['orfao']);
+  assert.deepEqual(
+    semLeituras.map((a) => a.achado_id),
+    ['orfao'],
+  );
 });
 
 test('a taxa de anexação soma: casados + não casados = entrada', () => {
   const entrada = [
     achado({ achado_id: 'a' }),
-    achado({ achado_id: 'b', classe: 'ambiguidade', subtipos: ['fuso_ausente'], trecho: '11:59 PM ET' }),
+    achado({
+      achado_id: 'b',
+      classe: 'ambiguidade',
+      subtipos: ['fuso_ausente'],
+      trecho: '11:59 PM ET',
+    }),
     achado({ achado_id: 'orfao', trecho: 'ausente do índice' }),
   ];
 
@@ -157,13 +194,26 @@ test('subtipos múltiplos unem as leituras dos dois lados', () => {
   // A união é o ponto: a leitura que citou como `fuso_ausente` e a que citou
   // como `data_ambigua` acharam o mesmo defeito da passagem.
   const porChave = new Map([
-    [chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string, new Set(['l1'])],
-    [chaveDaLinha(SHA, 'ambiguidade', 'data_ambigua', '11:59 PM ET', null) as string, new Set(['l2'])],
+    [
+      chaveDaLinha(SHA, 'ambiguidade', 'fuso_ausente', '11:59 PM ET', null) as string,
+      new Set(['l1']),
+    ],
+    [
+      chaveDaLinha(SHA, 'ambiguidade', 'data_ambigua', '11:59 PM ET', null) as string,
+      new Set(['l2']),
+    ],
   ]);
 
   const { comLeituras } = anexarLeituras(
     SHA,
-    [achado({ achado_id: 'x', classe: 'ambiguidade', subtipos: ['fuso_ausente', 'data_ambigua'], trecho: '11:59 PM ET' })],
+    [
+      achado({
+        achado_id: 'x',
+        classe: 'ambiguidade',
+        subtipos: ['fuso_ausente', 'data_ambigua'],
+        trecho: '11:59 PM ET',
+      }),
+    ],
     porChave,
   );
 

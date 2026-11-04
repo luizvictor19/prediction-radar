@@ -101,7 +101,7 @@ test('só a observação mais recente de cada (enricher, kind) entra', () => {
   ]);
 
   assert.deepEqual(
-    kept.map(f => f.id),
+    kept.map((f) => f.id),
     [9, 8],
   );
 });
@@ -135,7 +135,11 @@ test('sem fragmento de preço o mercado vem vazio, não zerado', () => {
 // ---------------------------------------------------------------------------
 
 test('mercado formado passa', () => {
-  const fragments = [fragment(), liquidityFragment(1_200_000, 0.02), fragment({ id: 3, kind: 'news' })];
+  const fragments = [
+    fragment(),
+    liquidityFragment(1_200_000, 0.02),
+    fragment({ id: 3, kind: 'news' }),
+  ];
   assert.deepEqual(gateDecision(fragments, marketFrom(fragments), THRESHOLDS), { ok: true });
 });
 
@@ -193,7 +197,7 @@ test('contexto só de preço abstém — tese sobre a própria série não preci
 test('os fragmentos entram no prompt com rótulo curto e na ordem', () => {
   const labelled = toPromptFragments([fragment({ id: 7 }), fragment({ id: 8, kind: 'liquidity' })]);
   assert.deepEqual(
-    labelled.map(f => f.label),
+    labelled.map((f) => f.label),
     ['F1', 'F2'],
   );
   assert.equal(labelled[0]?.kind, 'odds');

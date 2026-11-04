@@ -271,11 +271,11 @@ export function before(field: string, date: Date): string {
 }
 
 export function and(...parts: string[]): string {
-  return parts.filter(p => p.length > 0).join(' AND ');
+  return parts.filter((p) => p.length > 0).join(' AND ');
 }
 
 export function or(...parts: string[]): string {
-  const kept = parts.filter(p => p.length > 0);
+  const kept = parts.filter((p) => p.length > 0);
   return kept.length > 1 ? `(${kept.join(' OR ')})` : (kept[0] ?? '');
 }
 
@@ -321,7 +321,7 @@ function cacheKey(opts: QueryOptions): string {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

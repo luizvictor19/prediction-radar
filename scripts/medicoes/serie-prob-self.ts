@@ -50,7 +50,10 @@ const LOTE = 200;
 const TETO_INESPERADO = 5000;
 
 async function paginar(
-  pagina: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  pagina: (
+    de: number,
+    ate: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
 ): Promise<Linha[]> {
   const linhas: Linha[] = [];
   for (let salto = 0; ; salto += PAGINA) {
@@ -117,7 +120,9 @@ async function medirSerie(): Promise<void> {
   const comProb = await paginar((de, ate) =>
     supabase
       .from('my_bets')
-      .select('id, event_id, prob_self, placed_at, estrategia, preco_mercado, preco_mercado_outcome')
+      .select(
+        'id, event_id, prob_self, placed_at, estrategia, preco_mercado, preco_mercado_outcome',
+      )
       .not('prob_self', 'is', null)
       .order('placed_at', { ascending: true })
       .range(de, ate),
@@ -153,25 +158,29 @@ async function medirSerie(): Promise<void> {
   }
 
   console.log(`\n  mais antiga (placed_at):         ${String(comProb[0]?.['placed_at'])}`);
-  console.log(`  mais nova   (placed_at):         ${String(comProb[comProb.length - 1]?.['placed_at'])}`);
+  console.log(
+    `  mais nova   (placed_at):         ${String(comProb[comProb.length - 1]?.['placed_at'])}`,
+  );
 
   console.log('\n  por estrategia:');
-  for (const [k, n] of contar(comProb, l => String(l['estrategia'] ?? '(nulo)'))) {
+  for (const [k, n] of contar(comProb, (l) => String(l['estrategia'] ?? '(nulo)'))) {
     console.log(`    ${k.padEnd(14)} ${String(n).padStart(5)}  (${fracao(n, comProb.length)})`);
   }
 
-  const semEvento = comProb.filter(l => l['event_id'] === null).length;
+  const semEvento = comProb.filter((l) => l['event_id'] === null).length;
   console.log(
     `\n  sem event_id (basket — nunca pontuável por resolução): ${semEvento}  (${fracao(semEvento, comProb.length)})`,
   );
 
   // Quantas carregam a linha de base contra a qual prob_self seria medida.
-  const comBase = comProb.filter(l => l['preco_mercado'] !== null).length;
-  console.log(`  com preco_mercado gravado:                             ${comBase}  (${fracao(comBase, comProb.length)})`);
+  const comBase = comProb.filter((l) => l['preco_mercado'] !== null).length;
+  console.log(
+    `  com preco_mercado gravado:                             ${comBase}  (${fracao(comBase, comProb.length)})`,
+  );
 
   // ---- O desfecho, por PK ----
   const eventIds = [
-    ...new Set(comProb.map(l => l['event_id']).filter((v): v is string => typeof v === 'string')),
+    ...new Set(comProb.map((l) => l['event_id']).filter((v): v is string => typeof v === 'string')),
   ];
   const eventos = new Map<string, Linha>();
   for (const lote of lotes(eventIds, LOTE)) {
@@ -217,12 +226,16 @@ async function medirSerie(): Promise<void> {
   console.log(`  evento ausente no banco:         ${ausente}`);
   console.log(`  mercado ainda em aberto:         ${aberto}`);
   console.log(`  mercado resolvido SEM rótulo (void): ${voidd}`);
-  console.log(`  PONTUÁVEIS:                      ${pontuavel}  (${fracao(pontuavel, comProb.length)})`);
+  console.log(
+    `  PONTUÁVEIS:                      ${pontuavel}  (${fracao(pontuavel, comProb.length)})`,
+  );
 
   if (pontuavel > 0) {
     datasPontuaveis.sort();
     console.log(`\n  pontuável mais antiga:           ${datasPontuaveis[0]}`);
-    console.log(`  pontuável mais nova:             ${datasPontuaveis[datasPontuaveis.length - 1]}`);
+    console.log(
+      `  pontuável mais nova:             ${datasPontuaveis[datasPontuaveis.length - 1]}`,
+    );
   } else {
     console.log('\n  Nenhuma linha pontuável ainda.');
   }
@@ -253,7 +266,7 @@ async function medirLado(): Promise<void> {
     supabase.from('v_radar').select('id, outcome').range(de, ate),
   );
 
-  const ids = radar.map(l => String(l['id']));
+  const ids = radar.map((l) => String(l['id']));
   const eventos = new Map<string, Linha>();
   for (const lote of lotes(ids, LOTE)) {
     const { data, error } = await supabase.from('events').select('id, outcomes').in('id', lote);
@@ -277,7 +290,7 @@ async function medirLado(): Promise<void> {
       continue;
     }
     if (ls.length === 2) {
-      const baixo = ls.map(s => s.toLowerCase());
+      const baixo = ls.map((s) => s.toLowerCase());
       if (baixo[0] === 'yes' && baixo[1] === 'no') yesNo += 1;
       else {
         outroBinario += 1;
@@ -290,13 +303,15 @@ async function medirLado(): Promise<void> {
 
     const o = l['outcome'];
     if (typeof o !== 'string') continue;
-    const i = ls.findIndex(s => s.toLowerCase() === o.toLowerCase());
+    const i = ls.findIndex((s) => s.toLowerCase() === o.toLowerCase());
     if (i === 0) indice0 += 1;
     else if (i === 1) indice1 += 1;
     else fora += 1;
   }
 
-  console.log(`\n  v_radar: ${radar.length} mercados no roster, events lidos por PK: ${eventos.size}`);
+  console.log(
+    `\n  v_radar: ${radar.length} mercados no roster, events lidos por PK: ${eventos.size}`,
+  );
 
   console.log('\n  formato de events.outcomes.values:');
   console.log(`    exatamente ["Yes","No"]:       ${yesNo}  (${fracao(yesNo, radar.length)})`);

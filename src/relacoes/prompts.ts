@@ -117,8 +117,7 @@ export const RELACOES_SCHEMA = {
           },
           justificativa: {
             type: 'string',
-            description:
-              'Uma frase citando o trecho das perguntas que sustenta a relação.',
+            description: 'Uma frase citando o trecho das perguntas que sustenta a relação.',
           },
           ressalva_de_resolucao: {
             type: ['string', 'null'],

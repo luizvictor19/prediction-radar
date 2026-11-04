@@ -31,7 +31,7 @@ interface EventRow {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function main(): Promise<void> {
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const rows = (data ?? []) as EventRow[];
   console.log(`[backfill-game-start] ${rows.length} markets de esports ativos sem âncora`);
 
-  const eventIdByPolymarketId = new Map(rows.map(row => [row.polymarket_id, row.id]));
+  const eventIdByPolymarketId = new Map(rows.map((row) => [row.polymarket_id, row.id]));
   const ids = [...eventIdByPolymarketId.keys()];
 
   let updated = 0;
@@ -76,7 +76,9 @@ async function main(): Promise<void> {
       markets = await fetchMarketsByIds(chunk, { closed: false });
     } catch (err) {
       errors += chunk.length;
-      console.error(`[backfill-game-start] lote ${i}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `[backfill-game-start] lote ${i}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       continue;
     }
 
@@ -121,7 +123,7 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('[backfill-game-start] Fatal:', err);
   process.exit(1);
 });

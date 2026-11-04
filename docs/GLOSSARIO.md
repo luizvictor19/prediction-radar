@@ -77,7 +77,7 @@ dinheiro próprio em risco. A odd delas é uma segunda opinião independente do
 Polymarket, e é por isso que serve de contraste.
 
 **Fixture** (**o termo que mais confunde, e é simples**): é a partida no catálogo
-*de outro provedor*. A sua partida é `esports_matches`; a fixture é o registro da
+_de outro provedor_. A sua partida é `esports_matches`; a fixture é o registro da
 mesma partida dentro da OddsPapi, com o id **deles**. Não existe ponte de id
 entre os dois mundos, então você tem que **casar** os dois por nome de time +
 data. Sem casar, não há odds: o dado existe lá, você só não sabe qual linha é a
@@ -111,7 +111,7 @@ só a Pinnacle preenche; na Stake vem sempre nulo.
 **`active: false` / suspensão**: a casa tirou a linha do ar. **Medido no seu
 projeto:** é suspensão real (138 de 150 blocos reabrem em preço diferente), não
 falha de feed. Sinal forte: a casa suspende quando viu algo que ainda não sabe
-precificar. Cuidado medido: durante a suspensão o *preço* registrado não é
+precificar. Cuidado medido: durante a suspensão o _preço_ registrado não é
 cotação (em 64 de 75 instantes na Pinnacle os dois lados aparecem trocados), então
 o estado vem do último registro e o preço, da última entrada ativa.
 
@@ -159,8 +159,8 @@ somar +0,08 em toda previsão e ainda ter Brier aceitável.
 0,7–0,8...) e compara previsto vs observado dentro de cada uma. É como se enxerga
 viés que a média esconde.
 
-**Decomposição de Murphy**: quebra o Brier em três, *confiabilidade* (menor é
-melhor), *resolução* (maior é melhor) e *incerteza* (propriedade da amostra, não
+**Decomposição de Murphy**: quebra o Brier em três, _confiabilidade_ (menor é
+melhor), _resolução_ (maior é melhor) e _incerteza_ (propriedade da amostra, não
 sua). Existe para pegar **o modo de falha silencioso**: um agente que responde
 ~0,5 para tudo fica bem calibrado, tem Brier razoável e é inútil. Resolução perto
 de zero denuncia isso.
@@ -174,7 +174,7 @@ código, `MIN_N_FOR_SIGNAL = 20` é onde o relatório para de marcar "amostra
 curta". Seu critério pessoal para habilitar vertical é n ≥ 50. **São dois
 números diferentes**: não confundir na hora de ler.
 
-**Pontuável (scorable)**: a análise que tem desfecho conhecido *e* preço de
+**Pontuável (scorable)**: a análise que tem desfecho conhecido _e_ preço de
 mercado gravado no mesmo instante. Análise sem uma das duas coisas não entra na
 comparação.
 
@@ -223,7 +223,7 @@ replay for honesto.
 uma flag `enabled` que decide se vira entidade e análise.
 
 **Coletor (collector)**: o que busca dados fora e grava. Você tem dois:
-*discovery* (varre o Polymarket atrás de mercados novos) e *watchlist* (refresca
+_discovery_ (varre o Polymarket atrás de mercados novos) e _watchlist_ (refresca
 por id os mercados que já interessam, de 12s a 300s conforme a proximidade da
 partida).
 
@@ -276,7 +276,7 @@ linkado, para colher os nomes aprendidos desde a última vez.
 Você tem o de desfechos (`backfill-match-outcomes`) e planeja o de odds.
 
 **Retenção (retention)**: apagar dado velho por política. Foi onde um bug
-apagava a série *no momento em que ela ficava completa*: features e label juntos,
+apagava a série _no momento em que ela ficava completa_: features e label juntos,
 sem condição de idade.
 
 **Partição (partitioning)**: quebrar uma tabela grande em pedaços por data

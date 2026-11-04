@@ -59,7 +59,7 @@ export default defineConfig(({ command, mode }) => {
                     cb: (req: { setHeader: (n: string, v: string) => void }) => void,
                   ) => void;
                 }) => {
-                  proxy.on('proxyReq', proxyReq => {
+                  proxy.on('proxyReq', (proxyReq) => {
                     // A chave do navegador é placeholder e é substituída aqui.
                     proxyReq.setHeader('apikey', key);
                     proxyReq.setHeader('Authorization', `Bearer ${key}`);

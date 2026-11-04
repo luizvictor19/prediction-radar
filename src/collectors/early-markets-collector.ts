@@ -44,7 +44,9 @@ export async function collectEarlyMarkets(): Promise<void> {
 
   if (lockToken.staleTakeoverMs !== null) {
     const stuckMinutes = Math.round(lockToken.staleTakeoverMs / 60000);
-    console.warn(`[early-markets] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`);
+    console.warn(
+      `[early-markets] Previous cycle stuck for ${stuckMinutes}min — assuming dead, starting a new one`,
+    );
     await logEvent({
       component: 'early_markets_collector',
       status: 'partial',
@@ -142,7 +144,10 @@ function prepareMarket(market: GammaMarket): PreparedMarket | null {
   }
 }
 
-function buildSnapshotPair(eventId: string, quote: NonNullable<PreparedMarket['quote']>): Record<string, unknown>[] {
+function buildSnapshotPair(
+  eventId: string,
+  quote: NonNullable<PreparedMarket['quote']>,
+): Record<string, unknown>[] {
   const { outcomes, bestBid, bestAsk, spread, volume24h } = quote;
   const midPrimary = (bestBid + bestAsk) / 2;
 
@@ -203,7 +208,7 @@ async function _collect(): Promise<void> {
       const batch = (await res.json()) as GammaMarket[];
       if (batch.length === 0) break;
 
-      const inWindow = batch.filter(m => {
+      const inWindow = batch.filter((m) => {
         const startDate = (m as any).startDate as string | undefined;
         if (!startDate || startDate < cutoffIso) return false;
         if (!m.active || m.closed) return false;
@@ -235,10 +240,8 @@ async function _collect(): Promise<void> {
 
   // Duplicatas entre páginas quebrariam o upsert em lote: ON CONFLICT DO UPDATE
   // não pode afetar a mesma linha duas vezes na mesma instrução.
-  const uniqueMarkets = dedupeByKey(allMarkets, m => m.id);
-  const prepared = uniqueMarkets
-    .map(prepareMarket)
-    .filter((p): p is PreparedMarket => p !== null);
+  const uniqueMarkets = dedupeByKey(allMarkets, (m) => m.id);
+  const prepared = uniqueMarkets.map(prepareMarket).filter((p): p is PreparedMarket => p !== null);
 
   console.log(`[early-markets] Writing ${prepared.length} markets in batch...`);
 
@@ -246,7 +249,7 @@ async function _collect(): Promise<void> {
 
   const eventsResult = await batchUpsert<{ id: string; polymarket_id: string }>(
     'events',
-    prepared.map(p => p.event),
+    prepared.map((p) => p.event),
     {
       onConflict: 'polymarket_id',
       select: 'id, polymarket_id',
@@ -257,7 +260,9 @@ async function _collect(): Promise<void> {
   writeErrors.push(...eventsResult.errors);
 
   const upserted = eventsResult.rows.length;
-  const eventIdByPolymarketId = new Map(eventsResult.rows.map(row => [row.polymarket_id, row.id]));
+  const eventIdByPolymarketId = new Map(
+    eventsResult.rows.map((row) => [row.polymarket_id, row.id]),
+  );
 
   const snapshotRows: Record<string, unknown>[] = [];
   for (const p of prepared) {
@@ -267,7 +272,9 @@ async function _collect(): Promise<void> {
     snapshotRows.push(...buildSnapshotPair(eventId, p.quote));
   }
 
-  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, { label: 'early_markets' });
+  const snapResult = await batchInsert('polymarket_snapshots', snapshotRows, {
+    label: 'early_markets',
+  });
   writeErrors.push(...snapResult.errors);
   const snapshotsInserted = snapResult.written;
 

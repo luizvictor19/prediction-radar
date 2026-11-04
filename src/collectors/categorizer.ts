@@ -56,7 +56,9 @@ const BIG_TECH_PATTERNS: RegExp[] = [
 // Geopolitical signals → override big_tech match, return other
 // "capture" and "war" excluded intentionally — too generic
 // ("Will Nvidia capture 80% of AI chip market?" would be a false negative)
-const BIG_TECH_GEO_EXCLUSIONS = wb('Russia|Ukraine|Putin|Zelensky|ceasefire|NATO|invasion|Kyiv|Moscow');
+const BIG_TECH_GEO_EXCLUSIONS = wb(
+  'Russia|Ukraine|Putin|Zelensky|ceasefire|NATO|invasion|Kyiv|Moscow',
+);
 
 // ai_infra: GPU/chip/datacenter — specific enough to avoid most false positives
 const AI_INFRA_PATTERNS: RegExp[] = [
@@ -86,7 +88,10 @@ const AI_POLICY_PATTERNS: RegExp[] = [
 ];
 
 const SUB_CATEGORY_MAP: Array<[RegExp, MarketSubCategory]> = [
-  [/(?<![a-zA-Z])(?:release|launch|deploy|unveil).{0,30}(?:model|AI|version)(?![a-zA-Z])/i, 'model_release'],
+  [
+    /(?<![a-zA-Z])(?:release|launch|deploy|unveil).{0,30}(?:model|AI|version)(?![a-zA-Z])/i,
+    'model_release',
+  ],
   [/(?<![a-zA-Z])model\s+(?:release|launch)(?![a-zA-Z])/i, 'model_release'],
   [/(?<![a-zA-Z])(?:benchmark|arena|ranking|MMLU|GPQA)(?![a-zA-Z])/i, 'benchmark'],
   [/(?<![a-zA-Z])(?:earnings|revenue|quarterly)(?![a-zA-Z])/i, 'earnings'],

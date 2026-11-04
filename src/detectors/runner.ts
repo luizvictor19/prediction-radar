@@ -68,7 +68,7 @@ async function dismissStaleSignals(): Promise<void> {
     return;
   }
 
-  const stale = (candidates ?? []).filter(s => {
+  const stale = (candidates ?? []).filter((s) => {
     const lastSeen = (s.metadata as any)?.last_seen_at;
     if (!lastSeen) return false;
     return new Date(lastSeen).getTime() < cutoffMs;
@@ -83,7 +83,7 @@ async function dismissStaleSignals(): Promise<void> {
     return;
   }
 
-  const ids = stale.map(s => s.id);
+  const ids = stale.map((s) => s.id);
   const { error: updErr } = await supabase
     .from('detected_signals')
     .update({ dismissed: true })
@@ -128,9 +128,7 @@ export async function runAllDetectors(): Promise<void> {
     const start = Date.now();
     const results: Array<{ name: string; success: boolean; error?: string }> = [];
 
-    const toRun = genericEnabled
-      ? [...GENERIC_DETECTORS, ...MAINTENANCE_TASKS]
-      : MAINTENANCE_TASKS;
+    const toRun = genericEnabled ? [...GENERIC_DETECTORS, ...MAINTENANCE_TASKS] : MAINTENANCE_TASKS;
 
     for (const detector of toRun) {
       try {
@@ -175,7 +173,7 @@ export async function runAllDetectors(): Promise<void> {
         results,
         duration_ms: duration,
         generic_detectors_enabled: genericEnabled,
-        skipped: genericEnabled ? null : GENERIC_DETECTORS.map(d => d.name),
+        skipped: genericEnabled ? null : GENERIC_DETECTORS.map((d) => d.name),
       },
     });
   } finally {

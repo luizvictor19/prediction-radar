@@ -93,7 +93,7 @@ describe('lerFalhasDoMd', () => {
     const falhas = lerFalhasDoMd(MD);
 
     assert.deepEqual(
-      falhas.map(f => [f.slug, f.codigo, f.regra, f.mensagem]),
+      falhas.map((f) => [f.slug, f.codigo, f.regra, f.mensagem]),
       [
         [
           'slug-um',
@@ -113,7 +113,7 @@ describe('lerFalhasDoMd', () => {
     // `slug-dois` succeeded: it is absent, and its absence did not push
     // `slug-tres` onto the rule of the market before it.
     assert.equal(
-      falhas.some(f => f.slug === 'slug-dois'),
+      falhas.some((f) => f.slug === 'slug-dois'),
       false,
     );
     assert.equal(falhas[1]?.regra, 'REGRA TRES');
@@ -192,7 +192,10 @@ describe('causaDe', () => {
 
 describe('divergencias', () => {
   it('cala quando os dois arquivos são da mesma corrida', () => {
-    assert.deepEqual(divergencias(histograma(['opiniao', 'opiniao']), histograma(['opiniao', 'opiniao'])), []);
+    assert.deepEqual(
+      divergencias(histograma(['opiniao', 'opiniao']), histograma(['opiniao', 'opiniao'])),
+      [],
+    );
   });
 
   it('acusa o código que só um dos dois tem', () => {

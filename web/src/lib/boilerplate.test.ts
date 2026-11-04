@@ -36,12 +36,27 @@ import {
  * depois que a máscara junta as variantes.
  */
 const LINHAS: LinhaDeTrecho[] = [
-  { sha: 't1', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'December 31, 2026, 11:59 PM ET' },
+  {
+    sha: 't1',
+    classe: 'ambiguidade',
+    tipo: 'fuso_ausente',
+    trecho: 'December 31, 2026, 11:59 PM ET',
+  },
   { sha: 't2', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'June 30, 2027, 11:59 PM ET' },
   { sha: 't3', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'March 31, 2027, 11:59 PM ET' },
-  { sha: 't4', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'September 30, 2026, 11:59 PM ET' },
+  {
+    sha: 't4',
+    classe: 'ambiguidade',
+    tipo: 'fuso_ausente',
+    trecho: 'September 30, 2026, 11:59 PM ET',
+  },
   // Peculiaridade de um mercado só: 1 em 5 = 20%... mas de OUTRO tipo.
-  { sha: 't1', classe: 'pegadinha', tipo: 'muda_resultado', trecho: 'Replies will NOT count towards the total' },
+  {
+    sha: 't1',
+    classe: 'pegadinha',
+    tipo: 'muda_resultado',
+    trecho: 'Replies will NOT count towards the total',
+  },
 ];
 
 /** Todos os textos lidos, INCLUSIVE o que não produziu achado nenhum. */
@@ -87,8 +102,18 @@ test('o mesmo trecho repetido no MESMO texto conta uma vez', () => {
   // Três leituras do mesmo texto acham a mesma passagem. É um texto, não três.
   const repetido: LinhaDeTrecho[] = [
     ...LINHAS,
-    { sha: 't1', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'December 31, 2026, 11:59 PM ET' },
-    { sha: 't1', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'december 31, 2026, 11:59 pm et' },
+    {
+      sha: 't1',
+      classe: 'ambiguidade',
+      tipo: 'fuso_ausente',
+      trecho: 'December 31, 2026, 11:59 PM ET',
+    },
+    {
+      sha: 't1',
+      classe: 'ambiguidade',
+      tipo: 'fuso_ausente',
+      trecho: 'december 31, 2026, 11:59 pm et',
+    },
   ];
 
   const f = montarIndice(repetido, TEXTOS).frequenciaDe(
@@ -120,7 +145,10 @@ test('a máscara junta as variantes de data num par só', () => {
 
 test('a máscara troca número e mês, e nada mais', () => {
   assert.equal(mascararParaGate('December 31, 2026, 11:59 PM ET'), '<mes> #, #, #:# pm et');
-  assert.equal(mascararParaGate('a consensus of credible reporting'), 'a consensus of credible reporting');
+  assert.equal(
+    mascararParaGate('a consensus of credible reporting'),
+    'a consensus of credible reporting',
+  );
 });
 
 test('tipos diferentes sobre o mesmo trecho são pares diferentes', () => {
@@ -131,8 +159,14 @@ test('tipos diferentes sobre o mesmo trecho são pares diferentes', () => {
   ];
   const indice = montarIndice(linhas, ['t1', 't2', 't3']);
 
-  assert.equal(indice.frequenciaDe(achado({ trecho: '11:59 PM ET', subtipos: ['fuso_ausente'] }))?.textos, 2);
-  assert.equal(indice.frequenciaDe(achado({ trecho: '11:59 PM ET', subtipos: ['data_ambigua'] }))?.textos, 1);
+  assert.equal(
+    indice.frequenciaDe(achado({ trecho: '11:59 PM ET', subtipos: ['fuso_ausente'] }))?.textos,
+    2,
+  );
+  assert.equal(
+    indice.frequenciaDe(achado({ trecho: '11:59 PM ET', subtipos: ['data_ambigua'] }))?.textos,
+    1,
+  );
 });
 
 test('LIMITE CONHECIDO: a máscara normaliza o miolo, não o recorte', () => {
@@ -149,12 +183,25 @@ test('LIMITE CONHECIDO: a máscara normaliza o miolo, não o recorte', () => {
   );
 
   const linhas: LinhaDeTrecho[] = [
-    { sha: 't1', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'by December 31, 2026, 11:59 PM ET' },
-    { sha: 't2', classe: 'ambiguidade', tipo: 'fuso_ausente', trecho: 'June 30, 2027, 11:59 PM ET' },
+    {
+      sha: 't1',
+      classe: 'ambiguidade',
+      tipo: 'fuso_ausente',
+      trecho: 'by December 31, 2026, 11:59 PM ET',
+    },
+    {
+      sha: 't2',
+      classe: 'ambiguidade',
+      tipo: 'fuso_ausente',
+      trecho: 'June 30, 2027, 11:59 PM ET',
+    },
   ];
   const indice = montarIndice(linhas, ['t1', 't2']);
 
-  assert.equal(indice.frequenciaDe(achado({ trecho: 'by December 31, 2026, 11:59 PM ET' }))?.textos, 1);
+  assert.equal(
+    indice.frequenciaDe(achado({ trecho: 'by December 31, 2026, 11:59 PM ET' }))?.textos,
+    1,
+  );
   assert.equal(indice.frequenciaDe(achado({ trecho: 'June 30, 2027, 11:59 PM ET' }))?.textos, 1);
 });
 
@@ -171,7 +218,11 @@ test('acima do limiar é boilerplate, abaixo não é', () => {
 
   const padrao = indice.frequenciaDe(achado({ trecho: 'June 30, 2027, 11:59 PM ET' }));
   const peculiar = indice.frequenciaDe(
-    achado({ trecho: 'Replies will NOT count towards the total', classe: 'pegadinha', subtipos: ['muda_resultado'] }),
+    achado({
+      trecho: 'Replies will NOT count towards the total',
+      classe: 'pegadinha',
+      subtipos: ['muda_resultado'],
+    }),
   );
 
   assert.equal(padrao?.boilerplate, true);
@@ -183,12 +234,21 @@ test('acima do limiar é boilerplate, abaixo não é', () => {
 
 test('abaixo do limiar não é boilerplate', () => {
   const linhas: LinhaDeTrecho[] = [
-    { sha: 't1', classe: 'pegadinha', tipo: 'muda_resultado', trecho: 'a peculiaridade deste mercado' },
+    {
+      sha: 't1',
+      classe: 'pegadinha',
+      tipo: 'muda_resultado',
+      trecho: 'a peculiaridade deste mercado',
+    },
   ];
   const indice = montarIndice(linhas, ['t1', 't2', 't3', 't4', 't5', 't6']);
 
   const f = indice.frequenciaDe(
-    achado({ trecho: 'a peculiaridade deste mercado', classe: 'pegadinha', subtipos: ['muda_resultado'] }),
+    achado({
+      trecho: 'a peculiaridade deste mercado',
+      classe: 'pegadinha',
+      subtipos: ['muda_resultado'],
+    }),
   );
 
   assert.ok((f as { fracao: number }).fracao < LIMIAR_BOILERPLATE);
@@ -217,7 +277,10 @@ test('nada é apagado: o que sai da vista principal está no grupo recolhido', (
   const indice = montarIndice(LINHAS, TEXTOS);
   const entrada = [
     achado({ trecho: 'December 31, 2026, 11:59 PM ET' }),
-    achado({ trecho: 'uma passagem que só este mercado tem', subtipos: ['criterio_discricionario'] }),
+    achado({
+      trecho: 'uma passagem que só este mercado tem',
+      subtipos: ['criterio_discricionario'],
+    }),
     achado({ trecho: 'June 30, 2027, 11:59 PM ET' }),
   ];
 
@@ -238,7 +301,7 @@ test('a ordem dentro de cada lista é a da entrada', () => {
   const { comuns } = separarBoilerplate(entrada, indice);
 
   assert.deepEqual(
-    comuns.map(c => c.achado.trecho),
+    comuns.map((c) => c.achado.trecho),
     ['June 30, 2027, 11:59 PM ET', 'March 31, 2027, 11:59 PM ET'],
   );
 });

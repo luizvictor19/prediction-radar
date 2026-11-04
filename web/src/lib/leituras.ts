@@ -55,7 +55,7 @@ export function leituraExibida(leituras: LeituraRegra[]): LeituraRegra | null {
  */
 export function divergem(leituras: LeituraRegra[], campo: CampoRegra): boolean {
   if (leituras.length < 2) return false;
-  const assinaturas = leituras.map(l => {
+  const assinaturas = leituras.map((l) => {
     const itens = valores(l, campo).map(normalizar).filter(Boolean);
     return [...new Set(itens)].sort().join(' ⁞ ');
   });
@@ -64,7 +64,7 @@ export function divergem(leituras: LeituraRegra[], campo: CampoRegra): boolean {
 
 /** Em quantos campos as leituras divergem. Para o selo do topo. */
 export function camposDivergentes(leituras: LeituraRegra[]): CampoRegra[] {
-  return CAMPOS.map(c => c.chave).filter(c => divergem(leituras, c));
+  return CAMPOS.map((c) => c.chave).filter((c) => divergem(leituras, c));
 }
 
 // ---------------------------------------------------------------------------

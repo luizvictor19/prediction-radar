@@ -103,7 +103,7 @@ test('markets irmãos da mesma partida convergem para o mesmo matchSlug', () => 
     'lol-g2-t1-2026-07-08-map-handicap-away-1pt5',
   ];
 
-  const slugs = new Set(irmaos.map(s => parseMarketSlug(s)?.matchSlug));
+  const slugs = new Set(irmaos.map((s) => parseMarketSlug(s)?.matchSlug));
   assert.deepEqual([...slugs], ['lol-g2-t1-2026-07-08']);
 });
 
@@ -195,7 +195,7 @@ test('vertical desligada continua sendo parseada', () => {
   // `enabled` é política do resolver, não do parser. Se o parser filtrasse por
   // ela, o validador ficaria cego para lol e dota2 e o histórico dessas
   // verticais viraria "não é esports".
-  const enabled = DEFAULT_VERTICAL_PREFIXES.map(v => v.verticalId);
+  const enabled = DEFAULT_VERTICAL_PREFIXES.map((v) => v.verticalId);
   assert.deepEqual(enabled, ['cs2', 'lol', 'dota2']);
   assert.equal(parseMarketSlug('dota2-aur1-lgd-2026-06-06')?.verticalId, 'dota2');
   assert.equal(parseMarketSlug('lol-g2-t1-2026-07-08')?.verticalId, 'lol');

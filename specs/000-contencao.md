@@ -6,11 +6,11 @@
 
 ### Já resolvido nesta sessão
 
-| Item | Antes | Depois |
-|---|---|---|
-| `system_logs` | 755 MB / 2,7M linhas | 11 MB / 68k linhas |
-| `polymarket_snapshots` | 2087 MB | 102 MB |
-| Banco total | ~3,8 GB | ~1,1 GB |
+| Item                   | Antes                | Depois             |
+| ---------------------- | -------------------- | ------------------ |
+| `system_logs`          | 755 MB / 2,7M linhas | 11 MB / 68k linhas |
+| `polymarket_snapshots` | 2087 MB              | 102 MB             |
+| Banco total            | ~3,8 GB              | ~1,1 GB            |
 
 O ganho em `polymarket_snapshots` foi index bloat: a tabela em si tinha só 80 MB;
 `idx_snapshots_event_time` sozinho ocupava 1492 MB. Índice B-tree não recupera espaço
@@ -52,12 +52,12 @@ Diferente de `polymarket_snapshots`: 711 MB de tabela contra 232 MB de índices,
 
 Composição por categoria:
 
-| Categoria | Linhas | Volume médio |
-|---|---|---|
-| `crypto_fees_v2` | 283.772 | US$ 1.504 |
-| `sports_fees_v2` | 194.651 | US$ 41.050 |
-| `weather_fees` | 52.441 | US$ 1.549 |
-| resto | ~20.000 | variado |
+| Categoria        | Linhas  | Volume médio |
+| ---------------- | ------- | ------------ |
+| `crypto_fees_v2` | 283.772 | US$ 1.504    |
+| `sports_fees_v2` | 194.651 | US$ 41.050   |
+| `weather_fees`   | 52.441  | US$ 1.549    |
+| resto            | ~20.000 | variado      |
 
 Crypto e weather = 61% das linhas e volume desprezível. É o alvo do item 2.
 
@@ -82,11 +82,14 @@ for (let i = 0; i < events.length; i += CHUNK) {
   const { error } = await supabase
     .from('events')
     .upsert(events.slice(i, i + CHUNK), { onConflict: 'polymarket_id' });
-  if (error) { /* log e continua — não aborta o ciclo inteiro */ }
+  if (error) {
+    /* log e continua — não aborta o ciclo inteiro */
+  }
 }
 ```
 
 Aplicar em todos os call sites de escrita:
+
 - upsert de `events` (as duas variantes que aparecem no `pg_stat_statements`)
 - insert de `polymarket_snapshots` (as duas variantes)
 - insert de `detected_signals`
@@ -105,18 +108,18 @@ deixar o ciclo abortar por causa de um chunk.
 
 ### Limites reais da Gamma API (medidos em 2026-08-04)
 
-| Teste | Resultado |
-|---|---|
-| `offset=2000` | HTTP 200, 100 itens |
-| `offset=2050` e acima | **HTTP 422** |
-| Sem `order` | 422 no mesmo ponto |
-| `limit=1&offset=2100` | 422 |
-| `order=startDate` em offset alto | 422 no mesmo ponto |
-| `tag=esports` | **ignorado** — devolve a lista default |
-| `slug=X` (valor real) | funciona |
-| `id=X` (valor real) | funciona, filtra corretamente |
-| `id=A&id=B&...` repetido | funciona, **exige `limit` explícito** |
-| 100 ids + `limit=100` | HTTP 200, 100 itens |
+| Teste                            | Resultado                              |
+| -------------------------------- | -------------------------------------- |
+| `offset=2000`                    | HTTP 200, 100 itens                    |
+| `offset=2050` e acima            | **HTTP 422**                           |
+| Sem `order`                      | 422 no mesmo ponto                     |
+| `limit=1&offset=2100`            | 422                                    |
+| `order=startDate` em offset alto | 422 no mesmo ponto                     |
+| `tag=esports`                    | **ignorado** — devolve a lista default |
+| `slug=X` (valor real)            | funciona                               |
+| `id=X` (valor real)              | funciona, filtra corretamente          |
+| `id=A&id=B&...` repetido         | funciona, **exige `limit` explícito**  |
+| 100 ids + `limit=100`            | HTTP 200, 100 itens                    |
 
 Conclusões:
 
@@ -317,12 +320,12 @@ Estimativa com o item 3b abaixo: ~25 MB/dia, ~9 GB/ano. Reavaliar em 3 meses.
 A watchlist do item 2b é dividida em faixas por proximidade da partida, cada faixa com
 sua própria frequência de refresh:
 
-| Estado | Intervalo |
-|---|---|
-| Falta > 6h | 5 min |
-| Falta < 6h | 1 min |
-| Ao vivo | 10-15 s |
-| Encerrada | para |
+| Estado     | Intervalo |
+| ---------- | --------- |
+| Falta > 6h | 5 min     |
+| Falta < 6h | 1 min     |
+| Ao vivo    | 10-15 s   |
+| Encerrada  | para      |
 
 Sem isso, 500 mercados a 10s constantes gerariam ~4,3M linhas/dia — pior que hoje.
 Com isso, a maioria fica na faixa barata quase todo o tempo.
@@ -349,14 +352,14 @@ o que teria valor. **O histórico útil começa no deploy deste item.**
 
 ### Fora do escopo do agente (execução manual)
 
-| # | Item | Momento |
-|---|---|---|
-| H1 | Aplicar as migrations dos itens 2 e 3 | após revisão |
-| H2 | Rodar a poda do histórico (2b), em lote, monitorando | após o item 1 em produção |
-| H3 | `vacuum full events` fora do horário de pico | após H2 |
-| H4 | Confirmar se `search_events_by_title` é usada, decidir sobre 2c | antes do item 2 |
-| H5 | `select pg_stat_statements_reset()` antes/depois do item 1 | verificação |
-| H6 | Varredura de segredos no histórico do git (gitleaks) | independente, urgente |
+| #   | Item                                                            | Momento                   |
+| --- | --------------------------------------------------------------- | ------------------------- |
+| H1  | Aplicar as migrations dos itens 2 e 3                           | após revisão              |
+| H2  | Rodar a poda do histórico (2b), em lote, monitorando            | após o item 1 em produção |
+| H3  | `vacuum full events` fora do horário de pico                    | após H2                   |
+| H4  | Confirmar se `search_events_by_title` é usada, decidir sobre 2c | antes do item 2           |
+| H5  | `select pg_stat_statements_reset()` antes/depois do item 1      | verificação               |
+| H6  | Varredura de segredos no histórico do git (gitleaks)            | independente, urgente     |
 
 ### Escopo do agente
 
@@ -377,18 +380,18 @@ o que teria valor. **O histórico útil começa no deploy deste item.**
 
 ## Ordem
 
-| # | Item | Depende de | Critério de pronto |
-|---|---|---|---|
-| 0 | Teto de offset não mata o ciclo | — | ✅ feito — `partial`, zero `error` |
-| 1 | Batch nos inserts | — | ✅ feito — 626 events / 1252 snaps em ~6s |
-| 2a | Descoberta por `startDate` | 0 | ✅ feito — validado abaixo |
-| 2c | Auto-resolver autônomo | 2a | ✅ feito — cron `*/5`, `CycleLock` próprio, lote por `id=` |
-| 2b | Watchlist com refresh por `id=` | 2c | contagem enviada == recebida, `closed=true` no 2º passo |
-| 4 | Desligar a varredura por volume | 2b, 2c | via `system_config`, sem apagar código |
-| 5 | Poda do histórico (H2) | 4 | `events` abaixo de 100 MB |
-| 6 | `esports_snapshots` + partições | — | partição do dia criada automaticamente |
-| 7 | Cadência por estado | 2b, 6 | mercado ao vivo com gap < 20s |
-| 8 | Retenção esports-only | 6 | nenhum snapshot esports apagado |
+| #   | Item                            | Depende de | Critério de pronto                                         |
+| --- | ------------------------------- | ---------- | ---------------------------------------------------------- |
+| 0   | Teto de offset não mata o ciclo | —          | ✅ feito — `partial`, zero `error`                         |
+| 1   | Batch nos inserts               | —          | ✅ feito — 626 events / 1252 snaps em ~6s                  |
+| 2a  | Descoberta por `startDate`      | 0          | ✅ feito — validado abaixo                                 |
+| 2c  | Auto-resolver autônomo          | 2a         | ✅ feito — cron `*/5`, `CycleLock` próprio, lote por `id=` |
+| 2b  | Watchlist com refresh por `id=` | 2c         | contagem enviada == recebida, `closed=true` no 2º passo    |
+| 4   | Desligar a varredura por volume | 2b, 2c     | via `system_config`, sem apagar código                     |
+| 5   | Poda do histórico (H2)          | 4          | `events` abaixo de 100 MB                                  |
+| 6   | `esports_snapshots` + partições | —          | partição do dia criada automaticamente                     |
+| 7   | Cadência por estado             | 2b, 6      | mercado ao vivo com gap < 20s                              |
+| 8   | Retenção esports-only           | 6          | nenhum snapshot esports apagado                            |
 
 **O 2c foi movido para antes do 2b e do 4.** O auto-resolver hoje é chamado de dentro
 de `collectAll` e não tem agendamento próprio. Desligar a varredura antes de torná-lo
@@ -397,10 +400,10 @@ dinheiro real em jogo.
 
 ### Validação do item 2a em produção (1 hora, 2026-08-04 17:06–18:06)
 
-| Origem | Total | Esports | Vol. médio | Liq. média |
-|---|---|---|---|---|
-| `discovery` | 60 | **60** | 0 | 17 |
-| varredura / early | 315 | **1** | 301 | 6.474 |
+| Origem            | Total | Esports | Vol. médio | Liq. média |
+| ----------------- | ----- | ------- | ---------- | ---------- |
+| `discovery`       | 60    | **60**  | 0          | 17         |
+| varredura / early | 315   | **1**   | 301        | 6.474      |
 
 A descoberta trouxe 60 dos 61 markets de esports do período. Todos com `volume_24h = 0`
 e liquidez média de US$ 17 — nenhum passaria pelo filtro de 10k/20k, nenhum apareceria

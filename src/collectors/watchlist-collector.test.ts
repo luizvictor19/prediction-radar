@@ -40,7 +40,7 @@ function market(overrides: Partial<GammaMarket> = {}): GammaMarket {
 
 function lookup(present: string[], failed: string[] = []) {
   return {
-    byId: new Map(present.map(id => [id, market({ id })])),
+    byId: new Map(present.map((id) => [id, market({ id })])),
     failedIds: new Set(failed),
   };
 }
@@ -80,10 +80,7 @@ test('id de chunk que falhou não vira ausente', () => {
 
 test('todo id enviado cai em exatamente um balde', () => {
   const r = reconcile(['a', 'b', 'c', 'd'], lookup(['a'], ['d']), lookup(['b']));
-  assert.equal(
-    r.openIds.length + r.closedIds.length + r.unknownIds.length + r.failedIds.length,
-    4,
-  );
+  assert.equal(r.openIds.length + r.closedIds.length + r.unknownIds.length + r.failedIds.length, 4);
   assert.equal(r.unaccounted, 0);
 });
 
@@ -128,7 +125,11 @@ test('liquidez ausente é null, não 0 — 0 é um fato sobre o book', () => {
 test('grava com um lado só do book', () => {
   // Perto da resolução um dos lados perde liquidez. Exigir os dois apagaria a
   // série justamente no trecho mais informativo.
-  const rows = buildSnapshotRows('ev1', market({ bestAsk: null as never }), '2026-08-04T18:00:00.000Z');
+  const rows = buildSnapshotRows(
+    'ev1',
+    market({ bestAsk: null as never }),
+    '2026-08-04T18:00:00.000Z',
+  );
   assert.equal(rows.length, 2);
   assert.equal(rows[0]?.['best_bid'], 0.4);
   assert.equal(rows[0]?.['best_ask'], null);
@@ -201,7 +202,10 @@ test('só o tipo listado em config conta como mercado da série', () => {
   assert.equal(isPrimaryMarket(null, cadence), false);
   // Lista vazia trata todo mundo como derivado — some a faixa rápida, e é o
   // `occupancy_by_bucket` no log que denuncia.
-  assert.equal(isPrimaryMarket('moneyline', readCadence({ watchlist_primary_market_types: [] })), false);
+  assert.equal(
+    isPrimaryMarket('moneyline', readCadence({ watchlist_primary_market_types: [] })),
+    false,
+  );
 });
 
 test('o multiplicador só atrasa o derivado, e vale nas três faixas', () => {
@@ -231,7 +235,10 @@ test('o bucket combina faixa e classe', () => {
   };
   assert.equal(bucketOf(entry, NOW, cadence), 'live:primary');
   assert.equal(bucketOf({ ...entry, sports_market_type: 'total' }, NOW, cadence), 'live:derived');
-  assert.equal(bucketOf({ ...entry, game_start_time: inMinutes(600) }, NOW, cadence), 'far:primary');
+  assert.equal(
+    bucketOf({ ...entry, game_start_time: inMinutes(600) }, NOW, cadence),
+    'far:primary',
+  );
   assert.equal(bucketOf({ ...entry, game_start_time: null }, NOW, cadence), 'far:primary');
 });
 
