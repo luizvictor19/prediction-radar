@@ -19,3 +19,4 @@ that is not wired to anything.
 - Conversations (multi-step flows such as register) use `@grammyjs/conversations`.
 - `node-telegram-bot-api` and its types are dead dependencies that still pull Dependabot
   updates; removing them, and the `src/telegram/` stub, is cleanup work for its own PR.
+- Update 2026-11-04: both packages and `src/telegram/` were removed under issue 45.

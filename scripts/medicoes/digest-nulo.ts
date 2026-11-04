@@ -22,7 +22,7 @@ import {
  * written outside the report. Prints to the terminal and writes
  * `probes/digest/digest-nulo.md`.
  *
- * It exists because `spec-tela-regra.md` §10 recorded "21 chamadas com digest
+ * It exists because `docs/spec-tela-regra.md` §10 recorded "21 chamadas com digest
  * nulo (6,6% da rodada de 320)" with no date and no way to recompute it. A rate
  * that cannot be recomputed cannot be compared against the next prompt version,
  * which is how a rate doubles without anyone seeing it. This command is the

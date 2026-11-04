@@ -20,7 +20,7 @@ import {
 } from './lib/digestao.js';
 
 /**
- * As medições M1–M4 da spec da tela de Regra (`spec-tela-regra.md`, seção 3).
+ * As medições M1–M4 da spec da tela de Regra (`docs/spec-tela-regra.md`, seção 3).
  *
  * Tudo é `SELECT` e nada é gravado. Roda quantas vezes quiser:
  *
