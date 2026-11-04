@@ -1,5 +1,9 @@
 # Prediction Radar — Sistema Pessoal
 
+> **Registro histórico (ADR 0011).** O contexto atual e a direção estão em
+> `docs/context.md`; o que fazer agora, nas issues abertas e em `specs/`. O
+> corpo abaixo não foi reescrito e não serve como direção.
+
 > ⚠️ **Este documento descreve o estado de maio/2026 (v7). Está desatualizado como
 > direção.** A Spec 000 (contenção, agosto/2026) mudou três coisas que atravessam
 > quase tudo abaixo:

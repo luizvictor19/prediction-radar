@@ -1,9 +1,20 @@
-# Prediction Radar
+@AGENTS.md
 
-Node.js + TypeScript (ESM, roda via tsx). Supabase (Postgres) + Railway.
-Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
+# Prediction Radar · regras deste repositório
+
+`AGENTS.md`, importado acima, é o acordo de trabalho: stack, fluxo da issue ao
+PR, git e portão. Este arquivo guarda as regras medidas que só valem aqui, cada
+uma com o caso que a custou.
+
+- Contexto do produto, ambientes, direção atual e armadilhas: `docs/context.md`.
+- Comandos do dia (worktree, portão, merge, migrations, `gh`, Railway):
+  `docs/commands.md`.
+- Decisões de arquitetura: `docs/adr/`.
+- O que fazer agora: `specs/` e `docs/context.md`. `PROJECT.md` é registro
+  histórico (ADR 0011).
 
 ## Regras inegociáveis
+
 - NUNCA aplicar migrations. Escrever o .sql com `supabase migration new` e parar.
   Quem aplica é o dono do projeto.
 - Banco: **leitura pode, escrita não.**
@@ -14,27 +25,28 @@ Coleta mercados do Polymarket, detecta sinais, notifica via Telegram.
 - Idioma: ver a seção abaixo. O eixo é o público, não a pasta.
 
 ### Idioma: o eixo é o público, não a pasta
+
 O que sai do repositório é inglês. O que fica dentro fala a língua da spec que
 implementa.
 
-- **Inglês, sempre** — nome de branch, mensagem de commit, título e corpo de PR
+- **Inglês, sempre:** nome de branch, mensagem de commit, título e corpo de PR
   e de issue, e comentário de código. É o que um leitor externo alcança.
-- **`src/`** — coletores, detectores, jobs: inglês, nomes inclusive.
-- **`web/` e `scripts/`** — português. Eles implementam specs escritas em
+- **`src/`:** coletores, detectores, jobs: inglês, nomes inclusive.
+- **`web/` e `scripts/`:** português. Eles implementam specs escritas em
   português e compartilham o vocabulário delas: `veredito`, `armadilha`,
   `trecho`, `origem`, `leitura`. O nome no código é a mesma palavra da spec e a
   mesma coluna do banco, e essa cadeia é o que se perde ao traduzir um dos elos.
-- **Jargão de stack sem tradução** — `dedup`, `boilerplate`, `sha256`,
+- **Jargão de stack sem tradução:** `dedup`, `boilerplate`, `sha256`,
   `supabase`, `polymarket`: fica como está, nas duas camadas.
-- **Documento interno** — specs, relatórios, este arquivo: português.
-- **Texto que o dono lê operando** — mensagem de falha de asserção, saída de
+- **Documento interno:** specs, relatórios, este arquivo: português.
+- **Texto que o dono lê operando:** mensagem de falha de asserção, saída de
   comando, relatório de medição: português, nas duas camadas. Não é comentário
   (ninguém lê rodando) nem nome (não é identificador): é interface de operação, e
   segue o idioma dos NOMES DE TESTE, que é a linha impressa colada nela.
 
 **A quarta categoria também tem número.** Medido em 23/08/2026 sobre a saída da
 própria suíte: dos **882** nomes de teste de primeiro nível, **692** trazem marca
-inequívoca de português e **8** de inglês — os 180 restantes são curtos demais
+inequívoca de português e **8** de inglês; os 180 restantes são curtos demais
 para marcar (`usd / qtd`). E o desequilíbrio não é acidente de pasta: **722**
 desses nomes estão em `src/`, cuja regra de nomes é inglês, e ainda assim são
 escritos em português, porque título de teste é frase e não identificador.
@@ -47,7 +59,7 @@ A regra do comentário vale **na borda**, arquivo a arquivo, quando alguém
 encostar: comentário novo em inglês, o resto do arquivo fica como está.
 Normalizar arquivo inteiro é chore separado, nunca carona num fix.
 
-Arquivo NOVO nasce com todo **comentário** em inglês — não há borda a respeitar
+Arquivo NOVO nasce com todo **comentário** em inglês: não há borda a respeitar
 num arquivo que ninguém escreveu antes. Os **nomes** continuam seguindo a pasta:
 `src/` inglês, `web/` e `scripts/` português. As duas metades da frase têm
 sujeitos diferentes, e é por isso que ela precisa de duas.
@@ -67,7 +79,7 @@ andar.
 
 **A alternativa foi avaliada e descartada com número.** A regra candidata era
 "nome que espelha o banco mantém a grafia do banco, o resto é inglês". Medida
-sobre `web/` e `scripts/`, ela tocaria **75 dos 107** nomes em português — só 26
+sobre `web/` e `scripts/`, ela tocaria **75 dos 107** nomes em português, e só 26
 espelham de fato uma tabela, coluna ou valor. E **57% dos 75 são verbos**
 (`lerAchados`, `separarHerdados`, `montarLinhas`), então o conteúdo real da
 regra não era "espelhar o banco": era "verbo vira inglês", que é outra decisão e
@@ -79,18 +91,20 @@ Nada de travessão longo (—) em texto do projeto. Use vírgula, ponto, dois-po
 ou parêntese. Travessão curto (–) só em faixa de números.
 
 ### Leitura pesada não é inofensiva só por ser leitura
-Query NOVA sobre tabela grande — `events`, `polymarket_snapshots`,
-`esports_snapshots`, `system_logs` — deve ser MOSTRADA antes de rodar.
+
+Query NOVA sobre tabela grande (`events`, `polymarket_snapshots`,
+`esports_snapshots`, `system_logs`) deve ser MOSTRADA antes de rodar.
 
 O `retention_job` já derrubou o banco com uma query mal planejada: um `LIKE ANY`
 com pattern vindo de variável não usava `idx_events_slug_prefix`, e o que sobrava
 era seq scan dos 711 MB de `events` (ver `20260807230005_retention_old_branch_plan.sql`).
-`events` tem ~551k linhas e o timeout do PostgREST é de 8s — um `SELECT` sem
+`events` tem ~551k linhas e o timeout do PostgREST é de 8s: um `SELECT` sem
 índice ali é incidente de produção, não consulta.
 
 Na dúvida sobre o plano, mostrar a query e esperar.
 
 ## Busca vazia não é ausência até os arquivos estarem legíveis
+
 Um único byte NUL faz o `grep` tratar o arquivo como binário e pular o conteúdo
 inteiro: sem erro, sem aviso, e com o mesmo exit code de "não encontrei". Assim
 "não achei o termo" e "não li o arquivo" ficam indistinguíveis.
@@ -121,6 +135,7 @@ Isto não é detalhe de ferramenta. As frações deste arquivo (`61 de 723 nomes
 medida: deixa ela parecendo confiável.
 
 ### O `gh` falha calado de três jeitos aqui
+
 Três casos no mesmo dia, 29/08/2026, com **gh 2.46.0**. Dois são o bug de
 Projects classic; o terceiro é campo ausente na versão. A causa difere, o
 sintoma é o mesmo: o comando não faz o que o nome dele promete, e não é falha
@@ -142,6 +157,7 @@ Por isso o comando daquela seção foi trocado por um que não depende da versã
 do CLI, em vez de anotado como "às vezes não funciona".
 
 #### `gh issue view` e `gh pr edit`
+
 As duas quebram com um erro de GraphQL sobre Projects classic:
 
     GraphQL: Projects (classic) is being deprecated [...] (repository.issue.projectCards)
@@ -187,8 +203,9 @@ O padrão: quanto mais vezes a afirmação foi repetida, mais ela parece medida 
 menos alguém a exercita.
 
 ## Teste que afirma só o estado final não prova a transição
+
 Quando o caminho até o valor tem mais de um passo, outra regra do caminho
-costuma produzir aquele mesmo valor no fim — e a asserção passa sem nunca ter
+costuma produzir aquele mesmo valor no fim, e a asserção passa sem nunca ter
 alcançado a regra que ela existia para travar.
 
 Afirmar a SEQUÊNCIA, não o destino: capturar o valor a cada passo e comparar a
@@ -200,17 +217,19 @@ derruba teste nenhum pode ser mutação morta, e aí se confere primeiro se ela
 chega a ser executada.
 
 Três vezes até agora:
-- `f1ff37c` — a guarda lia a coluna declarada de um fixture onde ela não
+
+- `f1ff37c`: a guarda lia a coluna declarada de um fixture onde ela não
   existia. O lookup dava `undefined`, a asserção era pulada, e trocar o extrator
   deixava tudo verde.
-- `f644879` (`spec-tela-regra.md` §4) — a primeira mutação do eixo de absorção
+- `f644879` (`spec-tela-regra.md` §4): a primeira mutação do eixo de absorção
   não derrubou teste nenhum, e o defeito era a mutação: no array ordenado do
   mais longo para o mais curto, o ramo que ela acrescentava nunca era alcançado.
-- `763f3f3` — o teste do cronômetro afirmava só o começo final e sobreviveu às
+- `763f3f3`: o teste do cronômetro afirmava só o começo final e sobreviveu às
   três mutações, porque sair de Hoje reinicia o relógio de qualquer jeito.
   Passou a afirmar o `null` do meio da sequência.
 
 ## `--fill` não leva o corpo do commit para a descrição do PR
+
 **Esta seção se chamava "Issue fecha pela mensagem de commit, não pelo corpo do
 PR", e o título estava errado pela metade.** O GitHub lê OS DOIS: o corpo do PR
 e a mensagem dos commits que chegam à branch padrão. Corrigido em 29/08/2026,
@@ -231,11 +250,12 @@ ficou escrita aqui até alguém exercitar o outro.
 
 Três PRs em 23/08/2026, dois commits cada, todos com `--fill`, todos com corpo
 de PR igual a duas linhas de assunto:
+
 - `1631d69` carrega a keyword de fechamento da issue 7 no corpo. PR #15
   mergeado 19:09:42Z, issue fechada **19:09:43Z**.
 - `2b1b8c8` carrega a mesma linha para a issue 6. PR #16 mergeado 19:33:53Z,
   issue fechada **19:33:54Z**.
-- `3909986` e `1ec5ef6` não carregam nenhuma — PR #17 mergeado 20:28:37Z com
+- `3909986` e `1ec5ef6` não carregam nenhuma: PR #17 mergeado 20:28:37Z com
   todo o trabalho da #9 dentro, e a #9 continuou aberta. Fechada na mão às
   22:27:49Z, **1h59 depois**, por alguém que lembrou.
 
@@ -251,6 +271,7 @@ chegar à main inteira. Trocar a estratégia de merge mexe justamente no texto
 que o GitHub lê, então é conferir de novo, não supor.
 
 ### A keyword de fechamento não entende negação
+
 O GitHub casa `close`, `fix` e `resolve` colados a `#<N>`, em qualquer flexão
 (`closes`, `closed`, `fixes`, `fixed`, `resolves`, `resolved`) e em qualquer
 posição da frase, e **ignora o que vem antes**. Não existe forma negativa: "não
@@ -278,6 +299,7 @@ Quando a intenção é NÃO fechar, não escreva `#<N>` perto de `close`, `fix` 
 issue 21"), ou o nome por extenso.
 
 ### Os dois canais, e medir só um deles é o erro
+
 `closingIssuesReferences` da API lê **o corpo do PR**, NÃO o corpo dos commits.
 Com squash os dois chegam à main, então os dois podem fechar. Consultar só
 aquele campo dá confiança sobre metade do canal e silêncio sobre a outra
@@ -308,8 +330,9 @@ citava a frase do incidente entre aspas, e a citação fechou a issue de novo na
 revisão. Quando precisar mencionar o caso numa mensagem de commit, tire o `#`.
 
 ## Paralelizar tem teto em quem revisa, não em quantos agentes cabem
+
 Uma worktree por frente (`claude --worktree <nome>`), nunca duas sessões no
-mesmo diretório. Cada worktree quer o próprio `npm install` — dois, na verdade:
+mesmo diretório. Cada worktree quer o próprio `npm install`, dois, na verdade:
 a raiz e `web/`, que tem `package.json` e `node_modules` separados.
 
 **Três frentes é o teto.** O gargalo não são os agentes, é quem lê cada
@@ -318,36 +341,17 @@ revisão valer vira despacho.
 
 Só paraleliza o que não disputa o mesmo trecho. Em 23/08/2026 as três frentes
 foram investigação de relatório (#15), infraestrutura de teste (#16) e banco
-(#17), e o único conflito do dia foi um import em `web/src/lib/dados.ts` —
+(#17), e o único conflito do dia foi um import em `web/src/lib/dados.ts`:
 linha vizinha, posicional e não semântico.
 
 **"Não compartilha arquivo" é forte demais, e a medição do dia diz isso.** Das
 três frentes, quatro arquivos foram tocados por mais de uma: `package.json`
 pelas três, `CLAUDE.md`, `scripts/digerir-regras.ts` e `web/src/lib/dados.ts`
-por duas. Nenhum desses quatro conflitou. O que não colidiu foram as REGIÕES —
+por duas. Nenhum desses quatro conflitou. O que não colidiu foram as REGIÕES:
 os três acréscimos ao `package.json` caíram em três blocos de script
 diferentes. O corte é por trecho e por comportamento, não por caminho: duas
 issues que mexem no mesmo comportamento são uma branch, não duas.
 
 E antes de trocar de branch ou puxar a main, conferir que a árvore está limpa.
 Um `git checkout main` com trabalho não commitado leva as modificações junto
-para a branch errada — aconteceu em 23/08/2026.
-
-## Onde está o quê
-- Schema atual: `supabase/migrations/20260804054445_remote_schema.sql` (baseline).
-  As migrations 001-004 são anteriores e já aplicadas.
-- Trabalho corrente: `specs/000-contencao.md`. Respeitar a Parte E (divisão
-  humano/agente) antes de executar qualquer item.
-- `specs/001-esports-vertical.md` vem depois. Não começar antes da 000 terminar.
-
-## PROJECT.md está desatualizado
-É registro histórico (v7, maio/2026). Serve para entender o sistema como está
-construído — tabelas, detectores, coletores, comandos do bot.
-NÃO serve como direção: a estratégia mudou. As specs em `specs/` são a fonte
-de verdade sobre o que fazer agora.
-
-## Direção atual (resumida)
-- Foco estreitando para esports (CS2 primeiro, depois LoL e futebol).
-- Detectores genéricos serão desligados, não expandidos.
-- Objetivo: acumular série temporal de qualidade para backtest e, depois,
-  um agente analista.
+para a branch errada. Aconteceu em 23/08/2026.

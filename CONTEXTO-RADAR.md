@@ -1,5 +1,9 @@
 # Contexto — onde o projeto está (14/08/2026)
 
+> **Superado por `docs/context.md` (03/11/2026).** Este arquivo fica como
+> registro de 14/08 a 24/08/2026 e guarda o texto completo da dívida
+> conhecida, com arquivo e linha. Para planejar, ler `docs/context.md`.
+
 Leia isto antes de qualquer coisa. Depois leia `CLAUDE.md` para as regras
 inegociáveis.
 
