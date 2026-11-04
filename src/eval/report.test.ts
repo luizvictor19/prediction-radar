@@ -274,7 +274,7 @@ test('o relatório imprime a AUSÊNCIA de vazamento, e não só a presença', ()
   assert.ok(!text.includes('VAZAMENTO: 1 partida'));
 });
 
-test('a seção 4 avisa que a amostra é filtrada pelo portão e aponta para o eval:market', () => {
+test('a seção 4 avisa que a amostra é filtrada pelo portão e aponta para o registro da calibração do mercado', () => {
   // O "não conclusivo" da tabela salva quem lê o rodapé. Esta seção mede a
   // calibração do mercado DEPOIS do portão de liquidez, e quem bate o olho na
   // tabela precisa ver o denominador antes dos números — foi essa filtragem que
@@ -282,7 +282,8 @@ test('a seção 4 avisa que a amostra é filtrada pelo portão e aponta para o e
   const text = renderReport(dataset([point()]));
 
   assert.ok(text.includes('FILTRADA PELO PORTÃO'));
-  assert.ok(text.includes('npm run eval:market'));
+  assert.ok(text.includes('docs/research-record.md'));
+  assert.ok(!text.includes('npm run eval:market'));
   assert.ok(text.includes('no recorte que o agente vê'));
 });
 
