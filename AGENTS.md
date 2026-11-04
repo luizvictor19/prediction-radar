@@ -44,7 +44,8 @@ em `CLAUDE.md`. Resumo:
 - **Nunca mergear** sem o Luiz pedir, nomeando o número do PR.
 - Bug começa com teste que falha.
 - Código morto o git lembra; dado morto some para sempre. Apagar código é
-  livre; apagar dado, nunca (ver `docs/context.md`).
+  livre; apagar dado, nunca. Sair do banco não é apagar quando há cópia
+  conferida fora dele (ver `docs/context.md`, regra 6).
 
 ## Fluxo
 
