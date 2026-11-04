@@ -1017,14 +1017,12 @@ function Contradicao_({ achado, alcance }: { achado: Achado; alcance: Contradica
       </div>
 
       <div className="leituras-do-achado">
-        {herdado ? (
-          // A SEGUNDA cópia do parágrafo do mecanismo vivia aqui. Foi embora:
-          // a contradição herdada agora mora no bloco recolhido, cujo cabeçalho
-          // já explica por que estas duas leituras são nulas. Era o outro lado
-          // do critério 4 — o parágrafo aparecia uma vez por item em duas
-          // seções diferentes.
-          null
-        ) : (
+        {/* A SEGUNDA cópia do parágrafo do mecanismo vivia aqui. Foi embora:
+            a contradição herdada agora mora no bloco recolhido, cujo cabeçalho
+            já explica por que estas duas leituras são nulas. Era o outro lado
+            do critério 4 — o parágrafo aparecia uma vez por item em duas
+            seções diferentes. */}
+        {herdado ? null : (
           <>
             <div>
               <span className="rotulo">leitura A</span>
@@ -1136,15 +1134,14 @@ function AchadoItem({
         </p>
       )}
 
+      {/* Herdado: nada aqui. O parágrafo do mecanismo mora no cabeçalho do
+          bloco, uma vez só (P3). O item leva o selo `herdado` de `Selos` e mais
+          nada. */}
       {jaNoVeredito ? (
         // A faixa do topo já escreveu esta prosa inteira. Repeti-la aqui é a
         // mesma armadilha aparecendo duas vezes na mesma tela.
         <p className="ja-no-veredito">É a armadilha do veredito, no topo desta tela.</p>
-      ) : herdado ? (
-        // Nada aqui: o parágrafo do mecanismo mora no cabeçalho do bloco, uma
-        // vez só (P3). O item leva o selo `herdado` de `Selos` e mais nada.
-        null
-      ) : (
+      ) : herdado ? null : (
         <>
           {achado.descricao && <p>{achado.descricao}</p>}
           {achado.cenario && (
