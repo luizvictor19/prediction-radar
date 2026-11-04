@@ -220,3 +220,40 @@ limit 5;
 -- polymarket_snapshots (open-legs grava lá por necessidade dos
 -- leitores de posição). Estão protegidos da retenção, mas fora
 -- da tabela particionada.
+
+
+-- ------------------------------------------------------------
+-- 12. Disk headroom
+--     Supabase autoscales the disk at 90% of its size: 7.2 GB on
+--     an 8 GB disk, and the disk never shrinks back on its own
+--     (issue 50). Database + WAL is what counts; system space is
+--     ~0.1 GB on top. GB here is 1e9 bytes: if the dashboard's
+--     8 GB is GiB, the real trigger is ~7.7e9 and this errs safe.
+-- ------------------------------------------------------------
+
+-- 12a. Now. Catalog only, no user table is scanned.
+select pg_size_pretty(pg_database_size(current_database())) as banco,
+       pg_size_pretty((select sum(size) from pg_ls_waldir())) as wal,
+       round((pg_database_size(current_database())
+              + (select sum(size) from pg_ls_waldir())) / 1e9, 2) as usado_gb,
+       round(7.2 - (pg_database_size(current_database())
+              + (select sum(size) from pg_ls_waldir())) / 1e9, 2) as folga_gb,
+       current_setting('max_wal_size') as max_wal_size;
+
+-- ALERT: folga_gb below the max_wal_size value means one heavy write
+-- window (backfill, VACUUM FULL, reindex) can trigger the autoscale.
+
+-- 12b. Daily series, from the retention_job log (needs migration
+--      20261104202815_database_disk_usage; null before it).
+select to_char(created_at at time zone 'America/Sao_Paulo', 'DD/MM') as dia,
+       round((metadata->>'database_bytes')::numeric / 1e9, 2) as banco_gb,
+       round((metadata->>'wal_bytes')::numeric / 1e9, 2) as wal_gb
+from system_logs
+where component = 'retention_job'
+  and metadata ? 'database_bytes'
+order by created_at desc
+limit 30;
+
+-- Growth per month is the slope of banco_gb. Measured 2026-11-04:
+-- ~0.335 GB/month, almost all of it the radar series in
+-- polymarket_snapshots.
