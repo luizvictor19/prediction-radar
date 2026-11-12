@@ -20,6 +20,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
  * this machine. A misconfigured `TEST_SUPABASE_URL` crashes the test run instead
  * of writing to production.
  *
+ * ## Local is not enough: the stack has to be this project's
+ *
+ * Another project's local Supabase can hold the same port, and the tests' cleanup
+ * would delete its rows (issue 77). So before any client exists, one read of the
+ * OpenAPI root has to list the relations in `PROJECT_MARKERS`. A stack that
+ * answers without them is skipped, or fails the run under `RADAR_TEST_DB=required`.
+ *
  * ## Absent is skipped, never green
  *
  * The stack is not a prerequisite of `npm test`. A test that needs it and does
@@ -103,25 +110,82 @@ function localClient(url: string, key: string): SupabaseClient {
 }
 
 /**
- * Is the stack answering?
+ * Relations that only this project's migrations create. A stack is this
+ * project's only when its OpenAPI root lists all three.
  *
- * Any HTTP reply counts as present, including 401: the question is whether
- * something is listening on that port, not whether this key is accepted. A
- * refused connection or a timeout is absence.
+ * Not `events`: that is a name any project could have. None of these three is a
+ * table issue 73 drops.
+ *
+ * - `market_rule_texts`: `20260823190031_guardar_texto_da_regra.sql`
+ * - `market_rule_digests`: `20260815213832_digestao_de_regras.sql`
+ * - `digest_achados_por_mercado`: `20260817040920_propagar_achados_por_hash.sql`
  */
-async function testDatabaseAvailable(url: string, fetchImpl: typeof fetch): Promise<boolean> {
+const PROJECT_MARKERS = ['market_rule_texts', 'market_rule_digests', 'digest_achados_por_mercado'];
+
+type Probe = { kind: 'absent' } | { kind: 'ours' } | { kind: 'foreign'; detail: string };
+
+/**
+ * Whose stack answers on this URL?
+ *
+ * One GET to the OpenAPI root, with the same key the client will use: the fewest
+ * requests to a stack that may not be ours, and none of them a write. A refused
+ * connection or a timeout is absence. Anything else is ours only if the root
+ * lists every marker; a non-200 status, a body that is not JSON or a missing
+ * marker all mean foreign. The guard fails closed: a parse error never counts as
+ * ours.
+ */
+async function probeTestDatabase(
+  url: string,
+  key: string,
+  fetchImpl: typeof fetch,
+): Promise<Probe> {
+  let response: Response;
   try {
-    await fetchImpl(`${url}/rest/v1/`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-    return true;
+    response = await fetchImpl(`${url}/rest/v1/`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
   } catch {
-    return false;
+    return { kind: 'absent' };
   }
+
+  if (response.status !== 200) {
+    return { kind: 'foreign', detail: `a raiz respondeu HTTP ${response.status}` };
+  }
+
+  let definitions: unknown;
+  try {
+    const body: unknown = JSON.parse(await response.text());
+    definitions =
+      typeof body === 'object' && body !== null
+        ? (body as { definitions?: unknown }).definitions
+        : undefined;
+  } catch {
+    return { kind: 'foreign', detail: 'a raiz não devolveu JSON' };
+  }
+
+  const listed =
+    typeof definitions === 'object' && definitions !== null ? Object.keys(definitions) : [];
+  const missing = PROJECT_MARKERS.filter((marker) => !listed.includes(marker));
+  if (missing.length > 0) {
+    return { kind: 'foreign', detail: `faltam ${missing.join(', ')}` };
+  }
+  return { kind: 'ours' };
+}
+
+function foreignStackReason(url: string, detail: string): string {
+  return (
+    `a stack em ${url} não é a deste projeto (${detail}); nada foi escrito. ` +
+    'Se for outro projeto, pare a stack dele; se for um volume antigo deste, ' +
+    '`npm run test:db:stop` e `npm run test:db` recriam.'
+  );
 }
 
 /**
- * The client, or the reason there is none, which the caller turns into a skip.
+ * The client, or the reason there is none, which the caller turns into a skip:
+ * the stack is absent, or it answers but is not this project's.
  *
- * With `RADAR_TEST_DB=required` absence throws instead. That is for the run that
+ * With `RADAR_TEST_DB=required` either case throws instead. That is for the run that
  * is supposed to have a database: without it, a broken stack would show up as a
  * suite full of skips and a zero exit code.
  */
@@ -129,14 +193,20 @@ export async function testDatabase(deps: TestDatabaseDeps = {}): Promise<TestDat
   const env = deps.env ?? process.env;
   const url = deps.url ?? env['TEST_SUPABASE_URL'] ?? DEFAULT_URL;
   requireLocalDatabase(url);
+  const key = deps.key ?? env['TEST_SUPABASE_SERVICE_KEY'] ?? DEFAULT_SERVICE_KEY;
+  const required = env['RADAR_TEST_DB'] === 'required';
 
-  if (!(await testDatabaseAvailable(url, deps.fetch ?? fetch))) {
-    if (env['RADAR_TEST_DB'] === 'required') {
-      throw new Error(`RADAR_TEST_DB=required, but ${SKIP_REASON}`);
-    }
+  const probe = await probeTestDatabase(url, key, deps.fetch ?? fetch);
+  if (probe.kind === 'absent') {
+    if (required) throw new Error(`RADAR_TEST_DB=required, but ${SKIP_REASON}`);
     return { skipReason: SKIP_REASON };
   }
+  if (probe.kind === 'foreign') {
+    const reason = foreignStackReason(url, probe.detail);
+    if (required) throw new Error(`RADAR_TEST_DB=required, mas ${reason}`);
+    return { skipReason: reason };
+  }
 
-  const key = deps.key ?? env['TEST_SUPABASE_SERVICE_KEY'] ?? DEFAULT_SERVICE_KEY;
+  // Only now, with the stack known to be this project's, is there a client that writes.
   return { client: (deps.createClient ?? localClient)(url, key) };
 }
