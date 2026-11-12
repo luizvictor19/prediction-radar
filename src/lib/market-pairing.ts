@@ -46,8 +46,7 @@ export interface PairingConfig {
    *
    * Automático em vez de lista fixa porque o corpus manda: em Polymarket "will",
    * "market" e "resolve" são ruído, mas "goals" não é, e nenhuma lista de
-   * palavras vazias em inglês sabe disso. A lista derivada entra em
-   * `PairingStats.autoStopwords` para poder ser conferida.
+   * palavras vazias em inglês sabe disso.
    */
   autoStopDf: number;
   /**
@@ -55,8 +54,7 @@ export interface PairingConfig {
    * camada 3.
    *
    * Só pares que compartilham um token RARO são pontuados. Pares que não
-   * compartilham nenhum têm Jaccard perto de zero por construção — e
-   * `sampleUnscoredPairs` existe para conferir isso em vez de acreditar.
+   * compartilham nenhum têm Jaccard perto de zero por construção.
    */
   invertedIndexDfCeiling: number;
 }
