@@ -100,11 +100,12 @@ async function main() {
   if (existsSync(join(pasta, arquivo)) || existsSync(join(pasta, 'manifest.json'))) {
     throw new Error(`${pasta} já tem ${arquivo} ou manifest.json; confira antes de rodar de novo`);
   }
-  const noDrive = await rodar(rc, ['lsf', destinoDrive]).catch(() => '');
-  if (noDrive.split('\n').some((l) => l === arquivo || l === 'manifest.json')) {
-    throw new Error(
-      `${destinoDrive} já tem ${arquivo} ou manifest.json; confira antes de rodar de novo`,
-    );
+  // List the root, which exists, rather than the month folder: lsf on a
+  // missing folder retries for minutes, and a catch there would read a
+  // network or auth error as "empty" (fail open). Any error here stops the run.
+  const pastasNoDrive = await rodar(rc, ['lsf', '--dirs-only', REMOTO]);
+  if (pastasNoDrive.split('\n').includes(`${nomePasta}/`)) {
+    throw new Error(`${destinoDrive} já existe no Drive; confira antes de rodar de novo`);
   }
 
   const tabelas = (
@@ -165,7 +166,9 @@ async function main() {
 
   const filtro = ['--include', `/${arquivo}`, '--include', '/manifest.json'];
   console.log('[arquivar] enviando para o Drive...');
-  await rodar(rc, ['copy', pasta, destinoDrive, ...filtro]);
+  // --ignore-existing: a file that appeared meanwhile is never replaced, and
+  // the check below then reports the difference instead.
+  await rodar(rc, ['copy', pasta, destinoDrive, ...filtro, '--ignore-existing']);
   await rodar(rc, ['check', pasta, destinoDrive, ...filtro, '--download']);
   console.log('[arquivar] rclone check --download: 0 diferenças');
 

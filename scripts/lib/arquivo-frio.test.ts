@@ -104,6 +104,17 @@ describe('contarBlocosCopy', () => {
     ]);
   });
 
+  it('aceita nome sem aspas, como o pg_dump puro escreve', async () => {
+    const dump = [
+      'COPY public.polymarket_snapshots_p202611 (id, captured_at) FROM stdin;',
+      '1\t2026-11-01',
+      '\\.',
+    ].join('\n');
+    assert.deepEqual(await contarBlocosCopy(linhas(dump)), [
+      { tabela: 'public.polymarket_snapshots_p202611', linhas: 1 },
+    ]);
+  });
+
   it('linha de dado parecida com terminador não fecha o bloco', async () => {
     const dump = [COPY('a'), '\\.x', ' \\.', '\\.'].join('\n');
     assert.deepEqual(await contarBlocosCopy(linhas(dump)), [{ tabela: 'public.a', linhas: 2 }]);
@@ -247,6 +258,20 @@ describe('comprimirSemSetval', () => {
       assert.deepEqual(blocos, [{ tabela: 'public.polymarket_snapshots_p202611', linhas: 2 }]);
       const texto = gunzipSync(await readFile(gz)).toString('utf8');
       assert.equal(texto, `${linhasDoDump.filter((l) => !l.includes('setval')).join('\n')}\n`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('destino que não pode ser escrito vira erro tratado, sem rejeição solta', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'arquivo-frio-'));
+    try {
+      const bruto = join(dir, 'p.sql');
+      await writeFile(bruto, `${COPY('a')}\n1\tx\ty\n\\.\n`);
+      await assert.rejects(
+        comprimirSemSetval(bruto, join(dir, 'nao-existe', 'p.sql.gz')),
+        /ENOENT/,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

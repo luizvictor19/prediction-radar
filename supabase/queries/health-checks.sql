@@ -227,7 +227,10 @@ limit 5;
 --     500 MB of database per project, summed across the
 --     organization (prediction-radar + chelsea-st, so ~1 GB),
 --     averaged over the billing cycle. The Free disk is a fixed
---     2 GB and goes read-only at 95%: database + WAL counts there.
+--     2 GB and goes read-only at 95% (Supabase docs, database-size
+--     guide, read 2026-11-12; issue 50's 8 GB autoscaling disk was
+--     the Pro plan). Database + WAL counts there. Confirm the disk
+--     in the dashboard if the plan changes.
 --     The bot warns hourly above system_config.database_alert_bytes.
 --     GB here is 1e9 bytes.
 -- ------------------------------------------------------------

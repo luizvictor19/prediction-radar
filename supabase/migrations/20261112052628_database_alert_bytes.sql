@@ -1,12 +1,15 @@
 -- Issue 60: the database size above which the bot warns on Telegram.
 --
--- The Free plan quota is 500 MB of database per project, summed across the
--- organization (two projects, so ~1 GB), averaged over the billing cycle.
+-- The Free plan quota is 500 MB of database per project, and Supabase
+-- enforces it on the organization's sum: two projects, so ~1 GB for both,
+-- averaged over the billing cycle. chelsea-st uses ~15 MB (2026-11-12), so
+-- this database has ~985 MB of that.
+--
 -- With one closed radar month archived on day 9 of the next, the database
 -- swings between ~460 MB and ~770 MB (measured 2026-11-12: 469 MB right
 -- after issue 59, growth ~10 MB/day). 850 MB stays quiet in a normal month,
 -- fires about eight days after a skipped archive, and still leaves ~135 MB
--- under the quota, about two weeks at the current rate.
+-- of the ~985 MB, about two weeks at the current rate.
 --
 -- The number lives in config, not in code, so it can move without a deploy
 -- (a raised roster, a plan change). 0 turns the check off.

@@ -34,8 +34,10 @@ export function evaluateDatabaseSize(params: {
 }): DatabaseSizeAction {
   const { thresholdBytes, cooldownMinutes, databaseBytes, alertState, now } = params;
 
-  // 0 turns the check off, open alert included: silencing on purpose must
-  // not leave a "back to normal" message pending forever.
+  // 0 turns the check off, open alert included: nothing is sent and the
+  // stored state is left as it is. Turning it back on resumes from that
+  // state, so an alert open at the time may close with one late
+  // "back to normal" message.
   if (!(thresholdBytes > 0)) return { kind: 'none' };
 
   // A failed read proves nothing either way; the next hour reads again.

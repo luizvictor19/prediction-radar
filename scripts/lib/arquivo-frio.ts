@@ -7,6 +7,7 @@
  * a database.
  */
 
+import { once } from 'node:events';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { pipeline } from 'node:stream/promises';
@@ -86,8 +87,10 @@ export async function contarBlocosCopy(linhas: AsyncIterable<string>): Promise<B
       }
       continue;
     }
-    const m = /^COPY "([^"]+)"\."([^"]+)" .* FROM stdin;$/.exec(linha);
-    if (m) atual = { tabela: `${m[1]}.${m[2]}`, linhas: 0 };
+    // The Supabase CLI quotes both names (`COPY "public"."t" ...`, seen in
+    // the 2026-11-12 dumps); plain pg_dump quotes only when needed. Accept both.
+    const m = /^COPY (?:"([^"]+)"|(\w+))\.(?:"([^"]+)"|(\w+)) .* FROM stdin;$/.exec(linha);
+    if (m) atual = { tabela: `${m[1] ?? m[2]}.${m[3] ?? m[4]}`, linhas: 0 };
   }
 
   if (atual) throw new Error(`bloco COPY de ${atual.tabela} sem terminador`);
@@ -208,19 +211,38 @@ $archive$;
 export async function comprimirSemSetval(bruto: string, destino: string) {
   const gzip = createGzip({ level: 9 });
   const escrita = pipeline(gzip, createWriteStream(destino));
+  // Observed from the start, so a write error is never an unhandled rejection
+  // while the reader is still busy; it is rethrown at the next drain wait or
+  // at the final await.
+  let falha: unknown = null;
+  escrita.catch((err: unknown) => {
+    falha = err;
+  });
 
   async function* linhas() {
     const rl = createInterface({ input: createReadStream(bruto), crlfDelay: Infinity });
     for await (const linha of rl) {
-      if (!ehSetval(linha)) {
-        if (!gzip.write(`${linha}\n`)) await new Promise((r) => gzip.once('drain', r));
+      if (falha) throw falha;
+      if (!ehSetval(linha) && !gzip.write(`${linha}\n`)) {
+        // Waits for drain, or fails with the pipeline if the destination broke.
+        await Promise.race([
+          once(gzip, 'drain'),
+          escrita.then(() => {
+            throw new Error('a escrita do gzip terminou antes do fim do dump');
+          }),
+        ]);
       }
       yield linha;
     }
   }
 
-  const blocos = await contarBlocosCopy(linhas());
-  gzip.end();
-  await escrita;
-  return blocos;
+  try {
+    const blocos = await contarBlocosCopy(linhas());
+    gzip.end();
+    await escrita;
+    return blocos;
+  } catch (err) {
+    gzip.destroy();
+    throw err;
+  }
 }
