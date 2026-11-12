@@ -4,10 +4,11 @@
  * `events.status` is `text default 'active'` with no NOT NULL and no CHECK
  * (`supabase/migrations/001_initial_schema.sql:15`), so the set of values is a
  * convention held by whoever writes it and not a constraint held by the
- * database. Four values are written today: `active` (`src/lib/normalize.ts:132`),
- * `resolved` (`src/collectors/resolved-detector.ts:604` and `:665`), `inactive`
- * (`scripts/backfill-neg-risk-ids.ts:60`) and `closed_manual`
- * (`src/bot/handlers/positions.ts:55`).
+ * database. Three values are written today: `active` (`src/lib/normalize.ts:132`),
+ * `resolved` (`src/collectors/resolved-detector.ts:604` and `:665`) and
+ * `closed_manual` (`src/bot/handlers/positions.ts:55`). A fourth, `inactive`,
+ * was written by a one-off script (`scripts/backfill-neg-risk-ids.ts`, deleted
+ * in issue 72). The rows it wrote stay, which is why it is still terminal below.
  *
  * This module is the first stone of the single definition issue #31 asks for.
  * It carries only the predicate issue #4 needed. The other copies move here as

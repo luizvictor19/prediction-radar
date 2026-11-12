@@ -209,9 +209,8 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
 - **Extrapolar de amostra pequena.** Aconteceu quatro vezes, sempre para pior.
 - **`probes/` versiona só relatório `.md` e `probes/compostos/rotulos.json`**
   (issues 33 e 45). O resto é gerado por script e fica local: num clone novo,
-  rodar o produtor antes de um script que reusa cache (`radar:lista -- --reuse`,
-  `medir-relacoes`). Não abrir
-  nem reescrever os arquivos de lá sem necessidade.
+  rodar o produtor antes de um script que reusa cache (`radar:lista -- --reuse`).
+  Não abrir nem reescrever os arquivos de lá sem necessidade.
 
 ## Dívida conhecida
 

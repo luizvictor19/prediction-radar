@@ -162,9 +162,8 @@ Radar e digestão:
     npm run carregar-digest
     npm run nivelar
 
-Sondas e backfills (`*:probe`, `backfill:*`, `xtracker:*`, `leadlag:*`) são
-pontuais. Antes de rodar, ler o cabeçalho do script: vários pagam API.
-`npm run oddspapi:probe` está na deny list.
+O backfill `backfill:texto-da-regra` é pontual. Antes de rodar, ler o
+cabeçalho do script: sem `--confirmar` ele só planeja e não escreve.
 
 ## Labels (planejadas, ainda não criadas)
 
