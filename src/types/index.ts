@@ -10,14 +10,6 @@ export type MarketSubCategory =
   | 'product_launch'
   | 'other';
 
-export type SignalType =
-  | 'hype_reality_gap'
-  | 'calendar_driven'
-  | 'cross_market'
-  | 'cross_market_intra'
-  | 'cross_market_inter'
-  | 'early_market';
-
 export interface Event {
   id: string;
   polymarket_id: string;
@@ -53,36 +45,6 @@ export interface Event {
   event_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface PolymarketSnapshot {
-  id: number;
-  event_id: string;
-  outcome: string;
-  best_bid: number | null;
-  best_ask: number | null;
-  mid_price: number | null;
-  spread: number | null;
-  bid_depth: number | null;
-  ask_depth: number | null;
-  volume_24h: number | null;
-  captured_at: string;
-}
-
-export interface DetectedSignal {
-  id: string;
-  event_id: string;
-  signal_type: SignalType;
-  confidence_score: number;
-  reasoning: string | null;
-  metadata: Record<string, unknown> | null;
-  suggested_outcome: string | null;
-  suggested_stake_pct: number | null;
-  expires_at: string | null;
-  alerted: boolean;
-  acted_on: boolean;
-  dismissed: boolean;
-  created_at: string;
 }
 
 export interface SystemConfig {
@@ -294,18 +256,6 @@ export interface SystemConfig {
   updated_at: string;
 }
 
-export interface CrossMarketSignalMetadata {
-  price_sum: number;
-  deviation: number;
-  polymarket_category: string | null;
-  fee_rate: number;
-  expected_edge_pct: number;
-  direction: 'over' | 'under';
-  outcomes: Array<{ name: string; price: number }>;
-  detection_count: number;
-  last_seen_at: string;
-}
-
 export interface CrossMarketInterMember {
   event_id: string;
   polymarket_id: string;
@@ -343,49 +293,6 @@ export interface CalendarDrivenSignalMetadata {
   is_ai_tech: boolean;
   detection_count: number;
   last_seen_at: string;
-}
-
-export interface MyBet {
-  id: string;
-  signal_id: string | null;
-  event_id: string | null;
-  thesis: string | null;
-  thesis_type: string | null;
-  confidence_self: number | null;
-  domain_confidence: number | null;
-  polymarket_category: string | null;
-  notes: string | null;
-  placed_at: string;
-  closed_at: string | null;
-}
-
-export interface MyBetLeg {
-  id: string;
-  bet_id: string;
-  event_id: string | null;
-  outcome: string;
-  entry_price: number;
-  stake_usd: number;
-  shares: number | null;
-  closing_price: number | null;
-  resolution_price: number | null;
-  result: 'win' | 'loss' | 'void' | null;
-  pnl_usd: number | null;
-  clv: number | null;
-  notes: string | null;
-  closed_at: string | null;
-  created_at: string;
-}
-
-export interface DetectedSignalInsert {
-  event_id: string | null;
-  signal_type: SignalType;
-  confidence_score: number;
-  reasoning: string;
-  metadata: Record<string, unknown>;
-  suggested_outcome: string | null;
-  suggested_stake_pct: number | null;
-  expires_at: string;
 }
 
 // Polymarket API response shapes

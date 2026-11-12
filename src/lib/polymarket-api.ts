@@ -42,28 +42,6 @@ async function get<T>(url: string): Promise<T> {
   }
 }
 
-/**
- * Teto rígido de offset da Gamma (medido em 2026-08-04): offset 2000 responde 200,
- * 2050 em diante responde 422 — nenhuma ordenação escapa. Quem pagina precisa tratar
- * o 422 como fim de paginação, não como falha (ver GammaHttpError).
- */
-export async function fetchActiveMarkets(params: {
-  limit?: number;
-  offset?: number;
-  order?: string;
-  ascending?: boolean;
-}): Promise<GammaMarket[]> {
-  const { limit = 500, offset = 0, order, ascending } = params;
-  let url = `${GAMMA_URL}/markets?active=true&closed=false&limit=${limit}&offset=${offset}`;
-  if (order) {
-    url += `&order=${encodeURIComponent(order)}`;
-    if (ascending !== undefined) {
-      url += `&ascending=${ascending}`;
-    }
-  }
-  return get<GammaMarket[]>(url);
-}
-
 /** Máximo de ids por chamada ao filtro `id=` (medido 2026-08-04). */
 export const MAX_IDS_PER_REQUEST = 100;
 
@@ -337,29 +315,4 @@ export async function fetchBooks(tokenIds: readonly string[]): Promise<ClobOrder
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-/**
- * @deprecated Gamma API ignores negRiskMarketID as a server-side filter — returns the full
- * paginated universe instead. Use DB aggregation (events table) for group size checks.
- */
-export async function fetchMarketsByNegRiskId(negRiskMarketId: string): Promise<GammaMarket[]> {
-  const all: GammaMarket[] = [];
-  const limit = 500;
-  let offset = 0;
-
-  while (true) {
-    const url = `${GAMMA_URL}/markets?negRiskMarketID=${encodeURIComponent(negRiskMarketId)}&limit=${limit}&offset=${offset}`;
-    const page = await get<GammaMarket[]>(url);
-    all.push(...page);
-    if (page.length < limit) break;
-    offset += limit;
-  }
-
-  return all;
-}
-
-// Reserved for detectors that need deep orderbook data (not used in normal collection)
-export async function fetchOrderbook(tokenId: string): Promise<ClobOrderbook> {
-  return get<ClobOrderbook>(`${CLOB_URL}/book?token_id=${tokenId}`);
 }
