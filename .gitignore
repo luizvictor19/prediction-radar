@@ -62,7 +62,7 @@ id_rsa*
 # looked at yet. Untracking does not remove it from history.
 context_claude_chat.txt
 
-# Ignore every `.sql` and re-include the three directories that hold tracked
+# Ignore every `.sql` and re-include the two directories that hold tracked
 # migrations and queries. An earlier draft anchored this as `/*.sql`, which
 # only covers the repository root: `probes/dump.sql` and `scripts/export.sql`
 # both went through, and `probes/` is where this project actually writes
@@ -70,5 +70,4 @@ context_claude_chat.txt
 # they are legal here because no parent directory is excluded.
 *.sql
 !supabase/migrations/*.sql
-!supabase/migrations-adiadas/*.sql
 !supabase/queries/*.sql
