@@ -14,7 +14,7 @@ import {
   extractEntities,
   jaccard,
   tokenize,
-} from './lib/market-pairing.js';
+} from '../src/lib/market-pairing.js';
 
 /**
  * Lista candidata do radar — a frente que troca prever por vigiar.
