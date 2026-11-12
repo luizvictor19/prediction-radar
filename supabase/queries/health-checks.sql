@@ -223,10 +223,10 @@ limit 5;
 
 
 -- ------------------------------------------------------------
--- 12. Database against the Free plan quota (issue 60)
---     500 MB of database per project, summed across the
---     organization (prediction-radar + chelsea-st, so ~1 GB),
---     averaged over the billing cycle. The Free disk is a fixed
+-- 12. Database against the Free plan quota (issues 60 and 63)
+--     0.5 GB of database for the whole organization
+--     (prediction-radar + chelsea-st at ~15 MB), dashboard
+--     2026-11-12. The Free disk is a fixed
 --     2 GB and goes read-only at 95% (Supabase docs, database-size
 --     guide, read 2026-11-12; issue 50's 8 GB autoscaling disk was
 --     the Pro plan). Database + WAL counts there. Confirm the disk

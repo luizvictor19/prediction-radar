@@ -141,6 +141,7 @@ describe('buildDatabaseSizeMessage', () => {
     assert.match(msg, /912 MB/);
     assert.match(msg, /850 MB/);
     assert.match(msg, /npm run arquivar:particao -- 2026-11/);
+    assert.match(msg, /0,5 GB para a organização inteira/);
   });
 
   it('normalizado diz quanto tempo ficou acima', () => {

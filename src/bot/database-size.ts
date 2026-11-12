@@ -1,8 +1,8 @@
 /**
  * Database size alert, the decision and the message (issue 60).
  *
- * The Free plan quota is 500 MB of database per project, summed across the
- * organization. The radar series grows ~10 MB/day, and one closed month is
+ * The Free plan quota is 0.5 GB of database for the whole organization
+ * (issue 63). The radar series grows ~2.5 MB/day, and one closed month is
  * archived on day 9 of the next (`npm run arquivar:particao`). A skipped
  * archive is the expected way to cross the quota, so the alert names the
  * command that undoes it.
@@ -100,7 +100,7 @@ export function buildDatabaseSizeMessage(params: {
     title,
     '',
     `Agora: *${mb(databaseBytes)}* (limite ${mb(thresholdBytes)}, \`system_config.database_alert_bytes\`).`,
-    'A cota do plano Free é de 500 MB por projeto, somados na organização.',
+    'A cota do plano Free é de 0,5 GB para a organização inteira.',
     '',
     'Provável causa: um mês fechado da série do radar ainda no banco. Na pasta do projeto:',
     `\`npm run arquivar:particao -- ${monthToArchive(now)}\``,
