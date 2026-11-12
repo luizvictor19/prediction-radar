@@ -24,6 +24,7 @@ import { editHandler, editConversation } from './handlers/edit.js';
 import { customTrackConversation } from './handlers/track-custom.js';
 import { startNotifyLoop } from './notify.js';
 import { startHealthMonitor } from './health-monitor.js';
+import { startDatabaseSizeMonitor } from './database-size-monitor.js';
 import { supabase } from '../lib/supabase.js';
 import { logEvent } from '../lib/logger.js';
 
@@ -250,6 +251,9 @@ startNotifyLoop(bot);
 // Vigia dos coletores. Roda AQUI, e não no processo dos coletores, porque o
 // modo de falha a detectar é aquele processo travar — ver health-monitor.ts.
 startHealthMonitor(bot);
+
+// Database size against the Free plan quota, hourly (issue 60).
+startDatabaseSizeMonitor(bot);
 
 try {
   await bot.api.setMyCommands([

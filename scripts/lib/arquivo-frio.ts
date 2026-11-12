@@ -12,8 +12,10 @@ import { createInterface } from 'node:readline';
 import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 
-/** v_radar's widest anchor reaches back 7 d + 6 h; day 9 clears it. */
-export const DIA_MINIMO = 9;
+import { ARCHIVE_MIN_DAY } from '../../src/lib/radar-archive.js';
+
+/** Day of the next month from which a closed month may leave the database. */
+export const DIA_MINIMO = ARCHIVE_MIN_DAY;
 
 export type Mes = {
   /** `YYYY-MM` as given. */
