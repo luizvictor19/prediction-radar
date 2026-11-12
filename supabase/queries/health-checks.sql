@@ -223,37 +223,53 @@ limit 5;
 
 
 -- ------------------------------------------------------------
--- 12. Disk headroom
---     Supabase autoscales the disk at 90% of its size: 7.2 GB on
---     an 8 GB disk, and the disk never shrinks back on its own
---     (issue 50). Database + WAL is what counts; system space is
---     ~0.1 GB on top. GB here is 1e9 bytes: if the dashboard's
---     8 GB is GiB, the real trigger is ~7.7e9 and this errs safe.
+-- 12. Database against the Free plan quota (issue 60)
+--     500 MB of database per project, summed across the
+--     organization (prediction-radar + chelsea-st, so ~1 GB),
+--     averaged over the billing cycle. The Free disk is a fixed
+--     2 GB and goes read-only at 95% (Supabase docs, database-size
+--     guide, read 2026-11-12; issue 50's 8 GB autoscaling disk was
+--     the Pro plan). Database + WAL counts there. Confirm the disk
+--     in the dashboard if the plan changes.
+--     The bot warns hourly above system_config.database_alert_bytes.
+--     GB here is 1e9 bytes.
 -- ------------------------------------------------------------
 
 -- 12a. Now. Catalog only, no user table is scanned.
 select pg_size_pretty(pg_database_size(current_database())) as banco,
        pg_size_pretty((select sum(size) from pg_ls_waldir())) as wal,
-       round((pg_database_size(current_database())
-              + (select sum(size) from pg_ls_waldir())) / 1e9, 2) as usado_gb,
-       round(7.2 - (pg_database_size(current_database())
-              + (select sum(size) from pg_ls_waldir())) / 1e9, 2) as folga_gb,
+       round(pg_database_size(current_database()) / 1e9, 3) as banco_gb,
+       -- needs migration 20261112052628_database_alert_bytes
+       round((select database_alert_bytes from system_config) / 1e9, 3) as limite_alerta_gb,
+       round(1.9 - (pg_database_size(current_database())
+              + (select sum(size) from pg_ls_waldir())) / 1e9, 2) as folga_disco_gb,
        current_setting('max_wal_size') as max_wal_size;
 
--- ALERT: folga_gb below the max_wal_size value means one heavy write
--- window (backfill, VACUUM FULL, reindex) can trigger the autoscale.
+-- ALERT: banco_gb above limite_alerta_gb means a closed month was not
+-- archived (12c). folga_disco_gb under max_wal_size means one heavy
+-- write window can push the 2 GB disk to read-only.
 
 -- 12b. Daily series, from the retention_job log (needs migration
 --      20261104202815_database_disk_usage; null before it).
 select to_char(created_at at time zone 'America/Sao_Paulo', 'DD/MM') as dia,
-       round((metadata->>'database_bytes')::numeric / 1e9, 2) as banco_gb,
-       round((metadata->>'wal_bytes')::numeric / 1e9, 2) as wal_gb
+       round((metadata->>'database_bytes')::numeric / 1e9, 3) as banco_gb,
+       round((metadata->>'wal_bytes')::numeric / 1e9, 3) as wal_gb
 from system_logs
 where component = 'retention_job'
   and metadata ? 'database_bytes'
 order by created_at desc
 limit 30;
 
--- Growth per month is the slope of banco_gb. Measured 2026-11-04:
--- ~0.335 GB/month, almost all of it the radar series in
--- polymarket_snapshots.
+-- Growth is the slope of banco_gb: ~10 MB/day (measured 2026-11-12),
+-- almost all of it the radar series in polymarket_snapshots.
+
+-- 12c. Radar months still in the database. Catalog only. From day 9
+--      on, only the current and the previous month should be here;
+--      an older one is a skipped `npm run arquivar:particao`.
+select c.relname as particao,
+       pg_size_pretty(pg_total_relation_size(c.oid)) as tamanho,
+       pg_get_expr(c.relpartbound, c.oid) as faixa
+from pg_inherits i
+join pg_class c on c.oid = i.inhrelid
+where i.inhparent = 'public.polymarket_snapshots'::regclass
+order by c.relname;

@@ -173,6 +173,11 @@ export interface SystemConfig {
   /** Intervalo mínimo entre dois avisos do MESMO componente ainda parado. */
   health_alert_cooldown_minutes: number;
   /**
+   * Database size, in bytes, above which the bot warns (issue 60). 0 turns
+   * the check off.
+   */
+  database_alert_bytes: number;
+  /**
    * Resolver de esports (spec 001, item 3). Desliga o job dos 10 min e o
    * recompute semanal sem deploy.
    */

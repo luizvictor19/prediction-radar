@@ -73,6 +73,10 @@ const DEFAULTS: SystemConfig = {
   // com o coletor desligado também — o caminho do desligamento bate.
   health_stale_radar_minutes: 20,
   health_alert_cooldown_minutes: 60,
+  // Mirrors the default of 20261112052628_database_alert_bytes. On while the
+  // column is missing, for the same reason as health_alerts_enabled: a size
+  // alert that waits for a config migration is silence that looks like health.
+  database_alert_bytes: 850_000_000,
   // Espelham os defaults da migration do resolver. O fallback LIGA — ao
   // contrário das flags de coletor, e pelo mesmo motivo do health_alerts: o
   // resolver não escreve nada enquanto as tabelas de entidade não existirem (ele

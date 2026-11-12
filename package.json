@@ -28,6 +28,7 @@
     "test": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"web/src/**/*.test.ts\"",
     "test:db": "supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,realtime,storage-api && RADAR_TEST_DB=required npm test",
     "test:db:stop": "supabase stop --no-backup",
+    "arquivar:particao": "tsx scripts/arquivar-particao.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "bot": "tsx src/bot/index.ts",
     "eval:analyst": "tsx scripts/eval-analyst.ts",
