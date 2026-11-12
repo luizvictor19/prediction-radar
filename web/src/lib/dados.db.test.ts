@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { hashDescription } from '../../../src/digest/digest.js';
-import { SKIP_REASON, testDatabase } from '../../../src/lib/test-db.js';
+import { testDatabase } from '../../../src/lib/test-db.js';
 import { COLUNAS_CONTAGEM, ordenarContagens, PAGINA } from './paginacao.js';
 
 /**
@@ -70,7 +70,7 @@ function texto(i: number): string {
   return `${MARCA} texto ${i}`;
 }
 
-type Cliente = NonNullable<Awaited<ReturnType<typeof testDatabase>>>;
+type Cliente = Extract<Awaited<ReturnType<typeof testDatabase>>, { client: unknown }>['client'];
 
 /**
  * The pages SEPARATED, not the concatenated list: where a row shows up is part of
@@ -149,8 +149,9 @@ test(
   'paginação da tela: ordem total não perde nem duplica linha empatada em event_id',
   { timeout: 300_000 },
   async (t) => {
-    const db = await testDatabase();
-    if (db === null) return t.skip(SKIP_REASON);
+    const banco = await testDatabase();
+    if ('skipReason' in banco) return t.skip(banco.skipReason);
+    const db = banco.client;
 
     // Leftovers from an earlier run that died halfway.
     await limpar(db);

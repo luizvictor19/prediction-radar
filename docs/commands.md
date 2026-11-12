@@ -40,6 +40,9 @@ Testes que precisam de Postgres de verdade:
     npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required
     npm run test:db:stop                    # derruba a stack local, sem backup
 
+Se outra stack ocupa a porta 54321, os testes de banco pulam com "não é a deste
+projeto" (ou falham, com `RADAR_TEST_DB=required`) antes de qualquer escrita.
+
 ## Abrir o PR
 
     git push -u origin <type>/NN-<scope>
