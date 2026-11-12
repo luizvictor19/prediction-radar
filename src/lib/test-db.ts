@@ -86,8 +86,20 @@ export function requireLocalDatabase(url: string): void {
   }
 }
 
-export function testDatabaseUrl(): string {
-  return process.env['TEST_SUPABASE_URL'] ?? DEFAULT_URL;
+/** Everything `testDatabase` reaches outside itself. Each one defaults to the real thing. */
+export interface TestDatabaseDeps {
+  url?: string;
+  key?: string;
+  env?: Readonly<Record<string, string | undefined>>;
+  fetch?: typeof fetch;
+  createClient?: (url: string, key: string) => SupabaseClient;
+}
+
+/** The client to write through, or why there is none (the caller skips with it). */
+export type TestDatabase = { client: SupabaseClient } | { skipReason: string };
+
+function localClient(url: string, key: string): SupabaseClient {
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 /**
@@ -97,9 +109,9 @@ export function testDatabaseUrl(): string {
  * something is listening on that port, not whether this key is accepted. A
  * refused connection or a timeout is absence.
  */
-export async function testDatabaseAvailable(url = testDatabaseUrl()): Promise<boolean> {
+async function testDatabaseAvailable(url: string, fetchImpl: typeof fetch): Promise<boolean> {
   try {
-    await fetch(`${url}/rest/v1/`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    await fetchImpl(`${url}/rest/v1/`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
     return true;
   } catch {
     return false;
@@ -107,24 +119,24 @@ export async function testDatabaseAvailable(url = testDatabaseUrl()): Promise<bo
 }
 
 /**
- * The client, or `null` when the stack is absent — which the caller turns into a
- * skip.
+ * The client, or the reason there is none, which the caller turns into a skip.
  *
  * With `RADAR_TEST_DB=required` absence throws instead. That is for the run that
  * is supposed to have a database: without it, a broken stack would show up as a
  * suite full of skips and a zero exit code.
  */
-export async function testDatabase(): Promise<SupabaseClient | null> {
-  const url = testDatabaseUrl();
+export async function testDatabase(deps: TestDatabaseDeps = {}): Promise<TestDatabase> {
+  const env = deps.env ?? process.env;
+  const url = deps.url ?? env['TEST_SUPABASE_URL'] ?? DEFAULT_URL;
   requireLocalDatabase(url);
 
-  if (!(await testDatabaseAvailable(url))) {
-    if (process.env['RADAR_TEST_DB'] === 'required') {
+  if (!(await testDatabaseAvailable(url, deps.fetch ?? fetch))) {
+    if (env['RADAR_TEST_DB'] === 'required') {
       throw new Error(`RADAR_TEST_DB=required, but ${SKIP_REASON}`);
     }
-    return null;
+    return { skipReason: SKIP_REASON };
   }
 
-  const key = process.env['TEST_SUPABASE_SERVICE_KEY'] ?? DEFAULT_SERVICE_KEY;
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const key = deps.key ?? env['TEST_SUPABASE_SERVICE_KEY'] ?? DEFAULT_SERVICE_KEY;
+  return { client: (deps.createClient ?? localClient)(url, key) };
 }
