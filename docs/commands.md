@@ -85,10 +85,10 @@ de `.claude/settings.json`.
 
 ## Arquivar o mês (todo mês, a partir do dia 9)
 
-No plano Free a cota de banco é de 500 MB por projeto, somados na organização,
-e a série do radar cresce ~10 MB/dia. Cada mês fechado sai do banco para o
+No plano Free a cota de banco é de 0,5 GB para a organização inteira (issue
+63), e a série do radar cresce ~2,5 MB/dia com a foto a cada 60 min. Cada mês fechado sai do banco para o
 Google Drive (issue 60). Se ninguém arquivar, o bot avisa no Telegram quando o
-banco passar de `system_config.database_alert_bytes` (850 MB).
+banco passar de `system_config.database_alert_bytes` (450 MB).
 
 Uma vez só, por máquina: `rclone` em `~/.local/bin` e o remote `gdrive`.
 

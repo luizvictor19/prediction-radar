@@ -68,12 +68,14 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 - **Um banco só.** O projeto Supabase remoto é produção; não há staging.
   `web/.env.local` e o `.env` da raiz apontam para o mesmo projeto (conferido
   em 24/08/2026). Toda migration e toda escrita é mudança de produção.
-- **Plano Free desde novembro de 2026** (issue 59). A cota de banco é de
-  500 MB por projeto, somada na organização, que também tem o chelsea-st. Ela
-  é medida pela média diária do ciclo de cobrança. O disco do Free é fixo em
+- **Plano Free desde novembro de 2026** (issues 59 e 63). A cota de banco é
+  de **0,5 GB para a organização inteira**, que também tem o chelsea-st
+  (~15 MB). Medido no painel de Usage em 12/11/2026: 0,51 / 0,5 GB. A leitura
+  "500 MB por projeto, somados" (~1 GB) das issues 59 e 60 estava errada. O disco do Free é fixo em
   2 GB e vai para read-only a 95%. Fonte: supabase.com/pricing e os guias
   `database-size` e `billing-on-free-plan` da documentação, lidos em
-  12/11/2026. A série do radar cresce ~10 MB/dia (medido em 12/11/2026), então
+  12/11/2026. A série do radar crescia ~10 MB/dia com foto a cada 15 min; a
+  foto passou a 60 min (issue 63, ~2,5 MB/dia), então
   os meses fechados saem do banco para o Storage.
 - **Supabase local** existe só para teste: `npm run test:db` sobe a stack e
   roda os testes com `RADAR_TEST_DB=required`.
