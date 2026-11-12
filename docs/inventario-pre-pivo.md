@@ -233,7 +233,10 @@ e grava uma linha a cada 3 min, ~480 por dia. A watchlist, no mesmo ramo, usa
 
 ## Issues de remoção propostas
 
-Uma PR cada. Só viram issue as que o Luiz aprovar.
+Uma PR cada. O Luiz aprovou as oito em 12/11/2026, com o motivo: o projeto
+enxuga para focar no que ele é, a leitura da diferença entre a regra e a
+manchete do mercado. Abertas no mesmo dia: A é a issue 68, B a 69, C a 70, D
+a 73, E a 71, F a 72, G a 74 e H a 75.
 
 |     | Escopo                                                                                                                                                                                                                  | Toca                                             | Ordem           |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------- |
@@ -260,4 +263,4 @@ Então a chamada da retenção de snapshots ou não acontece, ou falha todo dia,
 o job segue, porque cada ramo devolve o erro em vez de abortar
 (`src/jobs/retention.ts:54-65`). A série do radar está protegida nos dois
 casos, então nada se perde hoje. Confirmar exige ler o `status` e a mensagem
-das 11 linhas do `retention_job`. Se confirmar, vira issue própria.
+das 11 linhas do `retention_job`. Aberto como issue 76.
