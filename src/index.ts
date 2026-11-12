@@ -3,7 +3,6 @@ import cron from 'node-cron';
 import { collectOpenLegMarkets } from './collectors/open-legs-collector.js';
 import { collectRadar } from './collectors/radar-collector.js';
 import { detectResolvedMarkets } from './collectors/resolved-detector.js';
-import { runAllDetectors } from './detectors/runner.js';
 import { runRetentionJob } from './jobs/retention.js';
 import { runEsportsPartitionJob } from './jobs/esports-partitions.js';
 
@@ -26,11 +25,6 @@ async function main(): Promise<void> {
   });
 
   void detectResolvedMarkets().catch((err) => console.error('[resolved] Initial run failed:', err));
-
-  // Ciclo leva ~5-7min; 15min dá folga e o lock interno previne overlap
-  cron.schedule('*/15 * * * *', () => {
-    void runAllDetectors().catch((err) => console.error('[cron detectors]', err));
-  });
 
   // Coletor do radar: a lista viva de mercados que o dono consegue julgar, e a
   // série de preço dela. Nasce desligado (`radar_collector_enabled`).
