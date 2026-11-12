@@ -71,8 +71,10 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 - **Plano Free desde novembro de 2026** (issue 59). A cota de banco é de
   500 MB por projeto, somada na organização, que também tem o chelsea-st. Ela
   é medida pela média diária do ciclo de cobrança. O disco do Free é fixo em
-  2 GB e vai para read-only a 95%. A série do radar cresce ~10 MB/dia (medido
-  em 12/11/2026), então os meses fechados saem do banco para o Storage.
+  2 GB e vai para read-only a 95%. Fonte: supabase.com/pricing e os guias
+  `database-size` e `billing-on-free-plan` da documentação, lidos em
+  12/11/2026. A série do radar cresce ~10 MB/dia (medido em 12/11/2026), então
+  os meses fechados saem do banco para o Storage.
 - **Supabase local** existe só para teste: `npm run test:db` sobe a stack e
   roda os testes com `RADAR_TEST_DB=required`.
 - **Railway** roda o processo Node (`railway.toml`: nixpacks, restart
