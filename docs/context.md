@@ -167,6 +167,12 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
    mês"). Restaurar exige filtrar as linhas de `setval` dos arquivos de
    2026-11-04 e 2026-11-12; a receita está na mesma seção.
 
+   Também em 12/11/2026 (issue 63), com a cota de 0,5 GB para a organização:
+   `context_fragments` (33.787 linhas, esports) saiu inteira, e de `events`
+   saíram os mercados fora do radar sem nenhuma referência (106.084 de
+   141.262). As duas estão no Drive, em `esports-frio-2026-11-12/` e
+   `events-2026-11-12/` (esta com a tabela `events` inteira), sem `setval`.
+
 ## A tela (`web/`)
 
 - Vite + React, com `package.json` próprio. Abas Hoje, Regra e Operar.
