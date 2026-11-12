@@ -83,6 +83,54 @@ Quem aplica é o Luiz, da worktree que tem o arquivo:
 `db push`, `db reset`, `db pull`, `migration up` e `psql` estão na deny list
 de `.claude/settings.json`.
 
+## Arquivar o mês (todo mês, a partir do dia 9)
+
+No plano Free a cota de banco é de 500 MB por projeto, somados na organização,
+e a série do radar cresce ~10 MB/dia. Cada mês fechado sai do banco para o
+Google Drive (issue 60). Se ninguém arquivar, o bot avisa no Telegram quando o
+banco passar de `system_config.database_alert_bytes` (850 MB).
+
+Uma vez só, por máquina: `rclone` em `~/.local/bin` e o remote `gdrive`.
+
+    ~/.local/bin/rclone config create gdrive drive scope=drive.file   # abre o navegador
+
+Todo mês, a partir do dia 9 do mês seguinte:
+
+1.  Issue curta ("Archive radar month YYYY-MM") e branch `chore/NN-archive-YYYYMM`.
+2.  Da checkout principal (a que está linkada ao projeto):
+
+        npm run arquivar:particao -- 2026-11
+
+    Conta as linhas no banco (seq scan do mês fechado, ~170 MB, aprovado na
+    issue 60), faz o dump só daquela partição sem as linhas de `setval`, confere
+    as linhas, sobe para `gdrive:prediction-radar-arquivo-frio/radar-YYYY-MM/`,
+    confere com `rclone check --download` e escreve a migration do drop. Não
+    apaga nem sobrescreve nada: pasta ou arquivo que já existe faz parar.
+
+3.  Copiar a migration gerada para a branch, PR, e o Luiz aplica
+    (`supabase db push`). O DROP devolve o disco na hora, sem VACUUM.
+
+A cópia local fica em `~/arquivo-frio-radar/radar-YYYY-MM/`.
+
+### Restaurar um mês
+
+    # 1. a partição default não pode ter linha do mês, senão o create falha
+    select count(*) from public.polymarket_snapshots_default
+     where captured_at >= '2026-09-01' and captured_at < '2026-10-01';
+    # 2. recriar a partição
+    create table public.polymarket_snapshots_p202609 partition of public.polymarket_snapshots
+      for values from ('2026-09-01 00:00:00+00') to ('2026-10-01 00:00:00+00');
+    # 3. carregar SEM as linhas de setval
+    gunzip -c ARQUIVO.sql.gz | grep -v '^SELECT pg_catalog.setval(' | psql <db-url>
+
+O `grep -v` é obrigatório nos arquivos das issues 54 e 59 (`2026-11-04/` e
+`2026-11-12/`): o `pg_dump --data-only` gravou `setval` de toda sequência do
+schema, e carregar sem filtro volta `system_logs_id_seq` e
+`polymarket_snapshots_id_seq` para valores antigos. O próximo insert colide.
+Os arquivos do script (`radar-YYYY-MM/`) já saem sem `setval`. A receita no
+cabeçalho das migrations `20261104221251` e `20261112041338` não tem o filtro;
+elas estão aplicadas e ficam como estão, e vale a desta seção.
+
 ## Rodar o sistema
 
     npm run dev                             # tsx watch src/index.ts (coletores e jobs)

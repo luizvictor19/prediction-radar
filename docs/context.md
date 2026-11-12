@@ -155,6 +155,16 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
    45 MiB. Saem do banco com a migration
    `20261112041338_drop_archived_radar_months`.
 
+   **Desde 12/11/2026 o arquivo frio mora no Google Drive do dono**
+   (`gdrive:prediction-radar-arquivo-frio/`, issue 60), e não mais no
+   bucket: o Storage do Free é de 1 GB para a organização inteira. As duas
+   pastas acima foram copiadas para lá e conferidas com
+   `rclone check --download` (23 arquivos, 0 diferenças). A cópia local em
+   `~/arquivo-frio-radar/` continua sendo a segunda cópia. Cada mês fechado
+   sai pelo `npm run arquivar:particao` (ver `docs/commands.md`, "Arquivar o
+   mês"). Restaurar exige filtrar as linhas de `setval` dos arquivos de
+   2026-11-04 e 2026-11-12; a receita está na mesma seção.
+
 ## A tela (`web/`)
 
 - Vite + React, com `package.json` próprio. Abas Hoje, Regra e Operar.
