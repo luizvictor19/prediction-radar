@@ -570,9 +570,9 @@ async function main(): Promise<void> {
     base.leituras.filter((l) => l.sha === t.sha).map((l) => l.tokensSaida),
   );
 
-  const fmt = (v: number | null): string => (v === null ? '—' : usd(v));
+  const fmt = (v: number | null): string => (v === null ? 'n/a' : usd(v));
   const n = (v: number | null): string =>
-    v === null ? '—' : Math.round(v).toLocaleString('pt-BR');
+    v === null ? 'n/a' : Math.round(v).toLocaleString('pt-BR');
 
   const relatorio = [
     `# Haiku 5.5 contra DeepSeek na digestão (issue #58)`,
@@ -596,7 +596,7 @@ async function main(): Promise<void> {
     '| --- | ---: | ---: |',
     ...[...nulosHaiku.keys()].map(
       (k) =>
-        `| ${CAUSAS.find((c) => c.chave === k)?.titulo ?? k} | ${nulosHaiku.get(k) ?? 0} | ${nulosBase?.get(k) ?? '—'} |`,
+        `| ${CAUSAS.find((c) => c.chave === k)?.titulo ?? k} | ${nulosHaiku.get(k) ?? 0} | ${nulosBase?.get(k) ?? 'n/a'} |`,
     ),
     '',
     '## JSON válido contra o schema',
@@ -630,7 +630,7 @@ async function main(): Promise<void> {
     `| custo mediano por chamada | ${fmt(mediana(custosHaiku))} | ${fmt(mediana(custosBase))} |`,
     `| custo médio por chamada | ${fmt(custosHaiku.length === 0 ? null : custosHaiku.reduce((a, b) => a + b, 0) / custosHaiku.length)} | ${fmt(custosBase.length === 0 ? null : custosBase.reduce((a, b) => a + b, 0) / custosBase.length)} |`,
     `| tokens de saída, mediana (pensamento incluído) | ${n(mediana(saidasHaiku))} | ${n(mediana(saidasBase))} |`,
-    `| latência mediana | ${n(mediana(corrida.chamadas.map((c) => c.latenciaMs)))} ms | — |`,
+    `| latência mediana | ${n(mediana(corrida.chamadas.map((c) => c.latenciaMs)))} ms | n/a |`,
     '',
     'O custo do Haiku vem do `usage` de cada chamada, inclusive das que falharam na',
     'validação: elas foram cobradas. O do DeepSeek é `cost_usd` das leituras de agosto',

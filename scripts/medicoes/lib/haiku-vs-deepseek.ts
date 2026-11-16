@@ -304,7 +304,7 @@ function somar(a: Razao, b: Razao): Razao {
 }
 
 export function porcento(r: Razao): string {
-  return r.todo === 0 ? '—' : `${((r.parte / r.todo) * 100).toFixed(1)}%`;
+  return r.todo === 0 ? 'n/a' : `${((r.parte / r.todo) * 100).toFixed(1)}%`;
 }
 
 export type PorClasse = Record<Classe | 'total', Razao>;

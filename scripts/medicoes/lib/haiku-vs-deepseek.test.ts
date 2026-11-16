@@ -260,7 +260,7 @@ test('a cobertura é assimétrica: quanto de um o outro também achou', () => {
   const deepseek = [peg('passage one')];
   assert.deepEqual(cobertura(haiku, deepseek).total, { parte: 1, todo: 2 });
   assert.deepEqual(cobertura(deepseek, haiku).total, { parte: 1, todo: 1 });
-  assert.equal(porcento(cobertura([], haiku).total), '—');
+  assert.equal(porcento(cobertura([], haiku).total), 'n/a');
 });
 
 test('os nulos listam toda causa, zero incluído, e não somem com código novo', () => {
