@@ -15,11 +15,17 @@ uma com o caso que a custou.
 
 ## Regras inegociáveis
 
-- NUNCA aplicar migrations. Escrever o .sql com `supabase migration new` e parar.
-  Quem aplica é o dono do projeto.
-- Banco: **leitura pode, escrita não.**
+- Migration: escrever o .sql com `supabase migration new`. Aplicar só no
+  ritual, da worktree da issue e logo antes do merge: backup lógico em disco
+  fora do repositório (nunca dentro do banco: a cota do Free é de 0,5 GB para
+  a organização inteira, issue 63), `supabase db push --dry-run`,
+  `supabase db push`, query de leitura que confirma, e avisar o dono. Comandos
+  em `docs/commands.md`, condições em "Merge" no `AGENTS.md`.
+- **Apagar dado continua do dono.** Migration ou script que apaga linhas precisa
+  da aprovação explícita dele, por nome, no PR. O ritual acima não cobre isso.
+- Banco: **leitura pode, escrita não**, fora a migration do ritual.
   - Permitido: `SELECT` para diagnóstico e medição.
-  - Proibido: `INSERT`, `UPDATE`, `DELETE`, DDL e `supabase db push`.
+  - Proibido: `INSERT`, `UPDATE`, `DELETE` e DDL fora de migration.
   - Query NOVA sobre tabela grande: mostrar antes de rodar (ver abaixo).
 - Nunca ler .env.
 - Idioma: ver a seção abaixo. O eixo é o público, não a pasta.

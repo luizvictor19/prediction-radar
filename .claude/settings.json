@@ -16,12 +16,10 @@
       "Write(*.md)"
     ],
     "deny": [
-      "Bash(supabase db push*)",
       "Bash(supabase db reset*)",
       "Bash(supabase db pull*)",
       "Bash(supabase migration up*)",
       "Bash(psql*)",
-      "Bash(git merge*)",
       "Bash(git rebase*)",
       "Bash(git reset --hard*)",
       "Bash(git push --force*)",
@@ -42,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/no-commit-on-main.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-main.sh"
           }
         ]
       }

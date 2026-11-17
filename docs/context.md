@@ -110,7 +110,9 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 ## Regras de banco
 
 - DDL só por migration em `supabase/migrations`, escrita com
-  `supabase migration new` e aplicada pelo Luiz.
+  `supabase migration new` e aplicada pelo Claude no ritual de "Merge" do
+  `AGENTS.md` (backup, dry-run, push da worktree da issue). Migration que
+  apaga linhas espera a aprovação do Luiz, por nome, no PR.
 - Leitura pode, escrita não. Query nova sobre `events`, `polymarket_snapshots`,
   `esports_snapshots` ou `system_logs` é mostrada antes de rodar: `events`
   tinha ~551k linhas e 711 MB, e o timeout do PostgREST é de 8s.
