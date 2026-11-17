@@ -42,13 +42,26 @@ function positiveNumber(
   return value;
 }
 
+/** A whole number of 1 or more: a fraction would round down to a run of 0 items. */
+function positiveInteger(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: number,
+): number {
+  const value = positiveNumber(env, name, fallback);
+  if (!Number.isInteger(value)) {
+    throw new Error(`variável ${name} inválida: esperado inteiro positivo`);
+  }
+  return value;
+}
+
 export function readSettings(env: Record<string, string | undefined>): Settings {
   const routesJson = env['RADAR_MODEL_ROUTES'];
   return {
     ssmPrefix: required(env, 'RADAR_SSM_PREFIX'),
     table: required(env, 'RADAR_TABLE'),
     monthlyCapUsd: positiveNumber(env, 'RADAR_MONTHLY_MODEL_BUDGET_USD', DEFAULT_MONTHLY_CAP_USD),
-    maxItems: Math.floor(positiveNumber(env, 'RADAR_MAX_ITEMS', DEFAULT_MAX_ITEMS)),
+    maxItems: positiveInteger(env, 'RADAR_MAX_ITEMS', DEFAULT_MAX_ITEMS),
     routes:
       routesJson === undefined || routesJson.trim().length === 0
         ? DEFAULT_MODEL_ROUTES

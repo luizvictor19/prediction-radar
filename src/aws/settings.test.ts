@@ -36,4 +36,5 @@ test('configuração: obrigatória ausente ou número inválido para na partida'
     /RADAR_MONTHLY_MODEL_BUDGET_USD/,
   );
   assert.throws(() => readSettings({ ...BASE, RADAR_MAX_ITEMS: 'muitos' }), /RADAR_MAX_ITEMS/);
+  assert.throws(() => readSettings({ ...BASE, RADAR_MAX_ITEMS: '0.5' }), /RADAR_MAX_ITEMS/);
 });
