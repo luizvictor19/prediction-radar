@@ -51,6 +51,29 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test
 
+      # The screen's build, with canary values in every server secret. The
+      # build needs none of them (the routes read them at request time); they
+      # are here only so the next step can prove none reaches the browser.
+      - name: build (web)
+        id: build-web
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build:web
+        env:
+          SUPABASE_URL: https://canario.supabase.co
+          SUPABASE_SERVICE_KEY: canario-chave-de-servico-ci
+          RADAR_SENHA: canario-senha-da-tela-no-ci-com-mais-de-24
+          RADAR_SEGREDO_DE_SESSAO: canario-segredo-de-sessao-ci
+
+      # Scans web/.next/static, everything a browser can download, byte by
+      # byte for the canaries above.
+      - name: conferir:bundle
+        if: ${{ !cancelled() && steps.build-web.outcome == 'success' }}
+        run: npm run conferir:bundle
+        env:
+          SUPABASE_SERVICE_KEY: canario-chave-de-servico-ci
+          RADAR_SENHA: canario-senha-da-tela-no-ci-com-mais-de-24
+          RADAR_SEGREDO_DE_SESSAO: canario-segredo-de-sessao-ci
+
       # test:db needs a real Postgres. src/lib/test-db.ts refuses any URL whose
       # host is not this machine, so the stack is a local Supabase started inside
       # the runner, with every migration applied to it, and never the project's.
