@@ -41,8 +41,13 @@ the screen and the bot read, written in one transaction per reading
 
 ## Consequences
 
-- A rule is read with no manual step, and a Step Functions retry never pays twice for the
-  same reading: the read handler replays the stored raw output instead of calling again.
+- A rule is read with no manual step, and a Step Functions retry does not pay twice for the
+  same reading: the read handler replays the stored raw output instead of calling again. The
+  exception is a failed write of the raw item itself; then the retry pays again, and both
+  calls are counted against the cap.
+- A reading that keeps failing validation is paid for again on every run until it passes:
+  failures are not remembered across runs. The cap bounds the cost, and a daily rotation of
+  the queue keeps such markets from taking every run.
 - Every billed output is kept, so the evals can replay readings under a changed guard.
 - The model choice is a route table (`src/llm/registry.ts`), not code: a model with no
   route stops the run with `CONFIG_ERROR` before any paid call. Moving to Bedrock later is
