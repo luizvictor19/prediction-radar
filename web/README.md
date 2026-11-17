@@ -2,55 +2,56 @@
 
 Abrir, ler a regra, anotar a minha probabilidade, ir operar. É isso.
 
-React + Vite + TypeScript, lendo as views do Supabase direto pelo cliente
-oficial. **Sem backend**: as views já são a API.
+Next.js 16 + React + TypeScript (ADR 0013). O navegador fala só com as rotas
+de `/api`, atrás de senha; quem fala com o banco é o servidor, com a service
+role.
 
 ## Antes de rodar
 
-Criar `web/.env.local` (não é commitado) com duas linhas:
+Criar `web/.env.local` (não é commitado) com quatro linhas:
 
 ```
 SUPABASE_URL=<a mesma SUPABASE_URL do .env da raiz>
 SUPABASE_SERVICE_KEY=<a mesma SUPABASE_SERVICE_KEY do .env da raiz>
+RADAR_SENHA=<a senha da tela, 24 caracteres ou mais>
+RADAR_SEGREDO_DE_SESSAO=<saída de `openssl rand -base64 48`>
 ```
 
-**Sem o prefixo `VITE_`, e isso é o ponto.** O Vite só inlina no bundle o que
-tem esse prefixo. Sem ele, a chave é lida pelo `loadEnv` no `vite.config.ts`,
-fica no processo do Node e nunca chega ao navegador.
+**Nenhuma com prefixo `NEXT_PUBLIC_`.** Esse prefixo manda o valor para o
+navegador. Sem ele, as variáveis ficam no servidor: a chave é lida só por
+`src/lib/servidor/banco.ts`, na hora do pedido.
 
-## Por que existe um proxy
+Faltando `RADAR_SENHA` ou `RADAR_SEGREDO_DE_SESSAO`, ou com senha de menos de
+24 caracteres, a tela inteira responde 503. É de propósito: sem configuração
+ela fecha, não abre.
 
-O Supabase **recusa a service key vinda de navegador**: detecta pelo
-User-Agent e devolve 401. E a chave anônima não resolve: as três views do radar
-têm `revoke all from anon, authenticated` e nenhuma tabela tem policy de RLS.
+## Como a tela fala com o banco
 
-Então a tela fala com `/sb`, que o dev server encaminha para o PostgREST
-trocando `apikey`, `Authorization` e `User-Agent` (`vite.config.ts`). O cliente
-manda uma chave placeholder; o proxy a descarta. Leituras e escritas passam pelo
-mesmo caminho.
+- `src/proxy.ts` confere o cookie de sessão antes de qualquer página ou rota.
+  Sem ele, página vai para `/entrar` e API responde 401.
+- Cada rota em `src/app/api` roda uma consulta só, de
+  `src/lib/servidor/consultas.ts`, e confere a sessão de novo (`comSessao`).
+  Não existe rota que repasse um pedido qualquer ao PostgREST.
+- Os dois inserts (`/api/previsoes`, `/api/legs`) montam a linha a partir de
+  uma lista fechada de campos validados (`src/lib/servidor/entrada.ts`).
+- `src/app/api/rotas.test.ts` acha as rotas no disco e chama cada uma sem
+  cookie: rota nova sem `comSessao` derruba o teste.
+- O CI faz o build com canários no lugar dos segredos e varre
+  `.next/static` byte a byte (`npm run conferir:bundle` na raiz).
 
-**Esse proxy não autentica ninguém.** Ele anexa a service key a qualquer coisa
-que chegue nele, e `service_role` passa por cima da RLS, então quem alcança o
-dev server alcança o banco inteiro, sem nenhuma trava no meio. O que o torna
-seguro é escutar em localhost, e só isso: nunca subir com `--host`, nunca em
-ambiente exposto.
-
-Consequência: **esta tela só funciona em `npm run dev`.** Sem dev server não há
-proxy, e sem proxy não há banco. Um build publicado não funcionaria, e se
-funcionasse, seria porque a chave vazou.
-
-`src/lib/trava.ts` aborta a inicialização se qualquer variável `VITE_*` tiver
-cara de chave secreta (`sb_secret_`, JWT com `role: service_role`). Ela não é
-mais a única defesa (o desenho já tirou o caminho), mas ficou barata e cobre o
-erro humano de reabrir esse caminho "porque não estava funcionando".
+Consultar o banco a partir da tela agora quer dizer escrever uma rota e o
+teste dela. Esse atrito é o ponto.
 
 ## Rodar
 
 ```
 npm install
-npm run dev          # http://localhost:5173
-npm run typecheck
+npm run dev          # http://127.0.0.1:5173, só nesta máquina
+npm run typecheck    # next typegen + tsc
+npm run build        # next build
 ```
+
+Os testes rodam da raiz, em `npm test`, junto com o resto da suíte.
 
 ## Dependência do banco
 

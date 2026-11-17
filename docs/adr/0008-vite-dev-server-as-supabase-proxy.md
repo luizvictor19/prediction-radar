@@ -1,6 +1,6 @@
 # 0008 · The Vite dev server as the Supabase proxy for `web/`
 
-- **Status**: accepted (documenting an existing decision)
+- **Status**: superseded by 0013 (2026-11-17). Was: accepted (documenting an existing decision).
 - **Date**: 2026-11-03, recorded retrospectively. The decision was made on 2026-08-19, after the first attempt failed.
 
 ## Context

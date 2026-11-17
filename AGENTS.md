@@ -13,8 +13,9 @@ os comandos do dia, em `docs/commands.md`; as decisões, em `docs/adr/`.
   service role (`SUPABASE_URL` + `SUPABASE_SERVICE_KEY`). Não há Auth de
   usuário (ADR 0001).
 - Railway hospeda o processo (`railway.toml`, nixpacks) (ADR 0010).
-- `web/`: tela local em Vite + React, com `package.json` e `node_modules`
-  próprios. Fala com o banco pelo proxy do dev server, nunca direto (ADR 0008).
+- `web/`: a tela em Next.js 16 (App Router) + React, com `package.json` e
+  `node_modules` próprios. O navegador só fala com as rotas de `/api`, atrás
+  de senha; quem fala com o banco é o servidor (ADR 0013).
 - Bot do Telegram em `grammy` (`src/bot/`) (ADR 0009).
 - Dados de mercado: Polymarket Gamma e CLOB (ADR 0002).
 
@@ -130,8 +131,13 @@ npm run lint
 npm run typecheck
 npm test
 npm run typecheck --prefix web   # quando o PR toca web/
+npm run build:web                # quando o PR toca web/
 ```
 
+`npm run check` já termina com `typecheck:web` e `build:web`. O CI ainda
+confere, com `npm run conferir:bundle`, que nenhum segredo chegou ao bundle
+do navegador.
+
 `npm run test:db` sobe o Supabase local e roda os testes que precisam de
-Postgres de verdade (`RADAR_TEST_DB=required`). Não há build: o processo roda
-por `tsx`, e a tela só existe em `npm run dev`.
+Postgres de verdade (`RADAR_TEST_DB=required`). O processo roda por `tsx`,
+sem build; só a tela (`web/`) tem build.
