@@ -20,7 +20,8 @@ import { emitirSessao, lerConfiguracao, NOME_DO_COOKIE } from '../../lib/sessao'
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const VERBOS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
-const PUBLICAS = new Set(['entrar']);
+/** Login and logout: the only routes that answer without a session. */
+const PUBLICAS = new Set(['entrar', 'sair']);
 const ORIGEM = 'https://radar.test';
 
 const EVENTO = '0b0e6a3e-3f1f-4a54-9a51-7d1c2e6f8a10';
@@ -28,6 +29,8 @@ const SHA = 'a'.repeat(64);
 
 process.env['RADAR_SENHA'] = 'uma-senha-de-teste-com-32-caracteres';
 process.env['RADAR_SEGREDO_DE_SESSAO'] = 'um-segredo-de-sessao-de-teste';
+process.env['RADAR_HOSTS'] = 'radar.test';
+delete process.env['VERCEL'];
 delete process.env['SUPABASE_URL'];
 delete process.env['SUPABASE_SERVICE_KEY'];
 
@@ -108,8 +111,18 @@ test('toda rota, em todo verbo exportado, responde 401 sem cookie', async () => 
       if (r.status !== 401) abertas.push(`${verbo} /api/${rota.nome} → ${r.status}`);
     }
   }
-  assert.ok(chamadas >= 11, `só ${chamadas} handlers chamados; a busca perdeu rotas`);
+  assert.ok(chamadas >= 10, `só ${chamadas} handlers chamados; a busca perdeu rotas`);
   assert.deepEqual(abertas, [], 'rota respondendo sem sessão');
+});
+
+test('a rota de logout é a outra exceção: sem sessão ela só apaga o cookie', async () => {
+  const sair = (await rotasNoDisco()).find((r) => r.nome === 'sair');
+  assert.ok(sair, 'rota de logout não achada');
+  assert.deepEqual([...sair.verbos.keys()], ['POST'], 'logout só aceita POST');
+  const r = await sair.verbos.get('POST')!(pedido('/api/sair', 'POST'), contexto());
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('location'), `${ORIGEM}/entrar`);
+  assert.match(r.headers.get('set-cookie') ?? '', /Max-Age=0/);
 });
 
 test('a rota de login é a exceção, e mesmo ela não abre com senha errada', async () => {

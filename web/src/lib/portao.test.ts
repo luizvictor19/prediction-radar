@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CAMINHOS_PUBLICOS, entrar, portaoDaRequisicao, sair } from './portao';
+import { CAMINHOS_SEM_SESSAO, atender, entrar, portaoDaRequisicao, sair } from './portao';
 import { DURACAO_MS, NOME_DO_COOKIE } from './sessao';
 
 /**
@@ -16,8 +16,14 @@ import { DURACAO_MS, NOME_DO_COOKIE } from './sessao';
 
 const ORIGEM = 'https://radar.test';
 const SENHA = 'uma-senha-de-teste-com-32-caracteres';
-const ENV = { RADAR_SENHA: SENHA, RADAR_SEGREDO_DE_SESSAO: 'um-segredo-de-sessao-de-teste' };
+const ENV = {
+  RADAR_SENHA: SENHA,
+  RADAR_SEGREDO_DE_SESSAO: 'um-segredo-de-sessao-de-teste',
+  RADAR_HOSTS: 'radar.test',
+};
 const AGORA = Date.UTC(2026, 10, 16, 12, 0, 0);
+
+type Env = Record<string, string | undefined>;
 
 function pedido(
   caminho: string,
@@ -40,6 +46,14 @@ function login(senha: string): Request {
     origem: ORIGEM,
     corpo: new URLSearchParams({ senha }).toString(),
   });
+}
+
+/** The login and logout routes, as `comSessao` runs them, with env and clock injected. */
+function viaEntrar(req: Request, env: Env = ENV, agora = AGORA): Promise<Response> {
+  return atender(req, undefined, env, agora, entrar);
+}
+function viaSair(req: Request, env: Env = ENV, agora = AGORA): Promise<Response> {
+  return atender(req, undefined, env, agora, sair);
 }
 
 /** One line per answer: status, where it sends the browser, whether it sets a cookie. */
@@ -65,10 +79,10 @@ test('a vida de uma sessão, passo a passo', async () => {
   passos.push(resumo(portaoDaRequisicao(pedido('/'), ENV, AGORA)));
   passos.push(resumo(portaoDaRequisicao(pedido('/api/radar'), ENV, AGORA)));
 
-  const errada = await entrar(login(SENHA + 'x'), ENV, AGORA);
+  const errada = await viaEntrar(login(SENHA + 'x'));
   passos.push(resumo(errada));
 
-  const certa = await entrar(login(SENHA), ENV, AGORA);
+  const certa = await viaEntrar(login(SENHA));
   passos.push(resumo(certa));
   const cookie = valorDoCookie(certa);
 
@@ -103,7 +117,7 @@ test('a vida de uma sessão, passo a passo', async () => {
 });
 
 test('o cookie do login é HttpOnly, SameSite=Lax e Secure em https', async () => {
-  const r = await entrar(login(SENHA), ENV, AGORA);
+  const r = await viaEntrar(login(SENHA));
   const atributos = (r.headers.get('set-cookie') ?? '').split('; ');
   for (const a of ['HttpOnly', 'SameSite=Lax', 'Secure']) {
     assert.ok(atributos.includes(a), `falta ${a} no cookie do login`);
@@ -112,32 +126,37 @@ test('o cookie do login é HttpOnly, SameSite=Lax e Secure em https', async () =
 
 test('senha errada não devolve cookie nenhum', async () => {
   for (const senha of ['', 'curta', SENHA + 'x', SENHA.slice(0, -1)]) {
-    const r = await entrar(login(senha), ENV, AGORA);
+    const r = await viaEntrar(login(senha));
     assert.equal(r.status, 401, `senha ${JSON.stringify(senha)} não deu 401`);
     assert.equal(r.headers.get('set-cookie'), null, `senha errada devolveu cookie`);
   }
 });
 
-test('sem configuração, ou com senha curta, a tela inteira responde 503', async () => {
-  const caminhos = ['/', '/entrar', '/api/entrar', '/api/radar', '/api/previsoes'];
+test('sem configuração, ou com senha curta, a tela inteira responde 503, com um texto só', async () => {
+  const caminhos = ['/', '/entrar', '/api/entrar', '/api/sair', '/api/radar', '/api/previsoes'];
   const envs = {
-    'sem nada': {},
-    'sem segredo': { RADAR_SENHA: SENHA },
+    'sem nada': { RADAR_HOSTS: 'radar.test' },
+    'sem segredo': { RADAR_SENHA: SENHA, RADAR_HOSTS: 'radar.test' },
     'senha de 23': { ...ENV, RADAR_SENHA: 'x'.repeat(23) },
   };
   for (const [nome, env] of Object.entries(envs)) {
     const respostas = caminhos.map(
       (c) => portaoDaRequisicao(pedido(c, { cookie: 'qualquer' }), env, AGORA)?.status,
     );
-    assert.deepEqual(respostas, [503, 503, 503, 503, 503], `configuração "${nome}" abriu a tela`);
+    assert.deepEqual(
+      respostas,
+      [503, 503, 503, 503, 503, 503],
+      `configuração "${nome}" abriu a tela`,
+    );
   }
-  const r = await entrar(login(SENHA), {}, AGORA);
-  assert.equal(r.status, 503, 'o login sem configuração não respondeu 503');
+  const doLogin = await viaEntrar(login(SENHA), {});
+  const doProxy = portaoDaRequisicao(pedido('/'), {}, AGORA)!;
+  assert.equal(doLogin.status, 503, 'o login sem configuração não respondeu 503');
+  assert.equal(await doLogin.text(), await doProxy.text(), 'há dois textos de 503');
 });
 
 test('POST com Origin de outro host leva 403, com ou sem sessão', async () => {
-  const certa = await entrar(login(SENHA), ENV, AGORA);
-  const cookie = valorDoCookie(certa);
+  const cookie = valorDoCookie(await viaEntrar(login(SENHA)));
   const respostas = [
     portaoDaRequisicao(
       pedido('/api/entrar', { metodo: 'POST', origem: 'https://outro.test' }),
@@ -158,14 +177,14 @@ test('POST com Origin de outro host leva 403, com ou sem sessão', async () => {
   assert.deepEqual(respostas, ['403', '403', 'passa'], 'a conferência de Origin mudou');
 });
 
-test('só a página e a rota de login são públicas', () => {
-  assert.deepEqual([...CAMINHOS_PUBLICOS].sort(), ['/api/entrar', '/entrar']);
+test('só login e logout dispensam sessão, e casados por inteiro', () => {
+  assert.deepEqual([...CAMINHOS_SEM_SESSAO].sort(), ['/api/entrar', '/api/sair', '/entrar']);
   assert.deepEqual(
-    ['/entrar', '/api/entrar', '/entrar/x', '/api/entrar/x', '/api/radar'].map((c) =>
+    ['/entrar', '/api/entrar', '/api/sair', '/entrar/x', '/api/entrar/x', '/api/radar'].map((c) =>
       resumo(portaoDaRequisicao(pedido(c), ENV, AGORA)),
     ),
-    ['passa', 'passa', '307 /entrar', '401', '401'],
-    'um caminho público a mais, ou casado por prefixo, abre a tela',
+    ['passa', 'passa', 'passa', '307 /entrar', '401', '401'],
+    'um caminho a mais sem sessão, ou casado por prefixo, abre a tela',
   );
 });
 
@@ -174,22 +193,37 @@ test('respostas do portão não vão para cache compartilhado', () => {
   assert.equal(r?.headers.get('cache-control'), 'private, no-store');
 });
 
-test('sair apaga o cookie e manda para o login', () => {
-  const r = sair(pedido('/api/sair', { metodo: 'POST', origem: ORIGEM }));
-  assert.equal(resumo(r), '303 /entrar com cookie');
-  assert.match(r.headers.get('set-cookie') ?? '', /Max-Age=0/, 'o cookie não foi apagado');
+test('sair funciona sem sessão válida: apaga o cookie e manda para o login', async () => {
+  const cookie = valorDoCookie(await viaEntrar(login(SENHA)));
+  const sairCom = (c: string | undefined, env: Env, agora: number) =>
+    viaSair(pedido('/api/sair', { metodo: 'POST', origem: ORIGEM, cookie: c }), env, agora);
+
+  const respostas = [
+    await sairCom(cookie, ENV, AGORA), // sessão válida
+    await sairCom(cookie, ENV, AGORA + DURACAO_MS), // sessão vencida
+    await sairCom(cookie, { ...ENV, RADAR_SENHA: SENHA + '-trocada' }, AGORA), // senha trocada
+    await sairCom(undefined, ENV, AGORA), // sem cookie
+  ];
+  assert.deepEqual(respostas.map(resumo), Array(4).fill('303 /entrar com cookie'));
+  for (const r of respostas) {
+    assert.match(r.headers.get('set-cookie') ?? '', /Max-Age=0/, 'o cookie não foi apagado');
+  }
+  const deFora = await viaSair(
+    pedido('/api/sair', { metodo: 'POST', origem: 'https://outro.test', cookie }),
+  );
+  assert.equal(deFora.status, 403, 'logout vindo de outro site passou');
 });
 
 test('todo redirecionamento leva URL absoluta, porque o Proxy do Next recusa a relativa', async () => {
   const destinos = [
     portaoDaRequisicao(pedido('/'), ENV, AGORA),
-    await entrar(login(SENHA), ENV, AGORA),
-    sair(pedido('/api/sair', { metodo: 'POST', origem: ORIGEM })),
+    await viaEntrar(login(SENHA)),
+    await viaSair(pedido('/api/sair', { metodo: 'POST', origem: ORIGEM })),
   ].map((r) => r?.headers.get('location'));
   assert.deepEqual(destinos, [`${ORIGEM}/entrar`, `${ORIGEM}/`, `${ORIGEM}/entrar`]);
 });
 
-test('o redirecionamento usa o host do cabeçalho Host, não o de req.url', async () => {
+test('next dev: o login volta ao host do cabeçalho Host, não ao localhost de req.url', async () => {
   // Inside a route handler, `next dev -H 127.0.0.1` reports `localhost` in
   // `req.url`; the browser is on 127.0.0.1 and holds the cookie there.
   const req = new Request('http://localhost:5173/api/entrar', {
@@ -201,6 +235,70 @@ test('o redirecionamento usa o host do cabeçalho Host, não o de req.url', asyn
     },
     body: new URLSearchParams({ senha: SENHA }).toString(),
   });
-  const r = await entrar(req, ENV, AGORA);
+  const r = await viaEntrar(req, { RADAR_SENHA: SENHA, RADAR_SEGREDO_DE_SESSAO: 'x' });
   assert.equal(r.headers.get('location'), 'http://127.0.0.1:5173/');
+});
+
+/** A request on Vercel's side: `req.url` as the function sees it, and a Host header. */
+function naVercel(host: string, caminho: string, origem?: string): Request {
+  const headers = new Headers({ host });
+  if (origem !== undefined) headers.set('origin', origem);
+  return new Request(`http://interno.local${caminho}`, {
+    method: origem === undefined ? 'GET' : 'POST',
+    headers,
+  });
+}
+
+const ENV_VERCEL = {
+  RADAR_SENHA: SENHA,
+  RADAR_SEGREDO_DE_SESSAO: 'um-segredo-de-sessao-de-teste',
+  VERCEL: '1',
+  VERCEL_PROJECT_PRODUCTION_URL: 'radar.vercel.app',
+  VERCEL_URL: 'radar-abc123.vercel.app',
+};
+
+test('host fora da lista não recebe redirecionamento nem passa pelo portão', () => {
+  const respostas = [
+    // Off Vercel: only 127.0.0.1 and localhost, on any port, plus RADAR_HOSTS.
+    naVercel('127.0.0.1:5173', '/'),
+    naVercel('localhost:3000', '/'),
+    naVercel('mau.test', '/'),
+  ].map((r) =>
+    resumo(portaoDaRequisicao(r, { RADAR_SENHA: SENHA, RADAR_SEGREDO_DE_SESSAO: 'x' }, AGORA)),
+  );
+  const naVercelRespostas = [
+    naVercel('radar.vercel.app', '/'),
+    naVercel('radar-abc123.vercel.app', '/'),
+    naVercel('127.0.0.1:5173', '/'),
+    naVercel('mau.test', '/'),
+  ].map((r) => resumo(portaoDaRequisicao(r, ENV_VERCEL, AGORA)));
+  assert.deepEqual(
+    [respostas, naVercelRespostas],
+    [
+      ['307 /entrar', '307 /entrar', '421'],
+      ['307 /entrar', '307 /entrar', '421', '421'],
+    ],
+    'a lista de hosts mudou',
+  );
+});
+
+test('na Vercel o redirecionamento é https no host da lista, não o de req.url', () => {
+  const r = portaoDaRequisicao(naVercel('radar.vercel.app', '/'), ENV_VERCEL, AGORA);
+  assert.equal(r?.headers.get('location'), 'https://radar.vercel.app/entrar');
+  const proprio = portaoDaRequisicao(
+    naVercel('radar.exemplo.com', '/'),
+    { ...ENV_VERCEL, RADAR_HOSTS: 'radar.exemplo.com, outro.exemplo.com' },
+    AGORA,
+  );
+  assert.equal(proprio?.headers.get('location'), 'https://radar.exemplo.com/entrar');
+});
+
+test('Origin é comparada com o host da lista, não com o Host cru', () => {
+  const respostas = [
+    // Origin and Host agree, but the host is not one this screen answers on.
+    naVercel('mau.test', '/api/entrar', 'https://mau.test'),
+    naVercel('radar.vercel.app', '/api/entrar', 'https://mau.test'),
+    naVercel('radar.vercel.app', '/api/entrar', 'https://radar.vercel.app'),
+  ].map((r) => resumo(portaoDaRequisicao(r, ENV_VERCEL, AGORA)));
+  assert.deepEqual(respostas, ['421', '403', 'passa']);
 });

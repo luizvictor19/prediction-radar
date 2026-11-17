@@ -1,3 +1,4 @@
 import { comSessao, sair } from '../../../lib/portao';
 
-export const POST = comSessao(async (req: Request) => sair(req));
+// Works without a valid session, so an expired cookie can still be cleared.
+export const POST = comSessao(sair);
