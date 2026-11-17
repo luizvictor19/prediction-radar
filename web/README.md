@@ -25,6 +25,14 @@ Faltando `RADAR_SENHA` ou `RADAR_SEGREDO_DE_SESSAO`, ou com senha de menos de
 24 caracteres, a tela inteira responde 503. É de propósito: sem configuração
 ela fecha, não abre.
 
+A tela só responde nos hosts que conhece: `127.0.0.1` e `localhost` fora da
+Vercel, e lá os hosts que a própria Vercel informa (`VERCEL_URL`,
+`VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`). Domínio próprio entra
+em `RADAR_HOSTS`, separado por vírgula. Host fora da lista recebe 421.
+
+Uma variável `NEXT_PUBLIC_*` com cara de segredo (no nome ou no valor) faz
+`next build` e `next dev` pararem (`src/lib/trava-publica.ts`).
+
 ## Como a tela fala com o banco
 
 - `src/proxy.ts` confere o cookie de sessão antes de qualquer página ou rota.

@@ -36,8 +36,11 @@ Access is one shared password, held in `RADAR_SENHA` and compared in constant ti
 password sets a cookie signed with `RADAR_SEGREDO_DE_SESSAO` (HMAC-SHA256 over an expiry and the
 password's hash, 30 days, `HttpOnly`, `SameSite=Lax`, `Secure` on https). The cookie is verified
 in `src/proxy.ts` for every path and again inside every handler (`comSessao`). A missing
-configuration, or a password shorter than 24 characters, closes the screen with 503. A write with
-an `Origin` from another host gets 403. Login attempts are to be rate limited by one Vercel WAF
+configuration, or a password shorter than 24 characters, closes the screen with 503. Redirects and the Origin check use one trusted host: the `Host`
+header, accepted only when listed in `RADAR_HOSTS` or in Vercel's own deployment host variables
+(or, off Vercel, 127.0.0.1 and localhost); any other host gets 421. A write with an `Origin` from
+another host gets 403. Logout works without a valid session, so an expired cookie can be cleared.
+A `NEXT_PUBLIC_*` variable that names or holds a secret stops `next build` and `next dev`. Login attempts are to be rate limited by one Vercel WAF
 rule, and preview deployments to sit behind Vercel Authentication with no database credential;
 both are dashboard settings, recorded when sub-issue B deploys.
 
