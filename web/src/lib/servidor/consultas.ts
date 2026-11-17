@@ -179,12 +179,23 @@ export async function lerContradicoes(
  * "Current" is the word that matters: `events.description` is overwritten in
  * place when Polymarket edits the rule, so this can be a different document from
  * the one that produced the findings. What decides whether it serves is
- * `escolherRegulamento`, and its answer depends on the hash.
+ * `escolherRegulamento`, and its answer depends on the hash. A market with no
+ * row, and a market whose description is null, are different answers.
  */
-export async function lerTextoDaRegra(db: SupabaseClient, eventId: string): Promise<string | null> {
-  const { data, error } = await db.from('events').select('description').eq('id', eventId).single();
+export async function lerTextoDaRegra(
+  db: SupabaseClient,
+  eventId: string,
+): Promise<{ encontrado: false } | { encontrado: true; texto: string | null }> {
+  // `maybeSingle`: an id with no row is an answer (404 at the route), not an
+  // error, where `.single()` turned it into a 500.
+  const { data, error } = await db
+    .from('events')
+    .select('description')
+    .eq('id', eventId)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as { description: string | null } | null)?.description ?? null;
+  if (data === null) return { encontrado: false };
+  return { encontrado: true, texto: (data as { description: string | null }).description ?? null };
 }
 
 /**

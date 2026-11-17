@@ -118,7 +118,7 @@ test('lerAchados, lerLeituras, lerTextoDaRegra e lerTextoGuardado filtram pela c
   );
   await lerAchados(db, EVENTO);
   await lerLeituras(db, EVENTO, SHA);
-  assert.equal(await lerTextoDaRegra(db, EVENTO), 'texto');
+  assert.deepEqual(await lerTextoDaRegra(db, EVENTO), { encontrado: true, texto: 'texto' });
   assert.deepEqual(await lerTextoGuardado(db, SHA), { fase: 'guardado', texto: 'guardado' });
 
   assert.deepEqual(
@@ -131,7 +131,7 @@ test('lerAchados, lerLeituras, lerTextoDaRegra e lerTextoGuardado filtram pela c
         ['eq', 'description_sha256', SHA],
         ['order', 'leitura_n'],
       ],
-      ['events', ['eq', 'id', EVENTO], ['single']],
+      ['events', ['eq', 'id', EVENTO], ['maybeSingle']],
       ['market_rule_texts', ['eq', 'description_sha256', SHA], ['maybeSingle']],
     ],
   );
@@ -240,4 +240,9 @@ test('erro do banco vira exceção com a mensagem dele', async () => {
   await assert.rejects(lerRadar(db), /boom/);
   await assert.rejects(gravarPrevisao(db, {}), /boom/);
   await assert.rejects(gravarLeg(db, {}), /boom/);
+});
+
+test('lerTextoDaRegra: mercado que não existe é resposta, não erro', async () => {
+  const { db } = clienteFalso(() => ({ data: null, error: null }));
+  assert.deepEqual(await lerTextoDaRegra(db, EVENTO), { encontrado: false });
 });

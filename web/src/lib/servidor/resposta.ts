@@ -9,6 +9,9 @@ export function json(corpo: unknown, status = 200): Response {
   });
 }
 
+/** Thrown inside `responder` for a key with no row: answers 404 with its message. */
+export class NaoEncontrado extends Error {}
+
 export function invalido(motivo: string): Response {
   return json({ erro: motivo }, 400);
 }
@@ -23,6 +26,7 @@ export async function responder(consulta: () => Promise<unknown>, status = 200):
     return json(await consulta(), status);
   } catch (e) {
     if (e instanceof BancoSemConfiguracao) return json({ erro: e.message }, 503);
+    if (e instanceof NaoEncontrado) return json({ erro: e.message }, 404);
     return json({ erro: e instanceof Error ? e.message : String(e) }, 500);
   }
 }
