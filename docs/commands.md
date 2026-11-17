@@ -83,6 +83,11 @@ Quem aplica é o Luiz, da worktree que tem o arquivo:
 `db push`, `db reset`, `db pull`, `migration up` e `psql` estão na deny list
 de `.claude/settings.json`.
 
+Funções do banco chamadas por `rpc`: `record_rule_digest` grava uma leitura
+da digestão (texto, digestão, pegadinhas, ambiguidades) numa transação só e
+devolve `inserted` ou `duplicate`; quem chama é `src/digest/persist.ts`
+(migration `20261117000220_record_rule_digest`, issue 88).
+
 ## Arquivar o mês (todo mês, a partir do dia 9)
 
 No plano Free a cota de banco é de 0,5 GB para a organização inteira (issue
