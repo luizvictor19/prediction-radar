@@ -98,7 +98,19 @@ function json(status: number, corpo: unknown): Response {
   });
 }
 
-function redirecionar(status: 303 | 307, destino: string, cookie?: string): Response {
+/**
+ * Absolute `Location`, resolved against the request: Next's Proxy answers 500
+ * ("Invalid URL") to a relative one, measured under `next dev` on 2026-11-17.
+ *
+ * The host comes from the `Host` header, not from `req.url`: inside a route
+ * handler `next dev -H 127.0.0.1` reports `localhost` in `req.url`, and a
+ * login redirected there would land on a host without the cookie.
+ */
+function redirecionar(status: 303 | 307, req: Request, caminho: string, cookie?: string): Response {
+  const url = new URL(req.url);
+  const host = req.headers.get('host');
+  const base = host === null ? url : new URL(`${url.protocol}//${host}`);
+  const destino = new URL(caminho, base).toString();
   const headers = new Headers({ location: destino, 'cache-control': SEM_CACHE });
   if (cookie !== undefined) headers.set('set-cookie', cookie);
   return new Response(null, { status, headers });
@@ -111,7 +123,7 @@ export function portaoDaRequisicao(req: Request, env: Env, agoraMs: number): Res
     case 'passa':
       return null;
     case 'para_o_login':
-      return redirecionar(307, '/entrar');
+      return redirecionar(307, req, '/entrar');
     case 'nao_autorizado':
       return json(401, { erro: 'sem sessão: entre pela página /entrar' });
     case 'origem_proibida':
@@ -161,9 +173,9 @@ export async function entrar(req: Request, env: Env, agoraMs: number): Promise<R
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': SEM_CACHE },
     });
   }
-  return redirecionar(303, '/', cookieDaSessao(emitirSessao(cfg, agoraMs), seguro(req)));
+  return redirecionar(303, req, '/', cookieDaSessao(emitirSessao(cfg, agoraMs), seguro(req)));
 }
 
 export function sair(req: Request): Response {
-  return redirecionar(303, '/entrar', cookieQueApaga(seguro(req)));
+  return redirecionar(303, req, '/entrar', cookieQueApaga(seguro(req)));
 }

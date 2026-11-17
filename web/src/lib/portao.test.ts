@@ -179,3 +179,28 @@ test('sair apaga o cookie e manda para o login', () => {
   assert.equal(resumo(r), '303 /entrar com cookie');
   assert.match(r.headers.get('set-cookie') ?? '', /Max-Age=0/, 'o cookie não foi apagado');
 });
+
+test('todo redirecionamento leva URL absoluta, porque o Proxy do Next recusa a relativa', async () => {
+  const destinos = [
+    portaoDaRequisicao(pedido('/'), ENV, AGORA),
+    await entrar(login(SENHA), ENV, AGORA),
+    sair(pedido('/api/sair', { metodo: 'POST', origem: ORIGEM })),
+  ].map((r) => r?.headers.get('location'));
+  assert.deepEqual(destinos, [`${ORIGEM}/entrar`, `${ORIGEM}/`, `${ORIGEM}/entrar`]);
+});
+
+test('o redirecionamento usa o host do cabeçalho Host, não o de req.url', async () => {
+  // Inside a route handler, `next dev -H 127.0.0.1` reports `localhost` in
+  // `req.url`; the browser is on 127.0.0.1 and holds the cookie there.
+  const req = new Request('http://localhost:5173/api/entrar', {
+    method: 'POST',
+    headers: {
+      host: '127.0.0.1:5173',
+      origin: 'http://127.0.0.1:5173',
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ senha: SENHA }).toString(),
+  });
+  const r = await entrar(req, ENV, AGORA);
+  assert.equal(r.headers.get('location'), 'http://127.0.0.1:5173/');
+});
