@@ -62,6 +62,11 @@ export interface ReadResult {
   event_id: string;
   sha256: string;
   cost_usd: number | null;
+  /**
+   * Traps the guard removed (passage not in the rule, too short, repeated),
+   * `null` when no output was parsed.
+   */
+  pruned: number | null;
 }
 
 /**
@@ -173,6 +178,7 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
     const startedAt = Date.now();
     let cost: number | null = null;
     let replayed = false;
+    let pruned: number | null = null;
 
     const finish = (reason: ReadReason): ReadResult => {
       log(
@@ -184,11 +190,12 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
           model: input.model,
           prompt_version: input.prompt_version,
           replayed,
+          pruned,
           cost_usd: cost,
           latency_ms: Date.now() - startedAt,
         }),
       );
-      return { reason, event_id: input.event_id, sha256: input.sha256, cost_usd: cost };
+      return { reason, event_id: input.event_id, sha256: input.sha256, cost_usd: cost, pruned };
     };
 
     if (!isWellFormed(input)) return finish('CONFIG_ERROR');
@@ -275,6 +282,10 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
       if (digested === null) return finish('MODEL_ERROR');
       result = digested;
     }
+    pruned =
+      result.descartes.trechoInexistente +
+      result.descartes.trechoRepetido +
+      result.descartes.trechoCurto;
 
     const outcome = await deps.persist(
       buildDigestRows(market, result, input.prompt_version, input.model, 1),
