@@ -62,6 +62,8 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 - Processos agendados e cron: `docs/processos-automaticos.md`. Comandos do
   bot: `docs/comandos-do-bot.md`. Termos: `docs/GLOSSARIO.md`.
 - Prompts de sessões passadas: `docs/prompts/prompt-*.md`.
+- O que é de antes do pivô e ainda está no banco ou no repositório, com
+  tamanho, quem lê e recomendação: `docs/inventario-pre-pivo.md` (issue 65).
 
 ## Ambientes
 
