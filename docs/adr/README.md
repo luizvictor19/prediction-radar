@@ -29,4 +29,5 @@ migration or document that shows it.
 | 0009   | grammy as the Telegram bot library                                             | accepted           |
 | 0010   | Railway as the process host                                                    | accepted           |
 | 0011   | Specs and `docs/context.md` give the direction; `PROJECT.md` is historical     | accepted           |
+| 0012   | AWS for the scheduled rule digestion                                           | accepted           |
 | 0013   | The screen runs on Next.js, behind its own password, with narrow server routes | accepted           |
