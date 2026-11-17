@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:web": "npm run typecheck --prefix web",
     "build:web": "npm run build --prefix web",
+    "build:lambda": "tsx scripts/build-lambda.ts",
     "conferir:bundle": "tsx scripts/conferir-bundle-web.ts web/.next/static web/.next/server/app",
     "test": "tsx --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"web/src/**/*.test.ts\" \"experiments/**/*.test.ts\"",
     "test:db": "supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,realtime,storage-api && RADAR_TEST_DB=required tsx --test --test-concurrency=1 \"src/**/*.test.ts\" \"scripts/**/*.test.ts\" \"web/src/**/*.test.ts\" \"experiments/**/*.test.ts\"",
