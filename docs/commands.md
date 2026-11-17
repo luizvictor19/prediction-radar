@@ -137,8 +137,11 @@ fica; ela nunca entra no repositório nem num chat.
 
 Funções do banco chamadas por `rpc`: `record_rule_digest` grava uma leitura
 da digestão (texto, digestão, pegadinhas, ambiguidades) numa transação só e
-devolve `inserted` ou `duplicate`; quem chama é `src/digest/persist.ts`
-(migration `20261117000220_record_rule_digest`, issue 88).
+devolve `inserted`, `duplicate` (a chave já existe) ou `incomplete` (a chave
+existe sem as pegadinhas ou ambiguidades que o payload traz: leitura deixada
+pela metade pela carga manual, que a função não repara); só `inserted` grava.
+Quem chama é `src/digest/persist.ts` (migration
+`20261117000220_record_rule_digest`, issue 88).
 
 ## Arquivar o mês (todo mês, a partir do dia 9)
 
