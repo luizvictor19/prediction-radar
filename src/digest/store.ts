@@ -106,6 +106,33 @@ function safeParse(text: string): unknown {
   }
 }
 
+const EVENT_COLUMNS =
+  'id, polymarket_id, slug, title, description, end_date, outcomes, radar_tema, liquidity, status';
+
+/** One `events` row as the digestion reads it; `null` when the rule text is empty. */
+function toMarket(row: EventRow): MarketToDigest | null {
+  const description = row.description?.trim() ?? '';
+  if (description.length === 0) return null;
+
+  return {
+    eventId: row.id,
+    polymarketId: row.polymarket_id,
+    tema: row.radar_tema,
+    // `numeric` do Postgres chega como string no PostgREST quando passa da
+    // precisão de um double. Ler os dois casos aqui é mais barato que
+    // descobrir a ordenação errada num relatório de 752.
+    liquidez: readNumber(row.liquidity),
+    status: row.status,
+    input: {
+      question: row.title,
+      description,
+      slug: row.slug,
+      endDate: row.end_date,
+      outcomes: readOutcomes(row.outcomes),
+    },
+  };
+}
+
 /**
  * Os mercados do radar que têm regra para digerir.
  *
@@ -129,9 +156,7 @@ export async function readMarketsToDigest(): Promise<MarketToDigest[]> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from('events')
-      .select(
-        'id, polymarket_id, slug, title, description, end_date, outcomes, radar_tema, liquidity, status',
-      )
+      .select(EVENT_COLUMNS)
       .eq('radar_tracked', true)
       .order('id')
       .range(from, from + PAGE - 1);
@@ -140,26 +165,8 @@ export async function readMarketsToDigest(): Promise<MarketToDigest[]> {
 
     const rows = (data ?? []) as EventRow[];
     for (const row of rows) {
-      const description = row.description?.trim() ?? '';
-      if (description.length === 0) continue;
-
-      markets.push({
-        eventId: row.id,
-        polymarketId: row.polymarket_id,
-        tema: row.radar_tema,
-        // `numeric` do Postgres chega como string no PostgREST quando passa da
-        // precisão de um double. Ler os dois casos aqui é mais barato que
-        // descobrir a ordenação errada num relatório de 752.
-        liquidez: readNumber(row.liquidity),
-        status: row.status,
-        input: {
-          question: row.title,
-          description,
-          slug: row.slug,
-          endDate: row.end_date,
-          outcomes: readOutcomes(row.outcomes),
-        },
-      });
+      const market = toMarket(row);
+      if (market !== null) markets.push(market);
     }
 
     if (rows.length < PAGE) break;
@@ -280,3 +287,88 @@ export async function readDigested(): Promise<DigestedIndex> {
 // `DigestRows` and `buildDigestRows` live in `rows.ts`, which imports no database
 // client and can therefore be loaded by a test. Re-exported so importers stay put.
 export { buildDigestRows, type DigestRows } from './rows.js';
+
+// ---------------------------------------------------------------------------
+// The scheduled path (issue 93): one market and one key at a time
+// ---------------------------------------------------------------------------
+
+/**
+ * One market by id, as the digestion reads it, or `null` when the row is gone
+ * or its rule text is empty.
+ *
+ * A primary-key lookup on `events`: one index probe, never a scan.
+ */
+export async function readMarketToDigest(eventId: string): Promise<MarketToDigest | null> {
+  const { data, error } = await supabase
+    .from('events')
+    .select(EVENT_COLUMNS)
+    .eq('id', eventId)
+    .maybeSingle();
+  if (error) throw new Error(`leitura do evento ${eventId} falhou: ${error.message}`);
+  return data === null ? null : toMarket(data as EventRow);
+}
+
+/**
+ * Whether this market already has a reading of this text by this model and
+ * prompt version: the four-part question of `jaDigerido`, asked of one key.
+ *
+ * The four columns are the leading columns of the five-column unique index on
+ * `market_rule_digests`, so this is an index probe.
+ */
+export async function digestExists(key: {
+  eventId: string;
+  sha256: string;
+  model: string;
+  promptVersion: string;
+}): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('market_rule_digests')
+    .select('id')
+    .eq('event_id', key.eventId)
+    .eq('description_sha256', key.sha256)
+    .eq('model', key.model)
+    .eq('prompt_version', key.promptVersion)
+    .limit(1);
+  if (error) throw new Error(`leitura de market_rule_digests falhou: ${error.message}`);
+  return (data ?? []).length > 0;
+}
+
+/**
+ * The digest settings of `system_config`, read strictly.
+ *
+ * Not `getSystemConfig()`: that one falls back to code defaults when the read
+ * fails, and its default prompt version is `v1`. A scheduled run that silently
+ * read with the wrong prompt would write readings under a key no one asked for;
+ * here a failed read stops the run instead.
+ */
+export async function readDigestConfig(): Promise<{
+  model: string;
+  promptVersion: string;
+  timeoutMs: number;
+}> {
+  const { data, error } = await supabase
+    .from('system_config')
+    .select('digest_model, digest_prompt_version, digest_timeout_ms')
+    .eq('id', 1)
+    .single();
+  if (error || data === null) {
+    throw new Error(`leitura de system_config falhou: ${error?.message ?? 'sem linha'}`);
+  }
+  const row = data as {
+    digest_model: unknown;
+    digest_prompt_version: unknown;
+    digest_timeout_ms: unknown;
+  };
+  if (
+    typeof row.digest_model !== 'string' ||
+    typeof row.digest_prompt_version !== 'string' ||
+    typeof row.digest_timeout_ms !== 'number'
+  ) {
+    throw new Error('system_config: configuração da digestão incompleta');
+  }
+  return {
+    model: row.digest_model,
+    promptVersion: row.digest_prompt_version,
+    timeoutMs: row.digest_timeout_ms,
+  };
+}

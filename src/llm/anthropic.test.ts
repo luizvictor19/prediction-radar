@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -52,32 +52,49 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function withFakeApi(run: (captured: Captured[]) => Promise<void>): Promise<void> {
+// One server for the whole file: the adapter creates its SDK client once, on
+// the first call, with the base URL it finds then, so every test must reach the
+// same address. Each test chooses the stream the server answers with.
+let server: ReturnType<typeof createServer> | null = null;
+let answer = STREAM;
+
+async function withFakeApi(
+  run: (captured: Captured[]) => Promise<void>,
+  stream: string = STREAM,
+): Promise<void> {
   const captured: Captured[] = [];
-  const server = createServer((req, res) => {
+  answer = stream;
+  const handler = (req: IncomingMessage, res: import('node:http').ServerResponse): void => {
     void readBody(req).then((raw) => {
       const body = JSON.parse(raw) as Record<string, unknown>;
       captured.push({ body });
       if (body['stream'] === true) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
-        res.end(STREAM);
+        res.end(answer);
         return;
       }
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error' } }));
     });
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-  process.env['ANTHROPIC_API_KEY'] = 'test-key';
-  process.env['ANTHROPIC_BASE_URL'] = `http://127.0.0.1:${port}`;
-  delete process.env['ANTHROPIC_AUTH_TOKEN'];
-  try {
-    await run(captured);
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+  };
+  if (server === null) {
+    server = createServer(handler);
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    process.env['ANTHROPIC_API_KEY'] = 'test-key';
+    process.env['ANTHROPIC_BASE_URL'] = `http://127.0.0.1:${port}`;
+    delete process.env['ANTHROPIC_AUTH_TOKEN'];
+  } else {
+    server.removeAllListeners('request');
+    server.on('request', handler);
   }
+  await run(captured);
 }
+
+after(async () => {
+  const running = server;
+  if (running !== null) await new Promise<void>((resolve) => running.close(() => resolve()));
+});
 
 test('a chamada com o teto de 32.000 tokens da digestão chega à API, por streaming', async () => {
   await withFakeApi(async (captured) => {
@@ -104,4 +121,42 @@ test('a chamada com o teto de 32.000 tokens da digestão chega à API, por strea
       usage: { input: 120, output: 4200, cacheRead: 30, cacheWrite: 0 },
     });
   });
+});
+
+const REFUSAL = sse([
+  {
+    type: 'message_start',
+    message: {
+      id: 'msg_refusal',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-haiku-5-5',
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 80, output_tokens: 0 },
+    },
+  },
+  {
+    type: 'message_delta',
+    delta: { stop_reason: 'refusal', stop_sequence: null },
+    usage: { output_tokens: 0 },
+  },
+  { type: 'message_stop' },
+]);
+
+test('recusa da API vira stop refusal e texto nulo, nunca ok', async () => {
+  await withFakeApi(async () => {
+    const { anthropicClient } = await import('./anthropic.js');
+    const result = await anthropicClient.complete({
+      model: 'claude-haiku-5-5',
+      system: 'sistema',
+      user: 'usuário',
+      schema: { type: 'object' },
+      maxTokens: 32_000,
+      timeoutMs: 5_000,
+    });
+    assert.equal(result.stop, 'refusal');
+    assert.equal(result.text, null);
+  }, REFUSAL);
 });

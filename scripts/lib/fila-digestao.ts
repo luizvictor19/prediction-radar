@@ -1,4 +1,27 @@
-import { hasTerminalStatus } from '../../src/lib/market-status.js';
+import { filterDigestible, NO_STATUS, type FilterableMarket } from '../../src/digest/queue.js';
+
+// The filter itself lives in `src/digest/queue.ts` since issue 93, so the
+// scheduled run filters with the SAME function. These are the Portuguese names
+// the scripts already use, kept as thin adapters; the reasoning below about
+// who filters still holds.
+
+/** O mínimo que este módulo precisa saber de um mercado. */
+export type MercadoFiltravel = FilterableMarket;
+
+export interface Descarte<T> {
+  digeriveis: T[];
+  /** Quantos saíram, por status. Descarte que ninguém conta é cobertura perdida. */
+  descartados: Map<string, number>;
+}
+
+/** O rótulo do balde de quem não tem status legível. */
+export const SEM_STATUS = NO_STATUS;
+
+/** Tira da fila os mercados cujo desfecho já veio (ver `filterDigestible`). */
+export function filtrarDigeriveis<T extends MercadoFiltravel>(mercados: readonly T[]): Descarte<T> {
+  const { digestible, discarded } = filterDigestible(mercados);
+  return { digeriveis: digestible, descartados: discarded };
+}
 
 /**
  * Quem entra na fila que PAGA modelo, e quem fica de fora.
@@ -17,46 +40,6 @@ import { hasTerminalStatus } from '../../src/lib/market-status.js';
  * Este módulo não importa o cliente do banco, e é por isso que ele tem teste
  * sem rede: `src/digest/store.ts` conecta ao Supabase no import.
  */
-
-/** O mínimo que este módulo precisa saber de um mercado. */
-export interface MercadoFiltravel {
-  eventId: string;
-  status: string | null;
-}
-
-export interface Descarte<T> {
-  digeriveis: T[];
-  /** Quantos saíram, por status. Descarte que ninguém conta é cobertura perdida. */
-  descartados: Map<string, number>;
-}
-
-/** O rótulo do balde de quem não tem status legível. */
-export const SEM_STATUS = '(nulo/ausente)';
-
-/**
- * Tira da fila os mercados cujo desfecho já veio.
- *
- * Devolve a contagem do que saiu junto com o que ficou, e não só o que ficou:
- * o balde `(nulo/ausente)` existe para o dia em que aparecer um valor fora do
- * vocabulário conhecido. Ele NÃO é descartado (ver `hasTerminalStatus`), mas
- * aparece na contagem, porque um valor novo em `events.status` é notícia e não
- * pode chegar como silêncio.
- */
-export function filtrarDigeriveis<T extends MercadoFiltravel>(mercados: readonly T[]): Descarte<T> {
-  const digeriveis: T[] = [];
-  const descartados = new Map<string, number>();
-
-  for (const mercado of mercados) {
-    if (hasTerminalStatus(mercado.status)) {
-      const rotulo = mercado.status ?? SEM_STATUS;
-      descartados.set(rotulo, (descartados.get(rotulo) ?? 0) + 1);
-      continue;
-    }
-    digeriveis.push(mercado);
-  }
-
-  return { digeriveis, descartados };
-}
 
 /**
  * A fila da corrida: fora os excluídos por artefato, fora os que já têm

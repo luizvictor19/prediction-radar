@@ -78,3 +78,6 @@ context_claude_chat.txt
 *.sql
 !supabase/migrations/*.sql
 !supabase/queries/*.sql
+
+# Lambda bundles of the scheduled digestion (npm run build:lambda).
+build/
