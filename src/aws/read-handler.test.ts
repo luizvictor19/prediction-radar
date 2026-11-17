@@ -104,6 +104,8 @@ function setup(
     completion?: Partial<CompletionResult> | (() => Promise<CompletionResult>);
     persist?: (call: number) => RecordOutcome;
     capUsd?: number;
+    deadlineMarginMs?: number;
+    store?: RecordStore;
   } = {},
 ) {
   const s: Setup = { calls: [], logs: [], store: new InMemoryRecordStore(), persisted: [] };
@@ -125,7 +127,7 @@ function setup(
       s.calls.push('supabase-check');
       return Promise.resolve(options.check ?? { status: 'todo', market: market() });
     },
-    store: new LoggingStore(s.store, s.calls),
+    store: new LoggingStore(options.store ?? s.store, s.calls),
     clientForRoute: () => model,
     persist: (rows) => {
       persistCalls += 1;
@@ -135,6 +137,7 @@ function setup(
       return Promise.resolve(outcome);
     },
     monthlyCapUsd: options.capUsd ?? 3,
+    deadlineMarginMs: options.deadlineMarginMs ?? 0,
     now: () => NOW,
     log: (line) => s.logs.push(line),
   });
@@ -162,7 +165,7 @@ test('retry depois de falha na escrita do Supabase: o modelo é chamado uma vez 
   // The whole sequence, not the final state: calling the model twice would
   // reach the same final state and is exactly the bug this guards against.
   assert.deepEqual(sequences, [
-    ['supabase-check', 'store-get', 'spend-read', 'model', 'store-put', 'spend-add', 'persist'],
+    ['supabase-check', 'store-get', 'spend-read', 'model', 'spend-add', 'store-put', 'persist'],
     ['supabase-check', 'store-get(hit)', 'persist'],
   ]);
   assert.deepEqual(reasons, ['throws', 'REPLAYED']);
@@ -295,4 +298,77 @@ test('entrada malformada é CONFIG_ERROR, sem tocar em nada', async () => {
   const result = await handler({ ...input(), sha256: '' });
   assert.equal(result.reason, 'CONFIG_ERROR');
   assert.deepEqual(s.calls, []);
+});
+
+test('falha transitória ao gravar o item bruto: o gasto já foi contado e o retry conta o segundo', async () => {
+  const inner = new InMemoryRecordStore();
+  let puts = 0;
+  const flaky: RecordStore = {
+    getReading: (key) => inner.getReading(key),
+    putReading: (reading) => {
+      puts += 1;
+      if (puts === 1) return Promise.reject(new Error('ProvisionedThroughputExceeded'));
+      return inner.putReading(reading);
+    },
+    readSpend: (month) => inner.readSpend(month),
+    addSpend: (month, usd) => inner.addSpend(month, usd),
+  };
+  const { handler } = setup({ store: flaky });
+  await assert.rejects(handler(input()), /ProvisionedThroughputExceeded/);
+  const afterFirst = await inner.readSpend(MONTH);
+  const second = await handler(input());
+  assert.deepEqual(
+    [afterFirst, second.reason, await inner.readSpend(MONTH)],
+    [COST, 'OK', 2 * COST],
+    'cada chamada paga tem que entrar no teto, inclusive a que perdeu o item bruto',
+  );
+});
+
+test('falha do contador de gasto não derruba a leitura e fica no log', async () => {
+  const inner = new InMemoryRecordStore();
+  const broken: RecordStore = {
+    getReading: (key) => inner.getReading(key),
+    putReading: (reading) => inner.putReading(reading),
+    readSpend: (month) => inner.readSpend(month),
+    addSpend: () => Promise.reject(Object.assign(new Error('x'), { name: 'ThrottlingException' })),
+  };
+  const { handler, s } = setup({ store: broken });
+  assert.equal((await handler(input())).reason, 'OK');
+  const line = JSON.parse(s.logs[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(line['spend_not_counted'], 'ThrottlingException');
+});
+
+test('mercado que ganhou desfecho depois do plano é STALE e não é pago', async () => {
+  const resolved = { ...market(), status: 'resolved' };
+  const { handler, s } = setup({ check: { status: 'todo', market: resolved } });
+  const result = await handler(input());
+  assert.equal(result.reason, 'STALE');
+  assert.deepEqual(s.calls, ['supabase-check']);
+});
+
+test('o prazo do handler tem folga sobre o do cliente: resposta logo depois do prazo do cliente vale', async () => {
+  const late = () =>
+    new Promise<CompletionResult>((resolve) =>
+      setTimeout(() => resolve({ text: VALID, stop: 'ok', usage: USAGE }), 40),
+    );
+  const { handler } = setup({ completion: late, deadlineMarginMs: 500 });
+  assert.equal((await handler(input({ timeout_ms: 20 }))).reason, 'OK');
+});
+
+test('pegadinha com trecho que não está na regra é podada e contada', async () => {
+  const withFakeQuote = JSON.stringify({
+    ...(JSON.parse(VALID) as Record<string, unknown>),
+    pegadinhas: [
+      {
+        texto: 'Uma pegadinha inventada.',
+        severidade: 'muda_resultado',
+        trecho: 'this sentence is not in the rule at all',
+      },
+    ],
+  });
+  const { handler, s } = setup({ completion: { text: withFakeQuote } });
+  const result = await handler(input());
+  assert.equal(result.reason, 'OK');
+  assert.equal(result.pruned, 1);
+  assert.deepEqual(s.persisted[0]?.pegadinhas, []);
 });

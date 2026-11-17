@@ -2,6 +2,7 @@ import { DigestError, estimateCostUsd, runDigest, type DigestResult } from '../d
 import type { RecordOutcome } from '../digest/persist.js';
 import { buildDigestRows, type DigestRows } from '../digest/rows.js';
 import type { MarketToDigest } from '../digest/store.js';
+import { hasTerminalStatus } from '../lib/market-status.js';
 import type { CompletionResult, LlmClient } from '../llm/client.js';
 import { DEFAULT_MODEL_ROUTES, routeFor, type ModelRoute } from '../llm/registry.js';
 import { captureCalls } from './capture.js';
@@ -91,6 +92,14 @@ export interface ReadDeps {
   clientForRoute(route: ModelRoute): LlmClient;
   persist(rows: DigestRows): Promise<RecordOutcome>;
   monthlyCapUsd: number;
+  /**
+   * How much later than the client's own timeout the handler gives up. The
+   * client aborts its request at `timeout_ms`; this deadline only catches a
+   * client that ignores its signal. Equal deadlines would let the handler
+   * answer TIMEOUT while the request still completes and is billed, with no raw
+   * item and no spend counted.
+   */
+  deadlineMarginMs?: number;
   routes?: Readonly<Record<string, string>>;
   now?: () => Date;
   log?: (line: string) => void;
@@ -173,12 +182,14 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
   const routes = deps.routes ?? DEFAULT_MODEL_ROUTES;
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? ((line: string) => console.log(line));
+  const deadlineMarginMs = deps.deadlineMarginMs ?? 5_000;
 
   return async (input) => {
     const startedAt = Date.now();
     let cost: number | null = null;
     let replayed = false;
     let pruned: number | null = null;
+    let spendNotCounted: string | null = null;
 
     const finish = (reason: ReadReason): ReadResult => {
       log(
@@ -191,6 +202,7 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
           prompt_version: input.prompt_version,
           replayed,
           pruned,
+          ...(spendNotCounted === null ? {} : { spend_not_counted: spendNotCounted }),
           cost_usd: cost,
           latency_ms: Date.now() - startedAt,
         }),
@@ -211,6 +223,9 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
     if (check.status === 'done') return finish('ALREADY_DONE');
     if (check.status === 'stale') return finish('STALE');
     const market = check.market;
+    // The plan filtered terminal statuses, but the read may run long after it.
+    // A market that resolved in between is no longer worth a paid reading.
+    if (hasTerminalStatus(market.status)) return finish('STALE');
 
     const digestOf = (client: LlmClient): Promise<DigestResult> =>
       runDigest({
@@ -242,7 +257,10 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
       let failure: unknown = null;
       let digested: DigestResult | null = null;
       try {
-        digested = await withDeadline(digestOf(capture.client), input.timeout_ms);
+        digested = await withDeadline(
+          digestOf(capture.client),
+          input.timeout_ms + deadlineMarginMs,
+        );
       } catch (err) {
         failure = err;
       }
@@ -250,6 +268,16 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
       const call = capture.calls()[0];
       if (call !== undefined) {
         cost = estimateCostUsd(input.model, call.completion.usage);
+        // The spend is counted BEFORE the raw item is written: the call is
+        // already paid, and if the put then fails and the task is retried, the
+        // retry pays again and that second call is counted too. Counting after
+        // the put would leave the first call out of the cap. A failure of the
+        // counter itself is logged and does not stop the reading.
+        try {
+          await deps.store.addSpend(month, cost ?? 0);
+        } catch (err) {
+          spendNotCounted = err instanceof Error ? err.name : 'Error';
+        }
         try {
           await deps.store.putReading({
             ...key,
@@ -270,10 +298,9 @@ export function createReadHandler(deps: ReadDeps): (input: ReadInput) => Promise
           });
         } catch (err) {
           // Another attempt of this same task wrote the key first. Its output is
-          // kept; this call was still paid, so its cost is still counted below.
+          // kept; this call was still paid, and its cost was counted above.
           if (!(err instanceof ConditionalCheckFailed)) throw err;
         }
-        await deps.store.addSpend(month, cost ?? 0);
       }
 
       if (failure instanceof Deadline) return finish('TIMEOUT');
