@@ -62,6 +62,8 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 - Processos agendados e cron: `docs/processos-automaticos.md`. Comandos do
   bot: `docs/comandos-do-bot.md`. Termos: `docs/GLOSSARIO.md`.
 - Prompts de sessões passadas: `docs/prompts/prompt-*.md`.
+- O que é de antes do pivô e ainda está no banco ou no repositório, com
+  tamanho, quem lê e recomendação: `docs/inventario-pre-pivo.md` (issue 65).
 
 ## Ambientes
 
@@ -114,7 +116,9 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 ## Regras de banco
 
 - DDL só por migration em `supabase/migrations`, escrita com
-  `supabase migration new` e aplicada pelo Luiz.
+  `supabase migration new` e aplicada pelo Claude no ritual de "Merge" do
+  `AGENTS.md` (backup, dry-run, push da worktree da issue). Migration que
+  apaga linhas espera a aprovação do Luiz, por nome, no PR.
 - Leitura pode, escrita não. Query nova sobre `events`, `polymarket_snapshots`,
   `esports_snapshots` ou `system_logs` é mostrada antes de rodar: `events`
   tinha ~551k linhas e 711 MB, e o timeout do PostgREST é de 8s.
@@ -216,9 +220,8 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
 - **Extrapolar de amostra pequena.** Aconteceu quatro vezes, sempre para pior.
 - **`probes/` versiona só relatório `.md` e `probes/compostos/rotulos.json`**
   (issues 33 e 45). O resto é gerado por script e fica local: num clone novo,
-  rodar o produtor antes de um script que reusa cache (`radar:lista -- --reuse`,
-  `medir-relacoes`). Não abrir
-  nem reescrever os arquivos de lá sem necessidade.
+  rodar o produtor antes de um script que reusa cache (`radar:lista -- --reuse`).
+  Não abrir nem reescrever os arquivos de lá sem necessidade.
 
 ## Dívida conhecida
 

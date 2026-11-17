@@ -648,6 +648,30 @@ test('estimateCostUsd soma entrada, saída e cache', () => {
   assert.equal(comCache, 0.014); // 0,1x a entrada
 });
 
+test('claude-haiku-5-5 tem o preço oficial de 04/11/2026, cache incluído', () => {
+  assert.equal(knownModel('claude-haiku-5-5'), true);
+  assert.equal(
+    estimateCostUsd('claude-haiku-5-5', {
+      input: 1_000_000,
+      output: 1_000_000,
+      cacheRead: 0,
+      cacheWrite: 0,
+    }),
+    0.6, // 0,10 + 0,50
+  );
+  // The official cache-read price is US$ 0.01/MTok, exactly the 0.1x factor the
+  // cost function applies, so here the factor is the price and not an estimate.
+  assert.equal(
+    estimateCostUsd('claude-haiku-5-5', {
+      input: 0,
+      output: 0,
+      cacheRead: 1_000_000,
+      cacheWrite: 0,
+    }),
+    0.01,
+  );
+});
+
 test('estimateCostUsd devolve null para modelo sem preço', () => {
   assert.equal(
     estimateCostUsd('deepseek-chat', { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }),

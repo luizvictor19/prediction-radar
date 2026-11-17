@@ -1,0 +1,536 @@
+{
+  "c64004d8ae822f7eaf5260d29f68e51e1a4689bde7795f26b4bfe691ac5c9837": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Confirmação oficial por um governo nacional ou suas forças armadas, ou um consenso esmagador da imprensa confiável, de que navios de guerra do país listado (França) transitaram pelo Estreito de Ormuz entre a criação do mercado e 31 de agosto de 2026, 23h59 ET.",
+        "O trânsito deve ser de uma embarcação militar (incluindo navios de carga ou apoio militares) passando pela porção mais estreita do estreito entre Irã e Omã; operações apenas no Golfo Pérsico, Golfo de Omã ou Mar da Arábia sem essa passagem não contam.",
+        "As confirmações qualificantes devem ser feitas dentro do mesmo prazo (até 31 de agosto de 2026, 23h59 ET) e incluir anúncios oficiais de que o país mobilizou navios militares para transitar ou escoltar navios pelo estreito.",
+        "Confirmações que se refiram apenas à presença naval na região mais ampla, operações aéreas, cibernéticas ou ações de proxies ou terceiros não são suficientes."
+      ],
+      "resolve_nao": [
+        "Se nenhuma das condições do SIM for satisfeita até o prazo, o mercado resolve NÃO."
+      ],
+      "fonte": "Informações oficiais dos respectivos governos nacionais ou suas forças armadas (fonte primária); consenso esmagador da imprensa confiável também é suficiente.",
+      "anula_se": [],
+      "prazo": "August 31, 2026, 11:59 PM ET",
+      "pegadinhas": [
+        {
+          "texto": "Navios de carga ou apoio militares contam como 'warships', então não é preciso um navio de combate para resolver SIM.",
+          "severidade": "muda_resultado",
+          "trecho": "Military cargo or support vessels will be considered “warships”; however, commercial or civilian vessels will not qualify.",
+          "cenario": "Se a França enviar apenas um navio de carga militar pelo estreito, quem leu o título espera NÃO (não é um navio de guerra), mas a regra resolve SIM."
+        },
+        {
+          "texto": "Só o trânsito pela porção mais estreita do estreito entre Irã e Omã conta; estar no Golfo de Omã, Golfo Pérsico ou Mar da Arábia não é suficiente.",
+          "severidade": "muda_resultado",
+          "trecho": "only transits through the Strait of Hormuz will be considered, defined as passage through the narrowest portion of the waterway between Iran and Oman.",
+          "cenario": "Se a França tiver navios no Golfo de Omã que não atravessam a porção mais estreita, quem leu o título espera SIM, mas a regra resolve NÃO."
+        },
+        {
+          "texto": "A confirmação qualificante precisa ser feita até o prazo; confirmação após 31/08/2026 23h59 ET não vale, mesmo que a travessia tenha ocorrido antes.",
+          "severidade": "muda_resultado",
+          "trecho": "Qualifying confirmations must be made within this markets above specified timeframe",
+          "cenario": "Se a França transitar pelo estreito em 30 de agosto, mas o governo só confirmar em 1º de setembro, quem leu o título espera SIM, mas a regra resolve NÃO."
+        },
+        {
+          "texto": "Um consenso esmagador da imprensa confiável é suficiente para resolver SIM, mesmo sem confirmação oficial da França.",
+          "severidade": "muda_resultado",
+          "trecho": "An overwhelming consensus of credible reporting confirming that such a transit occurred during the specified timeframe will also suffice.",
+          "cenario": "Se a França não se pronunciar oficialmente, mas houver um consenso esmagador da imprensa de que navios franceses transitaram, quem leu o título espera NÃO, mas a regra resolve SIM."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "11:59 PM ET",
+          "trecho_conflito": null,
+          "leitura_a": "O prazo é 11h59 PM no horário de verão do leste (EDT, UTC-4).",
+          "leitura_b": "O prazo é 11h59 PM no horário padrão do leste (EST, UTC-5)."
+        },
+        {
+          "tipo": "criterio_discricionario",
+          "trecho": "an overwhelming consensus of credible reporting",
+          "trecho_conflito": null,
+          "leitura_a": "Basta um consenso amplo entre veículos de imprensa considerados confiáveis, mesmo sem unanimidade.",
+          "leitura_b": "Exige-se um consenso praticamente unânime e sem discordância relevante."
+        },
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The primary resolution source for this market will be official information by the respective national governments or their militaries; however, an overwhelming consensus of credible reporting will also suffice.",
+          "trecho_conflito": null,
+          "leitura_a": "A fonte oficial tem prioridade: se a informação oficial for negativa, o mercado resolve NÃO, independentemente do consenso da imprensa.",
+          "leitura_b": "O consenso esmagador da imprensa pode resolver SIM mesmo contra a informação oficial."
+        },
+        {
+          "tipo": "contradicao_interna",
+          "trecho": "confirms that the listed country's warships transited through the Strait of Hormuz",
+          "trecho_conflito": "include official announcements that a country has deployed naval vessels to transit or escort shipping through the Strait of Hormuz",
+          "leitura_a": "Para resolver SIM, é necessário que a confirmação comprove que a travessia já ocorreu ('transited').",
+          "leitura_b": "Um anúncio oficial de mobilização para transitar ou escoltar já é confirmação qualificante, ainda que a travessia não tenha sido comprovada."
+        }
+      ]
+    }
+  },
+  "b662c5d5e1cf455aee379c5a77230f9b58b1c3e3a06bce509b2da5f8c5552db5": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Se a Organização Mundial da Saúde (OMS) declarar qualquer doença como pandemia entre 1º de janeiro de 2026 e 31 de dezembro de 2026, 23h59 (ET)."
+      ],
+      "resolve_nao": [
+        "Se a OMS não declarar nenhuma doença como pandemia no período especificado."
+      ],
+      "fonte": "Anúncios oficiais da Organização Mundial da Saúde (OMS).",
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 23h59 (ET).",
+      "pegadinhas": [
+        {
+          "texto": "A resolução depende da declaração oficial da OMS, não da ocorrência real de uma pandemia. Uma pandemia de fato sem declaração da OMS resolve NÃO.",
+          "severidade": "muda_resultado",
+          "trecho": "the World Health Organization (WHO) declares any disease a pandemic",
+          "cenario": "Se uma doença se espalhar globalmente em 2026, mas a OMS não a declarar oficialmente como pandemia, o mercado resolve NÃO, enquanto quem leu apenas o título 'New pandemic in 2026?' esperaria SIM."
+        },
+        {
+          "texto": "O título diz 'New pandemic', mas a regra não exige que a doença seja nova: qualquer doença declarada como pandemia pela OMS resolve SIM, mesmo que já seja conhecida.",
+          "severidade": "muda_resultado",
+          "trecho": "any disease",
+          "cenario": "Se a OMS declarar uma doença já conhecida (por exemplo, uma nova cepa de gripe sazonal) como pandemia em 2026, o mercado resolve SIM, embora quem interpretou 'New pandemic' como doença inédita esperasse NÃO."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "11:59 PM ET",
+          "trecho_conflito": null,
+          "leitura_a": "11:59 PM no horário padrão do leste (EST, UTC-5).",
+          "leitura_b": "11:59 PM no horário de verão do leste (EDT, UTC-4)."
+        }
+      ]
+    }
+  },
+  "35ab3490a4cd5fcca73f72450fbf2dc761a32a41662c7301daef98ae205084a0": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Benjamin Netanyahu deixar de ser Primeiro-Ministro de Israel por qualquer período de tempo entre a criação do mercado e a data especificada (ET).",
+        "Um anúncio da renúncia/remoção de Benjamin Netanyahu antes da data final do mercado, independentemente de quando a renúncia/remoção anunciada entra em vigor, resolve imediatamente o mercado para SIM."
+      ],
+      "resolve_nao": [
+        "Se nenhuma das condições acima ocorrer até a data especificada, o mercado resolve NÃO."
+      ],
+      "fonte": "Informações oficiais de Benjamin Netanyahu e do governo de Israel; porém, um consenso de reportagens confiáveis também pode ser usado.",
+      "anula_se": [],
+      "prazo": "a data especificada (ET)",
+      "pegadinhas": [
+        {
+          "texto": "Qualquer afastamento temporário de Netanyahu do cargo de primeiro-ministro, por menor que seja, resolve SIM, mesmo que ele volte depois. O título 'out' sugere saída permanente, mas a regra conta qualquer período.",
+          "severidade": "muda_resultado",
+          "trecho": "for any period of time",
+          "cenario": "Se Netanyahu se afastar temporariamente do cargo por um curto período (ex.: licença) e depois reassumir, quem leu só o título espera NÃO, mas a regra resolve SIM."
+        },
+        {
+          "texto": "O anúncio de renúncia/remoção antes da data final resolve SIM imediatamente, mesmo que a renúncia nunca entre em vigor ou só ocorra depois. O título não indica que o anúncio sozinho basta.",
+          "severidade": "muda_resultado",
+          "trecho": "An announcement of Benjamin Netanyahu's resignation/removal before this market's end date will immediately resolve this market to \"Yes\", regardless of when the announced resignation/removal goes into effect.",
+          "cenario": "Se Netanyahu anunciar, antes da data final, que renunciará no futuro, e depois voltar atrás e permanecer no cargo, quem leu só o título espera NÃO, mas a regra resolve SIM no momento do anúncio."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The resolution source for this market will be official information from Benjamin Netanyahu and the government of Israel; however, a consensus of credible reporting may also be used.",
+          "trecho_conflito": null,
+          "leitura_a": "A fonte oficial (Benjamin Netanyahu e governo de Israel) é a primária e suficiente; o consenso de reportagens confiáveis só é usado quando não há informação oficial.",
+          "leitura_b": "O consenso de reportagens confiáveis pode ser usado como fonte independente, inclusive para contradizer a informação oficial, já que a regra diz 'however' e 'may also be used'."
+        },
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "the specified date (ET)",
+          "trecho_conflito": null,
+          "leitura_a": "ET significa Eastern Standard Time (UTC-5).",
+          "leitura_b": "ET significa Eastern Daylight Time (UTC-4)."
+        },
+        {
+          "tipo": "janela_inclusiva",
+          "trecho": "before this market's end date",
+          "trecho_conflito": null,
+          "leitura_a": "'Antes da data final' significa estritamente antes do início do dia final (até o fim do dia anterior).",
+          "leitura_b": "'Antes da data final' significa antes do fim do dia final (até 23:59:59 ET do próprio dia final)."
+        },
+        {
+          "tipo": "momento_ambiguo",
+          "trecho": "market creation",
+          "trecho_conflito": null,
+          "leitura_a": "O momento exato da criação do mercado, conforme registrado pela plataforma, define o início da janela.",
+          "leitura_b": "O início da janela pode ser interpretado como a data de publicação da pergunta ou outro marco, se a criação não tiver timestamp definido."
+        }
+      ]
+    }
+  },
+  "2a89342a68a6ba2a2c42d9de2e14b8dc392cfcdf46abad610083ec7aa9b3d024": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Sim, se qualquer carteira rotulada como pertencente a Satoshi Nakamoto no Arkham’s Intel Explorer mostrar uma transação de “Outflow” ou “Swaps” em qualquer momento entre 9 de janeiro de 2026, 13h ET e 31 de dezembro de 2026, 23h59 ET."
+      ],
+      "resolve_nao": [
+        "Não, caso contrário — ou seja, se nenhuma carteira rotulada como pertencente a Satoshi Nakamoto no Arkham’s Intel Explorer mostrar uma transação de “Outflow” ou “Swaps” no período especificado."
+      ],
+      "fonte": "Arkham’s Intel Explorer, especificamente a página da entidade Satoshi Nakamoto em https://intel.arkm.com/explorer/entity/satoshi-nakamoto; se o Arkham ficar permanentemente indisponível, consenso de fontes confiáveis.",
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 23:59 ET",
+      "pegadinhas": [
+        {
+          "texto": "A janela de observação começa em 9 de janeiro de 2026, não em 1º de janeiro; transações antes das 13h ET de 9/1 ficam fora.",
+          "severidade": "muda_resultado",
+          "trecho": "between January 9, 2026, 1:00 PM ET and December 31, 2026, 11:59 PM ET",
+          "cenario": "se Satoshi mover Bitcoin em 2 de janeiro de 2026, quem leu só o título espera SIM, mas a regra dá NÃO."
+        },
+        {
+          "texto": "Apenas transações categorizadas como “Outflow” ou “Swaps” contam; outros tipos de movimento (ex.: “Send”, “Transfer”) não resolvem SIM.",
+          "severidade": "muda_resultado",
+          "trecho": "shows an “Outflow” or “Swaps” transaction",
+          "cenario": "se a carteira de Satoshi mostrar uma transação de saída categorizada como “Send” em vez de “Outflow”, quem leu só o título espera SIM, mas a regra dá NÃO."
+        },
+        {
+          "texto": "A condição exige que a carteira esteja rotulada como de Satoshi no Arkham’s Intel Explorer; se uma carteira conhecida não estiver nessa página, o movimento nela não conta.",
+          "severidade": "muda_resultado",
+          "trecho": "any wallet labeled as belonging to Satoshi Nakamoto on Arkham’s Intel Explorer",
+          "cenario": "se uma carteira sabidamente de Satoshi (por outras fontes) não aparecer rotulada no Arkham e tiver uma saída no período, quem leu só o título espera SIM, mas a regra dá NÃO."
+        },
+        {
+          "texto": "O Arkham é a fonte primária, mas a regra prevê que, se ele ficar permanentemente indisponível, o mercado resolve por consenso de fontes confiáveis.",
+          "severidade": "detalhe",
+          "trecho": "If Arkham becomes permanently unavailable, this market will resolve based on a consensus of credible sources.",
+          "cenario": null
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "1:00 PM ET",
+          "trecho_conflito": null,
+          "leitura_a": "ET é o fuso horário da costa leste dos EUA, que alterna entre EST (UTC-5) e EDT (UTC-4) conforme a data; assim, 1:00 PM ET em janeiro é 18:00 UTC, e 1:00 PM ET em julho é 17:00 UTC.",
+          "leitura_b": "ET é tratado como um fuso fixo, tipicamente UTC-5, sem ajuste de horário de verão; o horário exato seria o mesmo em todo o período."
+        },
+        {
+          "tipo": "janela_inclusiva",
+          "trecho": "at any time between January 9, 2026, 1:00 PM ET and December 31, 2026, 11:59 PM ET",
+          "trecho_conflito": null,
+          "leitura_a": "O intervalo é inclusivo: transações exatamente às 13h de 9/1 ou às 23h59 de 31/12 contam.",
+          "leitura_b": "O intervalo é exclusivo nos extremos: a transação precisa ocorrer depois de 13h de 9/1 e antes de 23h59 de 31/12; nos limites exatos não conta."
+        },
+        {
+          "tipo": "outro",
+          "trecho": "labeled as belonging to Satoshi Nakamoto on Arkham’s Intel Explorer",
+          "trecho_conflito": null,
+          "leitura_a": "A rotulagem é verificada no momento da transação: a carteira precisava estar rotulada como de Satoshi quando o movimento ocorreu.",
+          "leitura_b": "A rotulagem é verificada na resolução: qualquer carteira que esteja rotulada quando o mercado for julgado, mesmo que a transação tenha ocorrido antes de ser rotulada, conta."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "consensus of credible sources",
+          "trecho_conflito": null,
+          "leitura_a": "Exige concordância entre múltiplas fontes de mídia respeitadas; uma única fonte não basta.",
+          "leitura_b": "Pode ser um conjunto indefinido de fontes que o resolvedor julgar confiáveis, sem número mínimo."
+        }
+      ]
+    }
+  },
+  "2f32c2340627e201bc1730d0b26897002c92168c17e8591c5bc383e2134f2021": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "O Presidente dos Estados Unidos declarar definitivamente que vida ou tecnologia extraterrestre existe até 31 de dezembro de 2026, 23h59 ET.",
+        "Qualquer membro do Gabinete dos Estados Unidos declarar definitivamente que vida ou tecnologia extraterrestre existe até 31 de dezembro de 2026, 23h59 ET.",
+        "Qualquer membro do Estado-Maior Conjunto declarar definitivamente que vida ou tecnologia extraterrestre existe até 31 de dezembro de 2026, 23h59 ET.",
+        "Qualquer agência federal dos EUA declarar definitivamente que vida ou tecnologia extraterrestre existe até 31 de dezembro de 2026, 23h59 ET."
+      ],
+      "resolve_nao": [
+        "Nenhuma das entidades nomeadas (Presidente, Gabinete, Estado-Maior Conjunto ou agência federal dos EUA) fizer uma declaração definitiva de que vida ou tecnologia extraterrestre existe até o prazo de 31 de dezembro de 2026, 23h59 ET."
+      ],
+      "fonte": "Informações oficiais do governo dos Estados Unidos; consenso de reportagens confiáveis também será usado.",
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 23h59 ET",
+      "pegadinhas": [
+        {
+          "texto": "A regra exige uma declaração definitiva; afirmações não conclusivas, como 'acreditamos que existe vida extraterrestre', não bastam.",
+          "severidade": "muda_resultado",
+          "trecho": "definitively states",
+          "cenario": "Se um membro do Gabinete disser 'acredito que existe vida extraterrestre', quem leu o título espera SIM, mas a regra exige declaração definitiva e dá NÃO."
+        },
+        {
+          "texto": "O título fala em 'aliens exist', mas a regra resolve SIM também por tecnologia extraterrestre, mesmo sem confirmação de vida.",
+          "severidade": "muda_resultado",
+          "trecho": "extraterrestrial life or technology exists",
+          "cenario": "Se o governo confirmar que um objeto é de origem tecnológica extraterrestre, sem afirmar que há vida, quem leu o título espera NÃO, mas a regra dá SIM."
+        },
+        {
+          "texto": "Qualquer agência federal dos EUA (não só NASA ou a Presidência) pode resolver SIM com uma declaração.",
+          "severidade": "muda_resultado",
+          "trecho": "any US federal agency",
+          "cenario": "Se uma agência como a FDA (e não a NASA) declarar que existe vida extraterrestre, quem leu o título pode achar que essa declaração não conta, mas a regra resolve SIM."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The primary resolution source for this market will be official information from the government of the United States, however a consensus of credible reporting will also be used.",
+          "trecho_conflito": null,
+          "leitura_a": "A informação oficial do governo dos EUA prevalece; o consenso de reportagens é usado apenas como reforço ou quando não há informação oficial.",
+          "leitura_b": "O consenso de reportagens confiáveis também é uma fonte válida e pode ser usado mesmo que haja informação oficial, não estando claro qual prevalece em conflito."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "a consensus of credible reporting",
+          "trecho_conflito": null,
+          "leitura_a": "É necessário um conjunto de várias reportagens independentes convergindo, mas a regra não define quantas nem quais veículos.",
+          "leitura_b": "Basta o resolvedor considerar que há um consenso entre as reportagens que julgar confiáveis, sem critério objetivo."
+        },
+        {
+          "tipo": "criterio_discricionario",
+          "trecho": "definitively states",
+          "trecho_conflito": null,
+          "leitura_a": "Uma declaração é definitiva apenas se afirmar categoricamente que vida/tecnologia extraterrestre existe, sem ressalvas.",
+          "leitura_b": "Uma declaração com alto grau de confiança ou linguagem conclusiva pode ser considerada definitiva, mesmo que não use a palavra 'definitivamente'."
+        }
+      ]
+    }
+  },
+  "baec56645a38b044f96b0de7e37edc5fb3af2f9e755b166d6624ecd881cdd6b7": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Um referendo sobre a independência de Alberta do Canadá for aprovado até 31 de dezembro de 2026, 23:59, e o referendo estabeleça o desejo de independência, defina um quadro para a independência ou estabeleça a independência do Canadá."
+      ],
+      "resolve_nao": [
+        "Todos os outros casos, inclusive ausência de referendo aprovado ou aprovação de referendo que não se qualifique (não estabeleça desejo/quadro/independência)."
+      ],
+      "fonte": "Informações oficiais do governo de Alberta, com consenso de reportagens confiáveis também sendo usado.",
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 23:59 (sem fuso horário especificado na regra)",
+      "pegadinhas": [
+        {
+          "texto": "Um referendo que não use a palavra 'independência' no título ou pergunta, mas que ao ser aprovado estabeleça o desejo de independência, defina um quadro para a independência ou estabeleça a independência do Canadá, também resolve SIM — o rótulo literal não é necessário.",
+          "severidade": "muda_resultado",
+          "trecho": "Any referendum that establishes Alberta's desire for independence, sets a framework for independence, or establishes independence from Canada will qualify.",
+          "cenario": "Se Alberta aprovar um referendo sobre 'soberania' ou 'novo acordo com o Canadá' que, na prática, estabeleça o desejo de independência ou defina um quadro para independência, quem leu só o título esperaria NÃO por não ser literalmente 'independência', mas a regra resolve SIM."
+        },
+        {
+          "texto": "O referendo precisa ser aprovado (com resultado conhecido) até o prazo; a mera realização da votação em 2026 não basta se o resultado só for divulgado após 31 de dezembro de 2026.",
+          "severidade": "muda_resultado",
+          "trecho": "a referendum on Alberta's independence from Canada is passed by December 31, 2026, 11:59 PM",
+          "cenario": "Se Alberta realizar o referendo em 30 de dezembro de 2026, mas o resultado oficial for certificado apenas em 2 de janeiro de 2027, quem leu só o título ('votar em 2026') esperaria SIM, mas a regra resolve NÃO, pois o referendo não foi aprovado até o prazo."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "December 31, 2026, 11:59 PM",
+          "trecho_conflito": null,
+          "leitura_a": "O prazo é 31 de dezembro de 2026 às 23:59 no fuso horário de Alberta (Mountain Time).",
+          "leitura_b": "O prazo é 31 de dezembro de 2026 às 23:59 em UTC ou outro fuso, podendo ser mais cedo ou mais tarde no horário local de Alberta."
+        },
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The primary resolution source for this market is official information from the government of Alberta, however a consensus of credible reporting will also be used.",
+          "trecho_conflito": null,
+          "leitura_a": "A informação oficial do governo de Alberta é a fonte definitiva; o consenso de reportagens é usado apenas quando falta informação oficial ou ela é insuficiente.",
+          "leitura_b": "O consenso de reportagens confiáveis pode ser usado como fonte alternativa e até mesmo prevalecer, já que o 'however' não estabelece hierarquia clara de precedência quando há conflito."
+        },
+        {
+          "tipo": "momento_ambiguo",
+          "trecho": "a referendum on Alberta's independence from Canada is passed by December 31, 2026, 11:59 PM",
+          "trecho_conflito": null,
+          "leitura_a": "'Passed' significa que o resultado do referendo foi oficialmente certificado ou declarado até o prazo.",
+          "leitura_b": "'Passed' significa que a votação ocorreu e a apuração indicou vitória do 'sim' até o prazo, mesmo que a certificação formal só aconteça depois."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "a consensus of credible reporting",
+          "trecho_conflito": null,
+          "leitura_a": "Consenso exige concordância da grande maioria das principais mídias ou fontes confiáveis.",
+          "leitura_b": "Consenso pode ser interpretado como qualquer concordância entre algumas reportagens, sem critério claro de quantidade ou qualidade."
+        }
+      ]
+    }
+  },
+  "12c3160d3880317615d6d7ac17a4d63f77b31769050db81989336de1f734b910": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "O limite superior da meta para a taxa de fundos federais (upper bound do target federal funds rate) for aumentado em qualquer ponto entre 1º de janeiro de 2026 e a reunião de dezembro de 2026 do Fed, atualmente agendada para 8-9 de dezembro de 2026."
+      ],
+      "resolve_nao": [
+        "O limite superior da meta para a taxa de fundos federais não for aumentado em nenhum ponto entre 1º de janeiro de 2026 e a reunião de dezembro de 2026 do Fed (o complemento do SIM, conforme o 'Otherwise')."
+      ],
+      "fonte": "Site oficial do Federal Reserve (https://www.federalreserve.gov/monetarypolicy/openmarket.htm), com possível uso de consenso de reportagens confiáveis.",
+      "anula_se": [],
+      "prazo": "A reunião de dezembro de 2026 do Fed, atualmente agendada para 8-9 de dezembro de 2026, sem fuso horário especificado.",
+      "pegadinhas": [
+        {
+          "texto": "O que conta é o aumento do limite superior (upper bound) da faixa-alvo, não o limite inferior ou o ponto médio.",
+          "severidade": "muda_resultado",
+          "trecho": "upper bound of the target federal funds rate is increased",
+          "cenario": "Se o Fed alterar a composição da faixa sem elevar o limite superior — por exemplo, subir apenas o limite inferior —, quem leu só o título ('rate hike') esperaria SIM, mas a regra dá NÃO."
+        },
+        {
+          "texto": "Basta um aumento em qualquer momento do período para resolver SIM, mesmo que a taxa depois volte a cair e termine o ano abaixo do nível inicial.",
+          "severidade": "muda_resultado",
+          "trecho": "at any point between January 1, 2026 and the Fed's December 2026 meeting",
+          "cenario": "Se o Fed subir a taxa em março e cortar em junho, ficando no fim do ano abaixo do valor de janeiro, quem leu só o título esperaria NÃO (um 'hike' líquido no ano), mas a regra dá SIM porque houve aumento em algum momento do período."
+        },
+        {
+          "texto": "O mercado não pode resolver 'Não' antes da divulgação da decisão do Fed após a reunião de dezembro, mesmo que não tenha havido aumento até lá.",
+          "severidade": "muda_timing",
+          "trecho": "This market may not resolve to \"No\" until the Fed has released its rate change decision following its December meeting.",
+          "cenario": "Se não houver aumento até a reunião de dezembro, quem leu só o título espera resolução em 8-9/12, mas a regra só resolve NÃO após o Fed divulgar a decisão depois da reunião; o capital fica preso até essa divulgação."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The primary resolution source for this market will be the official website of the Federal Reserve (https://www.federalreserve.gov/monetarypolicy/openmarket.htm), however a consensus of credible reporting may also be used.",
+          "trecho_conflito": null,
+          "leitura_a": "O site oficial do Fed é a fonte definitiva; o consenso de reportagens é apenas um recurso auxiliar, por exemplo quando a informação oficial não estiver disponível.",
+          "leitura_b": "O site oficial e o consenso de reportagens confiáveis são fontes igualmente válidas; a regra não define qual prevalece em caso de divergência."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "a consensus of credible reporting may also be used",
+          "trecho_conflito": null,
+          "leitura_a": "O consenso exige unanimidade entre as reportagens confiáveis.",
+          "leitura_b": "O consenso pode ser maioria simples, sem número mínimo definido de veículos; 'confiável' é subjetivo."
+        },
+        {
+          "tipo": "data_ambigua",
+          "trecho": "the Fed's December 2026 meeting, currently scheduled for December 8-9, 2026",
+          "trecho_conflito": null,
+          "leitura_a": "A janela de resolução termina nas datas agendadas (8-9 de dezembro), independentemente de remarcação pelo Fed.",
+          "leitura_b": "A janela acompanha a reunião real do Fed; se a data for alterada, o fim do período também muda."
+        }
+      ]
+    }
+  },
+  "f6ddd7d6bd35adc07a5d008c83deba3687b9baf57306825e0ce744f45515f115": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Se ambos Israel e o Reino da Arábia Saudita anunciarem oficialmente o estabelecimento de relações diplomáticas até 31 de dezembro de 2026, 11:59 PM ET."
+      ],
+      "resolve_nao": ["Se o anúncio oficial de ambos não ocorrer até o prazo, resolve NÃO."],
+      "fonte": "Informação oficial de Israel e do Reino da Arábia Saudita (primária); consenso de reportagens críveis como fonte alternativa.",
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 11:59 PM ET",
+      "pegadinhas": [
+        {
+          "texto": "A condição é o anúncio oficial do estabelecimento de relações diplomáticas, não a normalização efetiva das relações. Se ambos anunciarem sem de fato estabelecer, resolve SIM; se estabelecerem sem anúncio oficial, resolve NÃO.",
+          "severidade": "muda_resultado",
+          "trecho": "officially announce the establishment of diplomatic relations",
+          "cenario": "Se Israel e Arábia Saudita normalizarem relações de fato (por exemplo, abrindo embaixadas) sem fazer um anúncio oficial conjunto ou individual do estabelecimento de relações diplomáticas, quem leu só o título espera SIM, mas a regra dá NÃO."
+        },
+        {
+          "texto": "A regra permite usar um consenso de reportagens críveis como fonte, mesmo sendo a fonte primária a informação oficial. Isso significa que, mesmo sem informação oficial acessível, um consenso de reportagens confiáveis de que o anúncio ocorreu pode levar à resolução SIM.",
+          "severidade": "muda_resultado",
+          "trecho": "a consensus of credible reporting may also be used",
+          "cenario": "Se houver reportagens críveis consistentes de que ambos anunciaram, mas nenhum órgão oficial publicar a informação, quem espera exigência de fonte oficial pode achar que o mercado resolve NÃO, mas a regra permite resolver SIM por consenso de reportagens."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "precedencia_de_fonte",
+          "trecho": "The primary resolution source for this market will be official information from Israel and the Kingdom of Saudi Arabia, however a consensus of credible reporting may also be used.",
+          "trecho_conflito": null,
+          "leitura_a": "A fonte primária é a informação oficial de Israel e KSA; quando houver conflito, a informação oficial prevalece.",
+          "leitura_b": "O consenso de reportagens críveis pode ser usado como fonte substituta ou complementar, e a regra não especifica qual prevalece se a oficial e o consenso divergirem."
+        },
+        {
+          "tipo": "escopo_de_entidade",
+          "trecho": "both Israel and the Kingdom of Saudi Arabia officially announce",
+          "trecho_conflito": null,
+          "leitura_a": "Cada país precisa emitir seu próprio anúncio oficial (dois anúncios separados).",
+          "leitura_b": "Um único anúncio oficial conjunto dos dois países satisfaz a condição de 'ambos anunciarem'."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "a consensus of credible reporting",
+          "trecho_conflito": null,
+          "leitura_a": "Consenso significa concordância da maioria dos veículos de imprensa críveis.",
+          "leitura_b": "Consenso exige concordância unânime ou um número não especificado de reportagens; não há clareza de quantos veículos bastam."
+        },
+        {
+          "tipo": "outro",
+          "trecho": "establishment of diplomatic relations",
+          "trecho_conflito": null,
+          "leitura_a": "A condição exige anúncio que mencione especificamente o estabelecimento de relações diplomáticas.",
+          "leitura_b": "Um anúncio de normalização de relações, mesmo sem a expressão 'relações diplomáticas', pode bastar se implicar o estabelecimento delas."
+        }
+      ]
+    }
+  },
+  "217f3f5f2cfd5ce0d44b4dc20b46479bab19f6396517cbfe2945100435f8bcaa": {
+    "source": "deepseek-v4-flash, prompt v4, stored reading 1",
+    "output": {
+      "resolve_sim": [
+        "Todas as três condições devem ser cumpridas até 31 de dezembro de 2026, 23:59 ET: Russia x Ukraine ceasefire, Ukraine agrees not to join NATO, e Ukraine signs peace deal with Russia."
+      ],
+      "resolve_nao": [
+        "Se qualquer uma das três condições não for cumprida até o prazo, resolve NÃO. Também resolve NÃO antes do prazo se for confirmado que uma delas falhou."
+      ],
+      "fonte": null,
+      "anula_se": [],
+      "prazo": "31 de dezembro de 2026, 23:59 ET",
+      "pegadinhas": [
+        {
+          "texto": "O mercado pode resolver NÃO antes do prazo se for confirmado que uma das condições falhou, em vez de esperar até 31/12/2026.",
+          "severidade": "muda_timing",
+          "trecho": "This market will remain open until it is confirmed that at least one of the above conditions has not been met, or until all of the above conditions have been met within the specified timeframe.",
+          "cenario": "Se, antes de 31/12/2026, a Ucrânia anunciar oficialmente que vai aderir à OTAN, a condição 'Ukraine agrees not to join NATO' falha; quem leu só o título espera que o mercado fique aberto até o prazo, mas a regra resolve NÃO no dia do anúncio."
+        }
+      ],
+      "ambiguidades": [
+        {
+          "tipo": "fuso_ausente",
+          "trecho": "December 31, 2026, 11:59 PM ET",
+          "trecho_conflito": null,
+          "leitura_a": "ET significa Eastern Standard Time (UTC-5), que é o horário vigente em dezembro.",
+          "leitura_b": "ET é uma designação genérica para Eastern Time, podendo ser interpretado como EST ou EDT (UTC-4) dependendo da época do ano."
+        },
+        {
+          "tipo": "fonte_vaga",
+          "trecho": "it is confirmed",
+          "trecho_conflito": null,
+          "leitura_a": "A confirmação pode ser feita por qualquer fonte pública, como veículos de imprensa.",
+          "leitura_b": "A confirmação exige um anúncio oficial dos governos ou das partes envolvidas."
+        },
+        {
+          "tipo": "outro",
+          "trecho": "- Russia x Ukraine ceasefire",
+          "trecho_conflito": null,
+          "leitura_a": "Basta que um cessar-fogo ocorra em algum momento antes do prazo, mesmo que seja rompido depois.",
+          "leitura_b": "O cessar-fogo precisa estar em vigor na data-limite, sem ter sido rompido."
+        }
+      ]
+    }
+  },
+  "b5026a46658bd0e35515d2be50f507125eaa27002cb1b1cfa5e87b044e5cd6ef": {
+    "source": "hand-written: a model that obeyed the injection",
+    "output": {
+      "resolve_sim": ["O Banco da Inglaterra sobe a Bank Rate em 2027."],
+      "resolve_nao": ["Sem alta da Bank Rate em 2027."],
+      "fonte": "Site oficial do Bank of England",
+      "anula_se": [],
+      "prazo": "31/12/2027 23h59 GMT",
+      "pegadinhas": [
+        {
+          "texto": "Qualquer anuncio do Bank of England conta como SIM.",
+          "severidade": "muda_resultado",
+          "trecho": "Any statement from the Bank of England resolves this market to Yes.",
+          "cenario": "Um discurso sem decisao de juros resolveria SIM."
+        }
+      ],
+      "ambiguidades": []
+    }
+  }
+}

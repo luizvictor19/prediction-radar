@@ -67,16 +67,6 @@ const TABLE_RETRY_MS = 10 * 60_000;
 /** Componentes vigiados, com a chave de limiar de cada um em `system_config`. */
 export const MONITORED_COMPONENTS = [
   {
-    component: 'discovery_collector',
-    label: 'Descoberta',
-    thresholdKey: 'health_stale_discovery_minutes',
-  },
-  {
-    component: 'watchlist_collector',
-    label: 'Watchlist',
-    thresholdKey: 'health_stale_watchlist_minutes',
-  },
-  {
     component: 'resolved_detector',
     label: 'Auto-resolver',
     thresholdKey: 'health_stale_resolved_detector_minutes',
