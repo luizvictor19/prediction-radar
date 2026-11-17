@@ -16,25 +16,26 @@ import type {
  * Every query the screen makes, and no other. Moved from `dados.ts` unchanged
  * (issue 85): the only difference is that the client is a parameter, built on
  * the server with the service key (`banco.ts`), instead of the browser client
- * that went through the Vite proxy.
+ * that went through the Vite proxy. The comments came along, translated, since
+ * this file is new.
  *
- * As leituras do banco. Todas são SELECT sobre view, exceto o texto original da
- * regra (que é lookup por chave primária em `events`) e as duas escritas do
- * final.
+ * Every read is a SELECT on a view or a small table, except the rule's
+ * original text (a primary-key lookup in `events`) and the two writes at the
+ * end.
  *
- * Nenhuma varre `events`, `polymarket_snapshots` ou `system_logs`: o timeout do
- * PostgREST é de 8s e um seq scan nos 711 MB de `events` é incidente de
- * produção, não consulta.
+ * None scans `events`, `polymarket_snapshots` or `system_logs`: PostgREST's
+ * timeout is 8 s, and a seq scan over the 711 MB of `events` is a production
+ * incident, not a query.
  */
 
 const COLUNAS_RADAR = [
   'id',
   'slug',
-  // `event_group_slug` entra AQUI quando
-  // `20260825024030_v_radar_expoe_event_group_slug.sql` for aplicada. Pedir
-  // agora derruba a query inteira: a view ainda não tem a coluna. Até lá
-  // `urlPolymarket` recebe `undefined` e cai no fallback `/market/<slug>`, que
-  // foi medido abrindo 55/55 no mercado certo.
+  // `event_group_slug` goes HERE once
+  // `20260825024030_v_radar_expoe_event_group_slug.sql` is applied. Asking for
+  // it now breaks the whole query: the view does not have the column yet.
+  // Until then `urlPolymarket` gets `undefined` and falls back to
+  // `/market/<slug>`, measured opening the right market 55 times out of 55.
   'pergunta',
   'categoria',
   'tema',
@@ -66,11 +67,11 @@ export function lerRadar(db: SupabaseClient): Promise<MercadoRadar[]> {
 }
 
 /**
- * As contagens da digestão, sem o jsonb `achados` — que é o campo pesado e só
- * faz falta quando um mercado é aberto.
+ * The digestion counts, without the `achados` jsonb: that is the heavy field,
+ * and it is only needed when a market is opened.
  *
  * The ordering comes from `ordenarContagens`, and it is a TOTAL order because
- * pagination requires one — the why is in `paginacao.ts`, next to the test that
+ * pagination requires one. The why is in `paginacao.ts`, next to the test that
  * measures it.
  */
 export function lerContagens(db: SupabaseClient): Promise<ContagemDigest[]> {
@@ -80,12 +81,11 @@ export function lerContagens(db: SupabaseClient): Promise<ContagemDigest[]> {
 }
 
 /**
- * A digestão de um mercado, agora com os achados.
+ * One market's digestion, now with the findings.
  *
- * Devolve LISTA e não um objeto: a granularidade da view é (mercado, texto de
- * regra). Hoje nenhum mercado tem dois textos, mas a Polymarket editar uma
- * descrição produz a segunda linha — e `.single()` passaria a estourar em
- * produção no dia em que isso acontecesse.
+ * Returns a LIST, not an object: the view's grain is (market, rule text).
+ * Today no market has two texts, but Polymarket editing a description creates
+ * the second row, and `.single()` would start failing in production that day.
  */
 export async function lerAchados(db: SupabaseClient, eventId: string): Promise<LinhaAchados[]> {
   const { data, error } = await db
@@ -96,7 +96,7 @@ export async function lerAchados(db: SupabaseClient, eventId: string): Promise<L
   return (data ?? []) as unknown as LinhaAchados[];
 }
 
-/** Todas as leituras de UM texto de regra dentro de UM mercado. */
+/** Every reading of ONE rule text within ONE market. */
 export async function lerLeituras(
   db: SupabaseClient,
   eventId: string,
@@ -128,8 +128,8 @@ export async function lerCorpus(db: SupabaseClient): Promise<CorpusCru> {
     paginar<LinhaFilhaDoCorpus>((de, ate) =>
       db
         .from('digest_pegadinhas')
-        // `severidade` vira `tipo`: é o campo que `montarIndice` lê, e na
-        // pegadinha a severidade é o subtipo.
+        // `severidade` becomes `tipo`: it is the field `montarIndice` reads,
+        // and for a trap the severity is the subtype.
         .select('digest_id, tipo:severidade, trecho')
         .order('id')
         .range(de, ate),
@@ -137,8 +137,8 @@ export async function lerCorpus(db: SupabaseClient): Promise<CorpusCru> {
     paginar<LinhaFilhaDoCorpus>((de, ate) =>
       db
         .from('digest_ambiguidades')
-        // `trecho_conflito` entra por causa da contradição interna: a chave dela
-        // são as DUAS passagens.
+        // `trecho_conflito` is here for the internal contradiction, whose key
+        // is BOTH passages.
         .select('digest_id, tipo, trecho, trecho_conflito')
         .order('id')
         .range(de, ate),
@@ -148,14 +148,14 @@ export async function lerCorpus(db: SupabaseClient): Promise<CorpusCru> {
 }
 
 /**
- * O alcance de cada contradição: em quantos mercados aquele defeito de texto
- * aparece.
+ * The reach of each contradiction: in how many markets that text defect
+ * appears.
  *
- * `digest_contradicoes` não expõe `event_id` em lugar nenhum — nem no jsonb. A
- * ponte é que `achados[].achado_id` de classe `contradicao` é o MESMO md5 que
- * `defeito_id` (mesma fórmula nas duas migrations, declarado em
- * `20260817040920_...sql:439`). Ligar por `slug` seria o outro caminho, e slug
- * é nullable e não-unique.
+ * `digest_contradicoes` exposes `event_id` nowhere, not even in the jsonb. The
+ * bridge is that `achados[].achado_id` of class `contradicao` is the SAME md5
+ * as `defeito_id` (same formula in both migrations, stated in
+ * `20260817040920_...sql:439`). Joining by `slug` would be the other way, and
+ * slug is nullable and not unique.
  */
 export async function lerContradicoes(
   db: SupabaseClient,
@@ -231,15 +231,15 @@ export async function lerTextoGuardado(db: SupabaseClient, sha: string): Promise
 }
 
 /**
- * Grava a previsão: uma linha de `my_bets` SEM leg.
+ * Records the prediction: one `my_bets` row WITHOUT a leg.
  *
- * Bet sem leg é previsão sem operação — derivável, sem flag. Auditado em
- * 19/08/2026: `v_minhas_posicoes`, `bankroll.ts`, `/positions`, `/status`,
- * `/edit` e o `resolved-detector` são todos dirigidos pela leg e ignoram esta
- * linha. Ver `CONTEXTO-RADAR.md`.
+ * A bet without a leg is a prediction without a trade, derivable, no flag.
+ * Audited on 2026-08-19: `v_minhas_posicoes`, `bankroll.ts`, `/positions`,
+ * `/status`, `/edit` and the `resolved-detector` are all driven by the leg and
+ * ignore this row. See `CONTEXTO-RADAR.md`.
  *
- * `placed_at` NÃO é enviado: o default é `now()` do Postgres. O relógio do
- * navegador não decide a hora de uma previsão datada.
+ * `placed_at` is NOT sent: the default is Postgres's `now()`. The browser's
+ * clock does not decide the time of a dated prediction.
  *
  * The row comes built and validated from `validarPrevisao` (`entrada.ts`).
  */
@@ -253,11 +253,12 @@ export async function gravarPrevisao(
 }
 
 /**
- * A operação, depois. Opcional — o campo obrigatório é a probabilidade.
+ * The trade, afterwards. Optional: the required field is the probability.
  *
- * `preco_mercado` da leg fica NULO de propósito: a linha de base já foi gravada
- * no bet, no instante da previsão, que é o instante que importa. Repetir aqui o
- * preço de agora seria uma segunda base, medida depois de operar.
+ * The leg's `preco_mercado` stays NULL on purpose: the baseline was already
+ * recorded on the bet, at the moment of the prediction, which is the moment
+ * that matters. Repeating today's price here would be a second baseline,
+ * measured after trading.
  *
  * The row comes built and validated from `validarLeg` (`entrada.ts`).
  */
