@@ -37,7 +37,7 @@ O comando único (`npm run check`) entra com o PR de CI. Até lá, na ordem:
 
 Testes que precisam de Postgres de verdade:
 
-    npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required
+    npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required, um arquivo por vez
     npm run test:db:stop                    # derruba a stack local, sem backup
 
 ## Abrir o PR
