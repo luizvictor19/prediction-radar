@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase.js';
 import { keyOf, type DigestedIndex } from './leituras.js';
-import type { DigestResult } from './digest.js';
 import type { DigestInput } from './prompts.js';
 
 // As chaves e as perguntas sobre elas moram em `leituras.ts`, que não importa o
@@ -278,93 +277,6 @@ export async function readDigested(): Promise<DigestedIndex> {
   };
 }
 
-export interface DigestRows {
-  /**
-   * The row of `market_rule_texts`: the digested text, stored under its hash.
-   *
-   * It travels in the artifact with the digest that produced it so the text is
-   * stored the moment it was read, rather than recovered from
-   * `events.description` afterwards — which only works until Polymarket edits
-   * the description. The backfill of issue #9 cleans the past; this closes the
-   * leak that would refill it.
-   */
-  text: Record<string, unknown>;
-  digest: Record<string, unknown>;
-  /** Linhas de `digest_pegadinhas`, sem `digest_id` — ele só existe no insert. */
-  pegadinhas: Record<string, unknown>[];
-  ambiguidades: Record<string, unknown>[];
-}
-
-/**
- * As linhas das quatro tabelas, montadas e devolvidas — não gravadas.
- *
- * Escrita é do dono, e as tabelas nem existem ainda. O que o projeto ganha com a
- * função existindo antes do apply é o payload conferido contra as colunas da
- * migration no mesmo commit em que ela é escrita, em vez de descoberto errado no
- * primeiro insert depois.
- *
- * `digest_id` fica de fora das filhas de propósito: ele é gerado pelo insert do
- * pai, e preenchê-lo aqui com um valor inventado faria o payload parecer pronto
- * quando não está.
- */
-export function buildDigestRows(
-  market: MarketToDigest,
-  result: DigestResult,
-  promptVersion: string,
-  model: string,
-  /**
-   * O índice da leitura. Default 1 porque é o que toda passada da escada faz —
-   * uma leitura por (mercado, texto, modelo, versão). Só o nivelamento manda
-   * outro valor, e ele o calcula com `proximaLeitura`.
-   */
-  leituraN = 1,
-): DigestRows {
-  return {
-    // The two fields come from the same string by construction:
-    // `readMarketsToDigest` trims the description before handing it to the
-    // model, and `result.descriptionSha256` is `hashDescription` of exactly that
-    // trimmed text. Recomputing the hash here would be a second chance to
-    // disagree with the digest row sitting right below.
-    text: {
-      description_sha256: result.descriptionSha256,
-      description: market.input.description,
-      guardado_por: 'digestao',
-    },
-    digest: {
-      event_id: market.eventId,
-      description_sha256: result.descriptionSha256,
-      leitura_n: leituraN,
-      resolve_sim: result.output.resolveSim,
-      resolve_nao: result.output.resolveNao,
-      fonte: result.output.fonte,
-      prazo: result.output.prazo,
-      anula_se: result.output.anulaSe,
-      model,
-      prompt_version: promptVersion,
-      tokens_input: result.usage.input,
-      tokens_output: result.usage.output,
-      tokens_cache_read: result.usage.cacheRead,
-      tokens_cache_write: result.usage.cacheWrite,
-      cost_usd: result.costUsd,
-      latency_ms: result.latencyMs,
-    },
-    // `ordinal` preserva a ordem em que o modelo escreveu. O primeiro item de
-    // uma lista costuma ser o mais forte, e essa hipótese só se mede se a ordem
-    // sobreviver à gravação.
-    pegadinhas: result.output.pegadinhas.map((p, i) => ({
-      ordinal: i + 1,
-      texto: p.texto,
-      severidade: p.severidade,
-      trecho: p.trecho,
-      cenario: p.cenario,
-    })),
-    ambiguidades: result.output.ambiguidades.map((a, i) => ({
-      ordinal: i + 1,
-      tipo: a.tipo,
-      trecho: a.trecho,
-      trecho_conflito: a.trechoConflito,
-      leitura_a: a.leituraA,
-      leitura_b: a.leituraB,
-    })),
-  };
-}
+// `DigestRows` and `buildDigestRows` live in `rows.ts`, which imports no database
+// client and can therefore be loaded by a test. Re-exported so importers stay put.
+export { buildDigestRows, type DigestRows } from './rows.js';

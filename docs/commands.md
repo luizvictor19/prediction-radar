@@ -37,7 +37,7 @@ O comando único (`npm run check`) entra com o PR de CI. Até lá, na ordem:
 
 Testes que precisam de Postgres de verdade:
 
-    npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required
+    npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required, um arquivo por vez
     npm run test:db:stop                    # derruba a stack local, sem backup
 
 Se outra stack ocupa a porta 54321, os testes de banco pulam com "não é a deste
@@ -134,6 +134,14 @@ fica; ela nunca entra no repositório nem num chat.
 
 `db reset`, `db pull`, `migration up` e `psql` continuam na deny list de
 `.claude/settings.json`.
+
+Funções do banco chamadas por `rpc`: `record_rule_digest` grava uma leitura
+da digestão (texto, digestão, pegadinhas, ambiguidades) numa transação só e
+devolve `inserted`, `duplicate` (a chave já existe) ou `incomplete` (a chave
+existe sem as pegadinhas ou ambiguidades que o payload traz: leitura deixada
+pela metade pela carga manual, que a função não repara); só `inserted` grava.
+Quem chama é `src/digest/persist.ts` (migration
+`20261117000220_record_rule_digest`, issue 88).
 
 ## Arquivar o mês (todo mês, a partir do dia 9)
 
