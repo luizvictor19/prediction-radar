@@ -41,17 +41,28 @@ body {
 .erro {
   color: var(--alerta);
 }
-.abortado {
-  margin: 40px;
-  padding: 24px;
-  border: 2px solid var(--alerta);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--alerta);
-  white-space: pre-wrap;
-  font:
-    14px/1.6 ui-monospace,
-    monospace;
+/* login page and the logout button (issue 85) */
+.entrar {
+  max-width: 360px;
+  margin: 80px auto;
+  padding: 0 16px;
+}
+.entrar label {
+  display: block;
+  margin: 16px 0;
+}
+.entrar input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font: inherit;
+}
+.sair {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  text-align: right;
 }
 
 /* navegação: um passo atrás, sempre no mesmo canto */

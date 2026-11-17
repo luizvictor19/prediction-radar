@@ -86,8 +86,9 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
   agenda os coletores e jobs com `node-cron`. O bot é outro ponto de entrada
   (`npm run bot`, `src/bot/index.ts`); como ele sobe no Railway não está no
   repositório: conferir no painel antes de afirmar.
-- **`web/`** só roda em `npm run dev`, na máquina do Luiz (ver "A tela"
-  abaixo). Não tem deploy.
+- **`web/`** roda em `npm run dev --prefix web`, na máquina do Luiz (ver "A
+  tela" abaixo). Desde a issue 87 ela tem build de Next.js pronto para a
+  Vercel, mas ainda não tem deploy (sub-issue B da issue 85).
 - **DNS local:** esta máquina só resolve `polymarket.com` com VPN ligada.
   Teste: `getent hosts gamma-api.polymarket.com`. No Railway não acontece.
 
@@ -99,6 +100,8 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
 - Variáveis, só pelo nome:
   - Banco: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (raiz e `web/.env.local`);
     `TEST_SUPABASE_URL`, `TEST_SUPABASE_SERVICE_KEY` para os testes de banco.
+  - Tela: `RADAR_SENHA` (24 caracteres ou mais) e `RADAR_SEGREDO_DE_SESSAO`,
+    em `web/.env.local` (ADR 0013).
   - Polymarket: `POLYMARKET_GAMMA_URL`, `POLYMARKET_CLOB_URL` (têm default no
     código).
   - Telegram: `TELEGRAM_BOT_TOKEN`. O `chat_id` vem de `system_config`.
@@ -106,8 +109,9 @@ esports. As specs 000 a 003 ficam como registro de como o sistema chegou aqui.
     `DEEPSEEK_API_KEY`.
   - Esports, hoje desligado: `ODDSPAPI_API_KEY`, `LIQUIPEDIA_API_KEY`,
     `LIQUIPEDIA_API_URL`, `LIQUIPEDIA_USER_AGENT`.
-- A service role passa por cima de tudo. Ela fica no processo Node e no dev
-  server do Vite, nunca no bundle do navegador (ADR 0008).
+- A service role passa por cima de tudo. Ela fica no processo Node e no
+  servidor da tela (rotas de `web/src/app/api`), nunca no bundle do navegador
+  (ADR 0013). O CI prova isso com um build de canário.
 
 ## Regras de banco
 
@@ -179,20 +183,23 @@ Decididos em agosto de 2026 e não negociáveis sem ADR nova.
 
 ## A tela (`web/`)
 
-- Vite + React, com `package.json` próprio. Abas Hoje, Regra e Operar.
-- **Fala com o banco por um proxy local** (ADR 0008, decidido em 19/08/2026).
-  Service key em navegador leva 401 do Supabase (detecção por User-Agent), e
-  a chave anônima não serve (views com revoke, nenhuma policy). O dev server
-  do Vite encaminha `/sb` para o PostgREST com `apikey`, `Authorization` e
-  `User-Agent` sobrescritos.
-- `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` ficam em `web/.env.local` **sem o
-  prefixo `VITE_`**, e o Vite só inlina o que tem prefixo. A trava
-  `web/src/lib/trava.ts` aborta se alguma `VITE_*` tiver cara de segredo.
-- Consequência aceita: sem `npm run dev` não há tela. Um produto público, se
-  existir, é outro app.
-- O proxy não tem autenticação própria (PR 23): quem alcança a porta do dev
-  server alcança o banco com a service role. O Vite escuta só em `localhost`
-  por padrão, e `web/vite.config.ts` não muda isso; não expor com `--host`.
+- Next.js 16 + React, com `package.json` próprio. Abas Hoje, Regra e Operar
+  (ADR 0013, que substitui a 0008 desde a issue 87).
+- **O navegador não fala com o banco.** Ele chama as rotas de `/api`, uma por
+  consulta que a tela faz (oito leituras e dois inserts, em
+  `web/src/lib/servidor/consultas.ts`), e quem fala com o PostgREST é o
+  servidor, com a service role. Não existe rota que repasse pedido qualquer;
+  o proxy `/sb` do Vite saiu.
+- **Senha própria.** `RADAR_SENHA` (mínimo de 24 caracteres) e
+  `RADAR_SEGREDO_DE_SESSAO`, em `web/.env.local`. Cookie assinado de 30 dias,
+  conferido em `web/src/proxy.ts` e de novo em cada rota. Sem configuração,
+  a tela inteira responde 503.
+- `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` continuam em `web/.env.local`, sem
+  prefixo nenhum (`NEXT_PUBLIC_` mandaria o valor ao navegador). O CI faz o
+  build com canários e varre `web/.next/static` (`npm run conferir:bundle`).
+- `npm run dev --prefix web` escuta só em `127.0.0.1:5173`.
+- Ainda não tem deploy: a ida para a Vercel é a sub-issue B da issue 85, e o
+  que for medido lá entra aqui depois.
 
 ## Armadilhas que o projeto já pagou para aprender
 

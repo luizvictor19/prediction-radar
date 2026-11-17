@@ -132,3 +132,56 @@ export type Contradicao = {
 export type MercadoNaLista = MercadoRadar & {
   digests: ContagemDigest[];
 };
+
+/**
+ * What the screen sends to record a prediction (`POST /api/previsoes`). The
+ * server builds the `my_bets` row from it, in `servidor/entrada.ts`.
+ */
+export type Previsao = {
+  eventId: string;
+  /** Em 0–1, como sai de `lerProbabilidade`. Nunca em %. */
+  prob: number;
+  categoria: string | null;
+  nota: string | null;
+  precoMercado: number | null;
+  precoMercadoEm: string | null;
+  precoMercadoOutcome: string | null;
+  /**
+   * Which outcome the probability is about.
+   *
+   * Same value as `precoMercadoOutcome` on this screen, and a separate field
+   * on purpose: they are two different facts that happen to coincide. The
+   * price's side is whatever the last snapshot quoted; the probability's side
+   * is what the person was answering about. They only agree because the screen
+   * now names the side in the question, and the day the collector changes,
+   * one of the two moves and the other does not.
+   */
+  probSelfOutcome: string | null;
+};
+
+/** What the screen sends to record a leg (`POST /api/legs`). */
+export type Leg = {
+  betId: string;
+  eventId: string;
+  outcome: string;
+  entryPrice: number;
+  stakeUsd: number;
+};
+
+/**
+ * The rule corpus as `/api/corpus` returns it: the three tables' rows, before
+ * the boilerplate index is built from them. The index holds `Map`s, which JSON
+ * does not carry, so it is built in the browser (`dados.ts`).
+ */
+export type CorpusCru = {
+  digests: { id: string; description_sha256: string }[];
+  pegadinhas: LinhaFilhaDoCorpus[];
+  ambiguidades: LinhaFilhaDoCorpus[];
+};
+
+export type LinhaFilhaDoCorpus = {
+  digest_id: string;
+  tipo: string | null;
+  trecho: string | null;
+  trecho_conflito?: string | null;
+};

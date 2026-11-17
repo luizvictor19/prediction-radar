@@ -34,6 +34,7 @@ O comando único (`npm run check`) entra com o PR de CI. Até lá, na ordem:
     npm run typecheck                       # tsc --noEmit na raiz
     npm test                                # tsx --test em src/, scripts/ e web/src/
     npm run typecheck --prefix web          # quando o PR toca web/
+    npm run build:web                       # next build de web/, quando o PR toca web/
 
 Testes que precisam de Postgres de verdade:
 
@@ -197,7 +198,7 @@ elas estão aplicadas e ficam como estão, e vale a desta seção.
     npm run dev                             # tsx watch src/index.ts (coletores e jobs)
     npm start                               # tsx src/index.ts, o que o Railway roda
     npm run bot                             # bot do Telegram (grammy)
-    npm run dev --prefix web                # a tela; único jeito de ela rodar (proxy do Vite)
+    npm run dev --prefix web                # a tela, em http://127.0.0.1:5173, pede a senha
 
 Polymarket exige VPN nesta máquina: `getent hosts gamma-api.polymarket.com`
 tem que resolver antes.
@@ -240,7 +241,7 @@ Tipo:
 
 - `collector`: coletores e roster (`src/collectors/`).
 - `digest`: digestão das regras e leituras.
-- `web`: a tela local.
+- `web`: a tela (`web/`).
 - `bot`: o bot do Telegram.
 - `eval`: medição, Brier, calibração.
 - `infra`: repositório, CI e configuração.
