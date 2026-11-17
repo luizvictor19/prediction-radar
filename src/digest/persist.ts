@@ -15,6 +15,11 @@ import type { DigestRows } from './rows.js';
  * there. A caller that retries after a timeout gets `duplicate` and nothing
  * changes, which is what an unattended, retrying runner needs.
  *
+ * `incomplete` means the key exists but without the traps or ambiguities this
+ * payload carries: a reading the manual loader left half-written. Nothing is
+ * written and nothing is repaired; the caller reports it, and the repair is
+ * the owner's decision.
+ *
  * The client is a parameter, and this module imports no database client: the
  * same function serves the service-role client in production and a fake in the
  * pure tests, and loading it never requires SUPABASE_URL.
@@ -22,9 +27,17 @@ import type { DigestRows } from './rows.js';
 
 export const RECORD_DIGEST_FUNCTION = 'record_rule_digest';
 
-export type RecordOutcome = 'inserted' | 'duplicate';
+export type RecordOutcome = 'inserted' | 'duplicate' | 'incomplete';
 
-/** The one method of the Supabase client this module uses. */
+/**
+ * The one method of the Supabase client this module uses.
+ *
+ * Written by hand instead of `Pick<SupabaseClient, 'rpc'>`: that type makes
+ * `rpc` return a `PostgrestFilterBuilder` (59 members), so a test fake could only
+ * pass through an `as unknown as` cast that turns its type check off. The real
+ * client satisfies this interface structurally; `persist.db.test.ts` passes it
+ * unchanged.
+ */
 export interface RpcClient {
   rpc(
     fn: string,
@@ -46,7 +59,7 @@ export async function recordDigest(client: RpcClient, rows: DigestRows): Promise
   // Anything else is a contract break (a changed function, a proxy answering in
   // its place), and reading it as success would hide a reading that was not
   // written.
-  if (data !== 'inserted' && data !== 'duplicate') {
+  if (data !== 'inserted' && data !== 'duplicate' && data !== 'incomplete') {
     throw new Error(`${RECORD_DIGEST_FUNCTION}: resposta inesperada ${JSON.stringify(data)}`);
   }
   return data;

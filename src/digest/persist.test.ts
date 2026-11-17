@@ -73,6 +73,17 @@ test('recordDigest: devolve a sequência que o banco devolve, inserted e depois 
   assert.equal(calls.length, 2, 'cada recordDigest faz exatamente uma chamada');
 });
 
+test('recordDigest: incomplete passa adiante como resposta, não como erro nem como duplicate', async () => {
+  const { client } = fakeClient([
+    { data: 'incomplete', error: null },
+    { data: 'incomplete', error: null },
+  ]);
+
+  const respostas = [await recordDigest(client, ROWS), await recordDigest(client, ROWS)];
+
+  assert.deepEqual(respostas, ['incomplete', 'incomplete']);
+});
+
 test('recordDigest: erro do banco vira exceção com o nome da função e a mensagem do banco', async () => {
   const { client } = fakeClient([
     { data: null, error: { message: 'violates check constraint "digest_pegadinhas_x"' } },

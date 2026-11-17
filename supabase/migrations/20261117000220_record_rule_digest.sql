@@ -14,17 +14,33 @@
 -- transaction. A function called by `rpc` runs inside the transaction of that
 -- single request: an error in any insert below rolls back all of them.
 --
--- Idempotency: the digest goes in with `on conflict do nothing` on the existing
--- unique `(event_id, description_sha256, model, prompt_version, leitura_n)`.
--- When nothing is inserted the reading was already there, and the function
--- answers 'duplicate' without touching the children. Under concurrency the
--- second insert waits on the unique index for the first transaction, then sees
--- its row and does nothing, so exactly one caller gets 'inserted'.
+-- Order inside the function: check the payload, then look the key up, then
+-- write. Nothing is written before the answer is known.
 --
--- Unknown keys are an error, not ignored. `jsonb_populate_record` silently drops
--- a key that is not a column, while the direct PostgREST insert this replaces
--- refused it (PGRST204). The check keeps that refusal: a field added to
--- `buildDigestRows` (src/digest/rows.ts) without a column here fails loudly.
+-- 1. The payload. Every object must carry exactly the keys listed below: an
+--    unknown key raises (`jsonb_populate_record` would drop it silently, where
+--    the direct PostgREST insert this replaces refused it with PGRST204), and so
+--    does a missing one (it would become NULL, not the column default, and for
+--    `leitura_n` a default would pick the reading index without a word).
+--    `buildDigestRows` (src/digest/rows.ts) always sends every key.
+--    The text must hash to its own `description_sha256`, computed as
+--    `hashDescription` does in src/digest/digest.ts: sha256 of the UTF-8 bytes of
+--    the string as sent, no trim (the caller trims once, before hashing). The
+--    table's CHECK `market_rule_texts_hash_confere` would refuse a lying text on
+--    insert, but a duplicate never reaches the insert, so the check is here too.
+-- 2. The key `(event_id, description_sha256, model, prompt_version, leitura_n)`.
+--    When it exists the function writes nothing and answers 'duplicate', or
+--    'incomplete' when the payload carries traps or ambiguities and the stored
+--    reading has none of that kind: the state the manual loader leaves when it
+--    dies between inserts (it inserts each child table in one statement, so a
+--    table is either complete or empty). 'incomplete' is not repaired here:
+--    repairing stored data is the owner's decision.
+-- 3. The writes. The text with `on conflict do nothing` (one text serves many
+--    markets), the digest with `on conflict do nothing` on the unique key, then
+--    the children. Two callers with the same key both miss in step 2; the second
+--    insert waits on the unique index for the first transaction, then does
+--    nothing, and the function looks the key up again, now committed, and
+--    answers as in step 2. Exactly one caller gets 'inserted'.
 --
 -- `security invoker`: the function has no rights of its own. The caller is the
 -- service role (ADR 0001), which already writes these four tables directly.
@@ -50,87 +66,146 @@ create or replace function public.record_rule_digest (
   as $function$
 declare
   v_unknown text[];
+  v_missing text[];
+  v_text public.market_rule_texts;
+  v_digest public.market_rule_digests;
   v_digest_id uuid;
 begin
-  -- The column lists below are also the insert lists. A key outside them would
-  -- be dropped by jsonb_populate_record, so it stops the call instead.
-  select array_agg(distinct k order by k)
-    into v_unknown
-    from (
-      select k
-        from jsonb_object_keys(p_text) k
-       where k <> all (array['description_sha256', 'description', 'guardado_por'])
-      union all
-      select k
-        from jsonb_object_keys(p_digest) k
-       where k <> all (array[
-         'event_id', 'description_sha256', 'leitura_n', 'resolve_sim', 'resolve_nao',
-         'fonte', 'prazo', 'anula_se', 'model', 'prompt_version', 'tokens_input',
-         'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'cost_usd', 'latency_ms'
-       ])
-      union all
-      select k
-        from jsonb_array_elements(p_pegadinhas) e, jsonb_object_keys(e) k
-       where k <> all (array['ordinal', 'texto', 'severidade', 'trecho', 'cenario'])
-      union all
-      select k
-        from jsonb_array_elements(p_ambiguidades) e, jsonb_object_keys(e) k
-       where k <> all (array[
-         'ordinal', 'tipo', 'trecho', 'trecho_conflito', 'leitura_a', 'leitura_b'
-       ])
-    ) unknown_keys;
+  -- Each table's columns are written three times below: in this key list, in
+  -- the insert column list and in the select list of its insert. The three
+  -- change together; a column left out of one of them is the silent drop this
+  -- check exists to prevent.
+  with expected (part, keys) as (
+    values
+      ('p_text', array['description_sha256', 'description', 'guardado_por']),
+      ('p_digest', array[
+        'event_id', 'description_sha256', 'leitura_n', 'resolve_sim', 'resolve_nao',
+        'fonte', 'prazo', 'anula_se', 'model', 'prompt_version', 'tokens_input',
+        'tokens_output', 'tokens_cache_read', 'tokens_cache_write', 'cost_usd', 'latency_ms'
+      ]),
+      ('p_pegadinhas', array['ordinal', 'texto', 'severidade', 'trecho', 'cenario']),
+      ('p_ambiguidades', array[
+        'ordinal', 'tipo', 'trecho', 'trecho_conflito', 'leitura_a', 'leitura_b'
+      ])
+  ),
+  objects (part, obj) as (
+    select 'p_text', p_text
+    union all
+    select 'p_digest', p_digest
+    union all
+    select 'p_pegadinhas', e from jsonb_array_elements(p_pegadinhas) e
+    union all
+    select 'p_ambiguidades', e from jsonb_array_elements(p_ambiguidades) e
+  )
+  select
+    (select array_agg(distinct o.part || '.' || k order by o.part || '.' || k)
+       from objects o
+       join expected x using (part)
+       cross join lateral jsonb_object_keys(o.obj) k
+      where k <> all (x.keys)),
+    (select array_agg(distinct o.part || '.' || k order by o.part || '.' || k)
+       from objects o
+       join expected x using (part)
+       cross join lateral unnest(x.keys) k
+      where not (o.obj ? k))
+    into v_unknown, v_missing;
 
   if v_unknown is not null then
     raise exception 'record_rule_digest: chaves sem coluna no payload: %', v_unknown;
   end if;
-
-  -- One reading, one text. The foreign key alone would accept a digest whose
-  -- text was stored earlier under another hash, and the text sent here would
-  -- then be written for nothing.
-  if (p_text ->> 'description_sha256') is distinct from (p_digest ->> 'description_sha256') then
-    raise exception 'record_rule_digest: hash do texto (%) difere do hash da digestao (%)',
-      p_text ->> 'description_sha256', p_digest ->> 'description_sha256';
+  if v_missing is not null then
+    raise exception 'record_rule_digest: chaves ausentes no payload: %', v_missing;
   end if;
 
-  -- The text first: market_rule_digests_texto_guardado points at it. The same
-  -- text shared by several markets is one row, so a conflict here is normal.
-  insert into public.market_rule_texts (description_sha256, description, guardado_por)
-  select t.description_sha256, t.description, t.guardado_por
-    from jsonb_populate_record(null::public.market_rule_texts, p_text) t
-  on conflict (description_sha256) do nothing;
+  v_text := jsonb_populate_record(null::public.market_rule_texts, p_text);
+  v_digest := jsonb_populate_record(null::public.market_rule_digests, p_digest);
 
-  insert into public.market_rule_digests (
-    event_id, description_sha256, leitura_n, resolve_sim, resolve_nao, fonte, prazo, anula_se,
-    model, prompt_version, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write,
-    cost_usd, latency_ms
-  )
-  select d.event_id, d.description_sha256, d.leitura_n, d.resolve_sim, d.resolve_nao, d.fonte,
-         d.prazo, d.anula_se, d.model, d.prompt_version, d.tokens_input, d.tokens_output,
-         d.tokens_cache_read, d.tokens_cache_write, d.cost_usd, d.latency_ms
-    from jsonb_populate_record(null::public.market_rule_digests, p_digest) d
-  on conflict on constraint market_rule_digests_one_per_text_model_and_reading do nothing
-  returning id into v_digest_id;
+  -- One reading, one text.
+  if v_text.description_sha256 is distinct from v_digest.description_sha256 then
+    raise exception 'record_rule_digest: hash do texto (%) difere do hash da digestao (%)',
+      v_text.description_sha256, v_digest.description_sha256;
+  end if;
+  if encode(sha256(convert_to(v_text.description, 'UTF8')), 'hex')
+       is distinct from v_text.description_sha256 then
+    raise exception 'record_rule_digest: descricao nao bate com o hash %',
+      v_text.description_sha256;
+  end if;
+
+  select d.id
+    into v_digest_id
+    from public.market_rule_digests d
+   where d.event_id = v_digest.event_id
+     and d.description_sha256 = v_digest.description_sha256
+     and d.model = v_digest.model
+     and d.prompt_version = v_digest.prompt_version
+     and d.leitura_n = v_digest.leitura_n;
 
   if v_digest_id is null then
-    return 'duplicate';
+    -- The text first: market_rule_digests_texto_guardado points at it.
+    insert into public.market_rule_texts (description_sha256, description, guardado_por)
+    values (v_text.description_sha256, v_text.description, v_text.guardado_por)
+    on conflict (description_sha256) do nothing;
+
+    insert into public.market_rule_digests (
+      event_id, description_sha256, leitura_n, resolve_sim, resolve_nao, fonte, prazo, anula_se,
+      model, prompt_version, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write,
+      cost_usd, latency_ms
+    )
+    values (
+      v_digest.event_id, v_digest.description_sha256, v_digest.leitura_n, v_digest.resolve_sim,
+      v_digest.resolve_nao, v_digest.fonte, v_digest.prazo, v_digest.anula_se, v_digest.model,
+      v_digest.prompt_version, v_digest.tokens_input, v_digest.tokens_output,
+      v_digest.tokens_cache_read, v_digest.tokens_cache_write, v_digest.cost_usd,
+      v_digest.latency_ms
+    )
+    on conflict on constraint market_rule_digests_one_per_text_model_and_reading do nothing
+    returning id into v_digest_id;
+
+    if v_digest_id is not null then
+      insert into public.digest_pegadinhas (digest_id, ordinal, texto, severidade, trecho, cenario)
+      select v_digest_id, p.ordinal, p.texto, p.severidade, p.trecho, p.cenario
+        from jsonb_populate_recordset(null::public.digest_pegadinhas, p_pegadinhas) p;
+
+      insert into public.digest_ambiguidades (
+        digest_id, ordinal, tipo, trecho, trecho_conflito, leitura_a, leitura_b
+      )
+      select v_digest_id, a.ordinal, a.tipo, a.trecho, a.trecho_conflito, a.leitura_a,
+             a.leitura_b
+        from jsonb_populate_recordset(null::public.digest_ambiguidades, p_ambiguidades) a;
+
+      return 'inserted';
+    end if;
+
+    -- Lost the race: another transaction committed the same key while this one
+    -- waited on the unique index. A new statement sees its row.
+    select d.id
+      into v_digest_id
+      from public.market_rule_digests d
+     where d.event_id = v_digest.event_id
+       and d.description_sha256 = v_digest.description_sha256
+       and d.model = v_digest.model
+       and d.prompt_version = v_digest.prompt_version
+       and d.leitura_n = v_digest.leitura_n;
+
+    if v_digest_id is null then
+      raise exception 'record_rule_digest: a chave conflitou e sumiu antes de ser lida';
+    end if;
   end if;
 
-  insert into public.digest_pegadinhas (digest_id, ordinal, texto, severidade, trecho, cenario)
-  select v_digest_id, p.ordinal, p.texto, p.severidade, p.trecho, p.cenario
-    from jsonb_populate_recordset(null::public.digest_pegadinhas, p_pegadinhas) p;
+  if (jsonb_array_length(p_pegadinhas) > 0
+        and not exists (select 1 from public.digest_pegadinhas p where p.digest_id = v_digest_id))
+     or (jsonb_array_length(p_ambiguidades) > 0
+        and not exists (select 1 from public.digest_ambiguidades a where a.digest_id = v_digest_id))
+  then
+    return 'incomplete';
+  end if;
 
-  insert into public.digest_ambiguidades (
-    digest_id, ordinal, tipo, trecho, trecho_conflito, leitura_a, leitura_b
-  )
-  select v_digest_id, a.ordinal, a.tipo, a.trecho, a.trecho_conflito, a.leitura_a, a.leitura_b
-    from jsonb_populate_recordset(null::public.digest_ambiguidades, p_ambiguidades) a;
-
-  return 'inserted';
+  return 'duplicate';
 end;
 $function$;
 
 comment on function public.record_rule_digest(jsonb, jsonb, jsonb, jsonb) is
-  'One digest reading (text, digest, traps, ambiguities) in one transaction. Returns inserted, or duplicate when the five-column key already exists, in which case nothing is written. Unknown payload keys raise. Called by src/digest/persist.ts. Issue 88.';
+  'One digest reading (text, digest, traps, ambiguities) in one transaction. Returns inserted; duplicate when the five-column key already exists; incomplete when it exists without the traps or ambiguities the payload carries. Only inserted writes anything. Missing or unknown payload keys raise, and so does a text that does not hash to its description_sha256. Called by src/digest/persist.ts. Issue 88.';
 
 revoke all on function public.record_rule_digest(jsonb, jsonb, jsonb, jsonb)
   from public, anon, authenticated;
