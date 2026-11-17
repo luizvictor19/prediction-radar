@@ -45,8 +45,8 @@ web/next-env.d.ts
 *.tsbuildinfo
 .vercel/
 
-# Keys and certificates. Vite's `server.fs.deny` already refuses to serve
-# these; git has no equivalent, so the pattern is the whole defence.
+# Keys and certificates. Nothing in this repository serves these files, and
+# git has no other guard, so the pattern is the whole defence.
 *.pem
 *.key
 *.p12

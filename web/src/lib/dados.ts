@@ -1,5 +1,8 @@
 import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
 import { chaveDaLinha } from './concordancia';
+// `entrada.ts` imports nothing and reads no environment: its limit is safe in
+// the browser bundle, and the CI canary scan is what proves it.
+import { MAXIMO_DE_IDS } from './servidor/entrada';
 import type { TextoGuardado } from './regulamento';
 import type {
   Contradicao,
@@ -174,9 +177,6 @@ async function carregarIndice(): Promise<CorpusDigerido> {
   return { indice: montarIndice(linhas, [...shaPorDigest.values()]), leiturasPorChave };
 }
 
-/** The route takes at most this many ids per call (`MAXIMO_DE_IDS`). */
-const IDS_POR_PEDIDO = 200;
-
 /**
  * O alcance de cada contradição: em quantos mercados aquele defeito de texto
  * aparece. The ids go in batches, so a market with more findings than one
@@ -184,8 +184,8 @@ const IDS_POR_PEDIDO = 200;
  */
 export async function lerContradicoes(defeitoIds: string[]): Promise<Contradicao[]> {
   const lotes: string[][] = [];
-  for (let i = 0; i < defeitoIds.length; i += IDS_POR_PEDIDO) {
-    lotes.push(defeitoIds.slice(i, i + IDS_POR_PEDIDO));
+  for (let i = 0; i < defeitoIds.length; i += MAXIMO_DE_IDS) {
+    lotes.push(defeitoIds.slice(i, i + MAXIMO_DE_IDS));
   }
   const respostas = await Promise.all(
     lotes.map((ids) =>
