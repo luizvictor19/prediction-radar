@@ -2,6 +2,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 
+import { conferirVariaveisPublicas } from './src/lib/trava-publica';
+
+// Stops `next build` and `next dev` when a NEXT_PUBLIC_ variable names or holds
+// a secret: Next would copy it into the browser bundle.
+conferirVariaveisPublicas(process.env);
+
 /**
  * The repository root. The screen imports three files from `../src/lib`
  * (`prob-self.ts`, `prob-self-outcome.ts`, `polymarket-url.ts`) so that there

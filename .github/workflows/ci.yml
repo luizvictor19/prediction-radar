@@ -64,8 +64,9 @@ jobs:
           RADAR_SENHA: canario-senha-da-tela-no-ci-com-mais-de-24
           RADAR_SEGREDO_DE_SESSAO: canario-segredo-de-sessao-ci
 
-      # Scans web/.next/static, everything a browser can download, byte by
-      # byte for the canaries above.
+      # Scans web/.next/static (the client bundle) and web/.next/server/app (the
+      # prerendered pages, served as they are), byte by byte, for the canaries
+      # above.
       - name: conferir:bundle
         if: ${{ !cancelled() && steps.build-web.outcome == 'success' }}
         run: npm run conferir:bundle
@@ -73,6 +74,19 @@ jobs:
           SUPABASE_SERVICE_KEY: canario-chave-de-servico-ci
           RADAR_SENHA: canario-senha-da-tela-no-ci-com-mais-de-24
           RADAR_SEGREDO_DE_SESSAO: canario-segredo-de-sessao-ci
+
+      # The NEXT_PUBLIC_ guard of web/next.config.ts, proven: with a canary under
+      # a NEXT_PUBLIC_ name the build must stop, and for that reason.
+      - name: build (web) refuses a NEXT_PUBLIC_ secret
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          if npm run build:web > /tmp/prova-next-public.log 2>&1; then
+            echo "o build passou com NEXT_PUBLIC_SUPABASE_SERVICE_KEY definida"
+            exit 1
+          fi
+          grep -q "ABORTADO: NEXT_PUBLIC_SUPABASE_SERVICE_KEY" /tmp/prova-next-public.log
+        env:
+          NEXT_PUBLIC_SUPABASE_SERVICE_KEY: canario-chave-publica-ci
 
       # test:db needs a real Postgres. src/lib/test-db.ts refuses any URL whose
       # host is not this machine, so the stack is a local Supabase started inside

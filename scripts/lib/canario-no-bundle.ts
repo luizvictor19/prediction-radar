@@ -2,9 +2,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 /**
- * The check that the browser bundle of `web/` holds no server secret (issue 85,
- * ADR 0013). CI builds `web/` with canary values in the secret variables and
- * this scans `web/.next/static`, which is everything a browser can download.
+ * The check that what `web/` sends to a browser holds no server secret (issue
+ * 85, ADR 0013). CI builds `web/` with canary values in the secret variables and
+ * this scans `web/.next/static` (the client bundle) and `web/.next/server/app`
+ * (the prerendered `.html` and `.rsc` that are served as they are).
  *
  * Bytes, not lines: `Buffer.indexOf` reads a file with a NUL byte like any
  * other, where `grep` would skip it as binary and report nothing (`CLAUDE.md`,
@@ -49,11 +50,11 @@ export function procurarCanarios(
 }
 
 /**
- * The verdict, with a message for the operator. Only the variable NAMES are
- * ever printed, never a value.
+ * The verdict over every root, with a message for the operator. Only the
+ * variable NAMES are ever printed, never a value.
  */
 export function conferirCanarios(
-  raiz: string,
+  raizes: string[],
   env: Record<string, string | undefined>,
 ): { ok: boolean; mensagem: string } {
   const presentes = VARIAVEIS_SECRETAS.filter((v) => env[v] !== undefined && env[v] !== '');
@@ -73,23 +74,29 @@ export function conferirCanarios(
     };
   }
 
-  if (!existsSync(raiz)) {
-    return { ok: false, mensagem: `${raiz} não existe: rode o build de web/ antes.` };
-  }
   const canarios = presentes.map((v) => env[v]!);
-  const { arquivos, achados } = procurarCanarios(raiz, canarios);
-  if (arquivos === 0) {
-    return { ok: false, mensagem: `${raiz} está vazia: nada foi lido, então nada foi provado.` };
+  let lidos = 0;
+  const linhas: string[] = [];
+  for (const raiz of raizes) {
+    if (!existsSync(raiz)) {
+      return { ok: false, mensagem: `${raiz} não existe: rode o build de web/ antes.` };
+    }
+    const { arquivos, achados } = procurarCanarios(raiz, canarios);
+    // An empty root was not read, and nothing read is nothing proven.
+    if (arquivos === 0) {
+      return { ok: false, mensagem: `${raiz} está vazia: nada foi lido, então nada foi provado.` };
+    }
+    lidos += arquivos;
+    for (const a of achados) linhas.push(`  ${presentes[a.variavel]} em ${raiz}/${a.arquivo}`);
   }
-  if (achados.length > 0) {
-    const linhas = achados.map((a) => `  ${presentes[a.variavel]} em ${a.arquivo}`);
+  if (linhas.length > 0) {
     return {
       ok: false,
-      mensagem: `SEGREDO NO BUNDLE DO NAVEGADOR (${achados.length}):\n${linhas.join('\n')}`,
+      mensagem: `SEGREDO NO QUE VAI PARA O NAVEGADOR (${linhas.length}):\n${linhas.join('\n')}`,
     };
   }
   return {
     ok: true,
-    mensagem: `${arquivos} arquivos lidos em ${raiz}; nenhum contém ${presentes.join(', ')}.`,
+    mensagem: `${lidos} arquivos lidos em ${raizes.join(' e ')}; nenhum contém ${presentes.join(', ')}.`,
   };
 }

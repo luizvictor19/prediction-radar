@@ -76,11 +76,11 @@ test('o veredito: limpo só quando leu arquivo e não achou canário', () => {
   try {
     assert.deepEqual(
       [
-        conferirCanarios(limpa, { SUPABASE_SERVICE_KEY: CANARIO }).ok,
-        conferirCanarios(suja, { SUPABASE_SERVICE_KEY: CANARIO }).ok,
+        conferirCanarios([limpa], { SUPABASE_SERVICE_KEY: CANARIO }).ok,
+        conferirCanarios([suja], { SUPABASE_SERVICE_KEY: CANARIO }).ok,
         // An empty or missing folder is not a clean bundle: it was not read.
-        conferirCanarios(vazia, { SUPABASE_SERVICE_KEY: CANARIO }).ok,
-        conferirCanarios(join(vazia, 'nao-existe'), { SUPABASE_SERVICE_KEY: CANARIO }).ok,
+        conferirCanarios([vazia], { SUPABASE_SERVICE_KEY: CANARIO }).ok,
+        conferirCanarios([join(vazia, 'nao-existe')], { SUPABASE_SERVICE_KEY: CANARIO }).ok,
       ],
       [true, false, false, false],
     );
@@ -93,9 +93,9 @@ test('recusa rodar sem canário, ou com um valor que não é canário', () => {
   const raiz = pasta({ 'a.js': 'x' });
   try {
     const casos = [
-      conferirCanarios(raiz, {}),
-      conferirCanarios(raiz, { SUPABASE_SERVICE_KEY: 'sb_secret_de_verdade' }),
-      conferirCanarios(raiz, { SUPABASE_SERVICE_KEY: CANARIO, RADAR_SENHA: 'senha-real' }),
+      conferirCanarios([raiz], {}),
+      conferirCanarios([raiz], { SUPABASE_SERVICE_KEY: 'sb_secret_de_verdade' }),
+      conferirCanarios([raiz], { SUPABASE_SERVICE_KEY: CANARIO, RADAR_SENHA: 'senha-real' }),
     ];
     assert.deepEqual(
       casos.map((c) => c.ok),
@@ -106,5 +106,21 @@ test('recusa rodar sem canário, ou com um valor que não é canário', () => {
     assert.ok(!casos[1]!.mensagem.includes('sb_secret_de_verdade'), 'a mensagem vazou o valor');
   } finally {
     rmSync(raiz, { recursive: true });
+  }
+});
+
+test('lê também as páginas pré-renderizadas: canário num .html da segunda pasta é achado', () => {
+  const estatico = pasta({ 'chunks/a.js': 'x' });
+  const servidor = pasta({ 'entrar.html': `<p>${CANARIO}</p>`, 'entrar.rsc': 'y' });
+  const env = { SUPABASE_SERVICE_KEY: CANARIO };
+  try {
+    const r = conferirCanarios([estatico, servidor], env);
+    assert.equal(r.ok, false, 'o canário no .html passou');
+    assert.match(r.mensagem, /entrar\.html/, 'a mensagem não nomeia o arquivo');
+    // Each root must hold something: an empty one was not read.
+    assert.equal(conferirCanarios([estatico, pasta({})], env).ok, false);
+  } finally {
+    rmSync(estatico, { recursive: true });
+    rmSync(servidor, { recursive: true });
   }
 });
