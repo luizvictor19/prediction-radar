@@ -56,12 +56,30 @@ import { COLUNAS_CONTAGEM, ordenarContagens, PAGINA } from './paginacao.js';
  * 1200 rows and an `UPDATE` after each page — which rewrites the tuple at the end
  * of the heap, as collection does in production — the result was 0 duplicated and
  * 0 lost. What produces the defect is the size of the sort, not the write.
+ *
+ * ## Sharing the view with other database tests (issue 90)
+ *
+ * The view is global: every digest of any event shows up in it, and other test
+ * files write digests while this one runs (`node --test` runs files in parallel).
+ * So the query stays unfiltered, as in `lerContagens`, and each page is filtered
+ * to the fixture's shas only after it comes back. Filtering the query instead
+ * would change the plan and hide the defect.
+ *
+ * The fixture's event gets the nil uuid as its id. Both orders start with
+ * `event_id`, and the nil uuid sorts before every other uuid, so the fixture
+ * always fills the first `LINHAS` positions: rows another test writes or deletes
+ * while the pages are read sort after it and cannot move a fixture row across a
+ * page boundary. The nil uuid is reserved for this fixture; no other test may
+ * use it as an event id.
  */
 
 /** Read the table above before touching this. 4000 clears the measured frontier. */
 const LINHAS = 4000;
 
 const MARCA = 'teste-paginacao';
+
+/** Sorts before every other uuid. See "Sharing the view" in the header. */
+const EVENTO_DO_FIXTURE = '00000000-0000-0000-0000-000000000000';
 
 // One distinct text per row. The sha has to be the real sha256 of the text:
 // `market_rule_texts_hash_confere` refuses anything else, and the digests' FK
@@ -76,8 +94,15 @@ type Cliente = Extract<Awaited<ReturnType<typeof testDatabase>>, { client: unkno
  * The pages SEPARATED, not the concatenated list: where a row shows up is part of
  * the finding, and an already-flattened list cannot tell "came twice on the same
  * page" from "came on two pages".
+ *
+ * Each page keeps only the fixture's shas, filtered after the query. The raw page
+ * length still decides when paging stops, as in `paginar`.
  */
-async function paginasDe(db: Cliente, ordemTotal: boolean): Promise<string[][]> {
+async function paginasDe(
+  db: Cliente,
+  ordemTotal: boolean,
+  doFixture: ReadonlySet<string>,
+): Promise<string[][]> {
   const paginas: string[][] = [];
   for (let de = 0; ; de += PAGINA) {
     const base = db.from('digest_achados_por_mercado').select(COLUNAS_CONTAGEM);
@@ -89,7 +114,7 @@ async function paginasDe(db: Cliente, ordemTotal: boolean): Promise<string[][]> 
     if (error) throw new Error(error.message);
     // Through `unknown`, like `lerAchados`: the client has no generated types.
     const lote = (data ?? []) as unknown as { description_sha256: string }[];
-    paginas.push(lote.map((l) => l.description_sha256));
+    paginas.push(lote.map((l) => l.description_sha256).filter((sha) => doFixture.has(sha)));
     if (lote.length < PAGINA) return paginas;
   }
 }
@@ -98,6 +123,7 @@ async function semear(db: Cliente): Promise<string> {
   const { data, error } = await db
     .from('events')
     .insert({
+      id: EVENTO_DO_FIXTURE,
       polymarket_id: `${MARCA}-${process.pid}`,
       title: `${MARCA}: offset sob ordem não-total`,
     })
@@ -156,28 +182,15 @@ test(
     // Leftovers from an earlier run that died halfway.
     await limpar(db);
 
-    // The query is `lerContagens`'s, which does NOT filter by market — filtering
-    // changes the plan and the defect does not show up. So the view has to hold
-    // the fixture and nothing else.
-    const { count, error } = await db
-      .from('digest_achados_por_mercado')
-      .select('*', { count: 'exact', head: true });
-    if (error) throw new Error(error.message);
-    assert.equal(
-      count,
-      0,
-      `o banco de teste precisa estar vazio para este teste (a view tem ${count} linhas). ` +
-        'Zere com `supabase stop --no-backup && npm run test:db`.',
-    );
-
     // With a single event_id, `ordenarContagens` orders by the sha, so the
     // expectation is the hex strings sorted, not the seeding order.
     const esperado = Array.from({ length: LINHAS }, (_, i) => hashDescription(texto(i))).sort();
+    const doFixture = new Set(esperado);
 
     await semear(db);
     try {
-      const comOrdemTotal = await paginasDe(db, true);
-      const soPorEventId = await paginasDe(db, false);
+      const comOrdemTotal = await paginasDe(db, true, doFixture);
+      const soPorEventId = await paginasDe(db, false, doFixture);
 
       // --- the claim that matters: the total order pages the whole set --------
       //
@@ -189,11 +202,18 @@ test(
         'ordenarContagens devia devolver as 4000 linhas, cada uma uma vez, em ordem',
       );
 
+      // Rows of other tests sort after the fixture, so the sequence is: the
+      // fixture fills the first pages completely, and every later page (there may
+      // be none, one or many, depending on what else is in the view) holds none.
       const paginasDe500 = Math.ceil(LINHAS / PAGINA);
+      const tamanhos = comOrdemTotal.map((p) => p.length);
       assert.deepEqual(
-        comOrdemTotal.map((p) => p.length),
-        [...Array<number>(paginasDe500).fill(PAGINA), 0],
-        'a sequência de tamanhos de página tem que ser 8 cheias e a última vazia',
+        tamanhos,
+        [
+          ...Array<number>(paginasDe500).fill(PAGINA),
+          ...Array<number>(Math.max(0, tamanhos.length - paginasDe500)).fill(0),
+        ],
+        'linhas do fixture por página: as 8 primeiras cheias e nenhuma depois delas',
       );
 
       const emDuasPaginas = esperado.filter(
