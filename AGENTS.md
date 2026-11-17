@@ -33,15 +33,28 @@ em `CLAUDE.md`. Resumo:
 
 ## Regras inegociáveis
 
-- **Nunca aplicar migration.** Escrever o `.sql` com `supabase migration new` e
-  parar. Quem aplica é o Luiz (`supabase db push`).
-- **Banco: leitura pode, escrita não.** `SELECT` para diagnóstico e medição.
-  Nada de `INSERT`, `UPDATE`, `DELETE`, DDL ou `supabase db push`. Query nova
-  sobre tabela grande é mostrada antes de rodar (ver `CLAUDE.md`).
+- **Migration o Claude aplica, só no ritual.** Escrever o `.sql` com
+  `supabase migration new`. Aplicar da worktree da issue, logo antes do merge:
+  backup lógico fora do repositório, `supabase db push --dry-run`,
+  `supabase db push`, uma query de leitura que confirma, e avisar o Luiz
+  (comandos em `docs/commands.md`). O hook recusa `db push` fora de uma
+  worktree de issue.
+- **Apagar dado precisa do Luiz, por nome, no PR.** Migration ou script que
+  apaga linhas só roda com a aprovação explícita dele no PR, nomeando o que
+  sai. O ritual acima não cobre isso.
+- **Banco: leitura pode, escrita não**, fora a migration do ritual. `SELECT`
+  para diagnóstico e medição. Nada de `INSERT`, `UPDATE`, `DELETE` ou DDL fora
+  de migration. Query nova sobre tabela grande é mostrada antes de rodar (ver
+  `CLAUDE.md`).
 - **Nunca ler `.env`**, nem `web/.env.local`. Variável de ambiente se cita só
   pelo nome.
 - **Nunca commitar em `main`.** Commit, push e PR só dentro do fluxo abaixo.
-- **Nunca mergear** sem o Luiz pedir, nomeando o número do PR.
+- **Mergear só quando valem as condições de "Merge"** (abaixo). Faltou uma:
+  parar e dizer qual.
+- **Rodada paga de modelo:** estimar antes com dry-run. Até US$ 2 estimados,
+  roda sem perguntar; acima disso, pergunta ao Luiz. O resultado é gravado à
+  medida que chega (JSONL, em modo append), para uma queda no meio não jogar
+  fora o que já foi pago.
 - Bug começa com teste que falha.
 - Código morto o git lembra; dado morto some para sempre. Apagar código é
   livre; apagar dado, nunca. Sair do banco não é apagar quando há cópia
@@ -65,12 +78,16 @@ em `CLAUDE.md`. Resumo:
 2. **Plano, como comentário na issue.** Arquivos que mudam, passos, testes,
    riscos e o que fica de fora. Só vira **pergunta** o que muda produção, o
    banco (migration, função, dado gravado) ou a arquitetura. O resto é
-   **decisão**, com uma linha de motivo. Depois de postar o plano, parar.
-3. **Implementar só depois do "aprovado" do Luiz.** A aprovação cobre aquela
-   issue e autoriza a branch, os commits, o push e o PR dela. Branch a partir
-   da `main` atualizada, numa worktree, com nome `type/NN-scope`.
-4. **PR, e parar.** Corpo com `Closes #NN`, o que mudou, o que difere do plano
-   e como testar em no máximo 3 passos. Portão verde. Não mergear.
+   **decisão**, com uma linha de motivo. Plano com pergunta para depois de
+   postado.
+3. **Implementar quando o plano deixa.** Plano só com decisões é implementado
+   logo depois de postado, sem esperar. Plano com pergunta espera o "aprovado"
+   do Luiz. Nos dois casos o plano cobre aquela issue e autoriza a branch, os
+   commits, o push e o PR dela. Branch a partir da `main` atualizada, numa
+   worktree, com nome `type/NN-scope`.
+4. **PR, e merge quando "Merge" deixa.** Corpo com `Closes #NN`, o que mudou,
+   o que difere do plano e como testar em no máximo 3 passos. Portão verde.
+   Faltou uma condição de "Merge": parar ali e dizer qual.
 
 ### No caminho
 
@@ -80,15 +97,58 @@ em `CLAUDE.md`. Resumo:
   na issue. Se a mudança toca produção, banco ou arquitetura, parar e esperar
   nova aprovação.
 
+### Merge
+
+- O Claude mergeia (`gh pr merge NN --merge`) quando todas estas valem:
+  1. o plano foi aprovado pelo Luiz, ou só tinha decisões;
+  2. o CI está verde: `gh pr checks NN --watch --fail-fast`;
+  3. o code-review rodou, quando "Onde vai o rigor" pede;
+  4. a migration do PR, se houver, está aplicada e conferida por uma query de
+     leitura;
+  5. os dois canais de keyword de fechamento foram conferidos (comandos em
+     `CLAUDE.md`).
+
+  Faltou uma: parar e dizer qual. O Luiz também pode pedir um merge, nomeando
+  o número do PR. Depois do merge, da pasta principal (nunca de dentro da
+  worktree que vai sair): pull, remover a worktree, apagar a branch local e a
+  remota (`docs/commands.md`).
+
+- **Merge é deploy.** Como o Railway dispara o deploy mora no painel
+  (ADR 0010), então todo merge conta como deploy. O corpo do PR diz o que cada
+  uma das cinco condições conferiu.
+- **PR com migration:** o Claude roda `supabase db push` da worktree da issue
+  logo antes do merge, depois do code-review, com o backup e o dry-run antes, e
+  avisa o Luiz. Não mergeia antes de a query de leitura mostrar a migration
+  aplicada.
+- **`git rebase`, reset hard e force push continuam bloqueados.** `git merge`
+  só roda para trazer `origin/main` para a branch da issue; o hook recusa
+  qualquer outro merge e qualquer merge na `main`. Trazer a `main` por merge
+  guarda o histórico e não pede force push.
+- Este fluxo vale a partir do merge do PR da issue 84, que o próprio Luiz
+  mergeia: uma regra não autoriza o próprio merge.
+
 ### Quem faz o quê
 
-- **Luiz:** abre ou aprova issues, aprova planos, pede merges, aplica
-  migrations e faz deploy.
+- **Luiz:** abre ou aprova issues e responde as perguntas de um plano. Guarda
+  as contas e chaves (Supabase, Railway, AWS, Vercel), as decisões de produto e
+  de gasto, e a aprovação de todo apagamento de dado. Pode pedir qualquer
+  merge.
 - **Claude Code (terminal):** lê o GitHub, roda comandos, escreve planos,
-  implementa e abre PRs. Abre issue quando o Luiz pede ou quando acha problema
-  fora do escopo.
+  implementa e abre PRs. Traz `origin/main` para as branches de issue, aplica
+  migrations e mergeia, nas condições de "Merge". Abre issue quando o Luiz pede
+  ou quando acha problema fora do escopo.
 - **Guia da semana:** fica fora do repositório (decidido em 03/11/2026). Não
   procurar por ele aqui.
+
+## Onde vai o rigor
+
+- **Alto, onde o erro fica escondido:** coletores, tudo que é gravado no
+  banco, migrations, retenção e tudo que apaga, a guarda da digestão, chamadas
+  pagas.
+- **Baixo, onde a tela mostra o erro na hora:** layout, texto de tela, docs. O
+  portão e uma olhada bastam: decidir e seguir.
+- **Code-review:** uma vez por entrega, sobre o diff inteiro, e só na coluna
+  alta. Nunca para layout, texto de tela ou docs.
 
 ## Git
 

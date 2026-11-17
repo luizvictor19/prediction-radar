@@ -44,24 +44,32 @@ function readStop(reason: Anthropic.Message['stop_reason']): CompletionStop {
  * a resposta e chamadas de ferramenta escritas como texto — e economiza menos
  * que baixar o esforço. Como não passamos `thinking`, vale o padrão do modelo,
  * que é adaptativo.
+ *
+ * Streaming, collected with `finalMessage()`: the SDK refuses a non-streaming
+ * request whose `max_tokens` implies more than 10 minutes (above ~21,333), and
+ * it refuses before sending anything. The digest asks for 32,000, so without
+ * streaming every Claude digest failed locally as `api_error` (issue #58). The
+ * caller still gets one finished message; nothing reads the stream as it comes.
  */
 export const anthropicClient: LlmClient = {
   async complete(request: CompletionRequest): Promise<CompletionResult> {
-    const message = await client().messages.create(
-      {
-        model: request.model,
-        max_tokens: request.maxTokens,
-        system: request.system,
-        messages: [{ role: 'user', content: request.user }],
-        output_config: {
-          ...(request.effort === undefined
-            ? {}
-            : { effort: request.effort as Anthropic.OutputConfig['effort'] }),
-          format: { type: 'json_schema', schema: request.schema },
+    const message = await client()
+      .messages.stream(
+        {
+          model: request.model,
+          max_tokens: request.maxTokens,
+          system: request.system,
+          messages: [{ role: 'user', content: request.user }],
+          output_config: {
+            ...(request.effort === undefined
+              ? {}
+              : { effort: request.effort as Anthropic.OutputConfig['effort'] }),
+            format: { type: 'json_schema', schema: request.schema },
+          },
         },
-      },
-      { signal: AbortSignal.timeout(request.timeoutMs), maxRetries: 0 },
-    );
+        { signal: AbortSignal.timeout(request.timeoutMs), maxRetries: 0 },
+      )
+      .finalMessage();
 
     // Antes de ler `content`: uma recusa devolve HTTP 200 com content vazio, e
     // truncagem devolve JSON pela metade. Os dois passariam por "resposta ok" num

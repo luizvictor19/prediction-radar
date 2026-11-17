@@ -40,6 +40,9 @@ Testes que precisam de Postgres de verdade:
     npm run test:db                         # sobe o Supabase local e roda com RADAR_TEST_DB=required, um arquivo por vez
     npm run test:db:stop                    # derruba a stack local, sem backup
 
+Se outra stack ocupa a porta 54321, os testes de banco pulam com "não é a deste
+projeto" (ou falham, com `RADAR_TEST_DB=required`) antes de qualquer escrita.
+
 ## Abrir o PR
 
     git push -u origin <type>/NN-<scope>
@@ -57,31 +60,80 @@ até 3 passos. `--fill` sozinho não fecha issue (ver `CLAUDE.md`).
 O primeiro lê o corpo do PR; o segundo, o corpo dos commits. Os dois fecham
 issue. Detalhe e incidente em `CLAUDE.md`.
 
-## Mergear o PR NN e limpar (só quando o Luiz pedir)
+## Trazer a main para a branch da issue
 
-Da pasta principal, nunca de dentro da worktree que vai ser removida:
+Quando a branch ficou para trás ou o PR tem conflito. Merge, nunca rebase: o
+histórico fica e não precisa de force push.
 
+    git -C <worktree> fetch origin
+    git -C <worktree> merge origin/main
+
+Depois, o portão de novo na worktree. O hook `.claude/hooks/guard-main.sh`
+recusa qualquer outro merge (de outra branch, `--squash`, `-X`) e qualquer
+merge na `main`; aceita só `--no-edit`, `--no-ff` e `-m <msg>` junto, ou
+`--abort` e `--continue` sozinhos. `git rebase`, `git reset --hard` e force
+push estão na deny list.
+
+## Mergear o PR NN e limpar
+
+O Claude mergeia quando valem as cinco condições de "Merge" no `AGENTS.md`;
+faltou uma, para e diz qual. O Luiz também pode pedir, nomeando o número.
+
+    gh pr checks NN --watch --fail-fast     # condição 2: CI verde
+    # condição 5: os dois canais de keyword (seção acima)
     gh pr merge NN --merge
+
+Depois, da pasta principal, nunca de dentro da worktree que vai ser removida:
+
     git pull --ff-only origin main
     git worktree remove .claude/worktrees/<type>-NN-<scope>
     git branch -d <type>/NN-<scope>
-    git push origin --delete <type>/NN-<scope>
+    gh api -X DELETE repos/luizvictor19/prediction-radar/git/refs/heads/<type>/NN-<scope>
+
+A branch remota sai pela API: o hook recusa todo push feito da `main`,
+inclusive o `git push origin --delete` que só apaga uma branch.
 
 Squash só se o Luiz pedir no mesmo pedido.
 
 ## Migrations
 
-Escrever e parar:
+Escrever:
 
     supabase migration new <nome>           # cria supabase/migrations/<timestamp>_<nome>.sql
 
 Comentário `--` em inglês; `comment on` segue os vizinhos da mesma tabela.
-Quem aplica é o Luiz, da worktree que tem o arquivo:
 
-    supabase db push                        # só o Luiz
+Aplicar é do Claude, logo antes do merge do PR que traz o arquivo, depois do
+code-review, e sempre da worktree da issue: o hook recusa `supabase db push`
+da pasta principal, de uma worktree na `main` e de fora do repositório.
+Migration que apaga linhas só é aplicada com a aprovação explícita do Luiz,
+por nome, no PR.
 
-`db push`, `db reset`, `db pull`, `migration up` e `psql` estão na deny list
-de `.claude/settings.json`.
+    cd .claude/worktrees/<type>-NN-<scope>
+    supabase link --project-ref "$(cat ../../../supabase/.temp/project-ref)"   # uma vez por worktree
+    B=~/backups/prediction-radar/$(date +%F)-<nome>
+    mkdir -p "$B"
+    git fetch -q origin && git rev-parse origin/main > "$B/commit"   # o que a produção roda antes do push
+    supabase db dump --linked --role-only -f "$B/roles.sql"
+    supabase db dump --linked -f "$B/schema.sql"
+    supabase db dump --linked --data-only --use-copy -f "$B/data.sql"
+    supabase db push --dry-run              # tem que listar só as migrations deste PR
+    supabase db push
+    supabase db query --linked "select version from supabase_migrations.schema_migrations order by version desc limit 5" -o json
+
+A versão nova tem que aparecer na última query; só então mergear. Se o
+dry-run listar qualquer outra migration, parar e dizer qual. Depois do push,
+avisar o Luiz: qual migration, o que o dry-run listou e onde está o backup.
+
+O backup vai para disco, fora do repositório e nunca para dentro do banco (a
+cota do Free é de 0,5 GB para a organização inteira, issue 63). O dump de
+dados lê o banco inteiro: é leitura pesada (ver `CLAUDE.md`), e tabela grande
+que a migration não toca pode sair com `-x public.<tabela>`. Se o `link`, o
+`dump` ou o `push` pedir a senha do banco, parar e perguntar ao Luiz onde ela
+fica; ela nunca entra no repositório nem num chat.
+
+`db reset`, `db pull`, `migration up` e `psql` continuam na deny list de
+`.claude/settings.json`.
 
 Funções do banco chamadas por `rpc`: `record_rule_digest` grava uma leitura
 da digestão (texto, digestão, pegadinhas, ambiguidades) numa transação só e
@@ -112,8 +164,9 @@ Todo mês, a partir do dia 9 do mês seguinte:
     confere com `rclone check --download` e escreve a migration do drop. Não
     apaga nem sobrescreve nada: pasta ou arquivo que já existe faz parar.
 
-3.  Copiar a migration gerada para a branch, PR, e o Luiz aplica
-    (`supabase db push`). O DROP devolve o disco na hora, sem VACUUM.
+3.  Copiar a migration gerada para a branch e abrir o PR. O DROP apaga dado
+    do banco: só é aplicado (Migrations, acima) com a aprovação do Luiz, por
+    nome, no PR. O DROP devolve o disco na hora, sem VACUUM.
 
 A cópia local fica em `~/arquivo-frio-radar/radar-YYYY-MM/`.
 
@@ -167,9 +220,8 @@ Radar e digestão:
     npm run carregar-digest
     npm run nivelar
 
-Sondas e backfills (`*:probe`, `backfill:*`, `xtracker:*`, `leadlag:*`) são
-pontuais. Antes de rodar, ler o cabeçalho do script: vários pagam API.
-`npm run oddspapi:probe` está na deny list.
+O backfill `backfill:texto-da-regra` é pontual. Antes de rodar, ler o
+cabeçalho do script: sem `--confirmar` ele só planeja e não escreve.
 
 ## Labels (planejadas, ainda não criadas)
 

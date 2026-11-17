@@ -201,9 +201,9 @@ const outcome = (component: string, label: string, staleMin: number) => ({
 });
 
 test('a mensagem nomeia o componente, o tempo parado e o limiar', () => {
-  const msg = buildDownMessage([outcome('discovery_collector', 'Descoberta', 52)]);
-  assert.match(msg, /Descoberta/);
-  assert.match(msg, /discovery_collector/);
+  const msg = buildDownMessage([outcome('resolved_detector', 'Auto-resolver', 52)]);
+  assert.match(msg, /Auto-resolver/);
+  assert.match(msg, /resolved_detector/);
   assert.match(msg, /52min/);
   assert.match(msg, /15min/);
   assert.match(msg, /stop: page_cap/);
@@ -214,20 +214,20 @@ test('todos parados juntos aponta para o processo, não para os coletores', () =
   const all = MONITORED_COMPONENTS.map((m) => outcome(m.component, m.label, 30));
   assert.match(buildDownMessage(all), /processo caiu/);
 
-  const one = [outcome('discovery_collector', 'Descoberta', 30)];
+  const one = [outcome('resolved_detector', 'Auto-resolver', 30)];
   assert.doesNotMatch(buildDownMessage(one), /processo caiu/);
 });
 
 test('a mensagem de normalização diz por quanto tempo ficou parado', () => {
   const msg = buildRecoveredMessage([
     {
-      component: 'watchlist_collector',
-      label: 'Watchlist',
+      component: 'open_legs_collector',
+      label: 'Open legs',
       heartbeat: undefined,
       action: { kind: 'recovered', downMs: 134 * 60_000 },
     },
   ]);
-  assert.match(msg, /Watchlist/);
+  assert.match(msg, /Open legs/);
   assert.match(msg, /2h 14min/);
 });
 

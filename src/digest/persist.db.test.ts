@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SKIP_REASON, testDatabase } from '../lib/test-db.js';
+import { testDatabase } from '../lib/test-db.js';
 import { hashDescription, type DigestOutput, type DigestResult } from './digest.js';
 import { recordDigest, type RecordOutcome } from './persist.js';
 import { buildDigestRows, type DigestRows } from './rows.js';
@@ -20,7 +20,7 @@ import type { MarketToDigest } from './store.js';
 
 const MARCA = 'teste-gravacao-atomica';
 
-type Cliente = NonNullable<Awaited<ReturnType<typeof testDatabase>>>;
+type Cliente = Extract<Awaited<ReturnType<typeof testDatabase>>, { client: unknown }>['client'];
 
 interface Contagem {
   textos: number;
@@ -163,8 +163,9 @@ async function comBanco(
   t: { skip: (reason: string) => void },
   corpo: (db: Cliente) => Promise<void>,
 ): Promise<void> {
-  const db = await testDatabase();
-  if (db === null) return t.skip(SKIP_REASON);
+  const banco = await testDatabase();
+  if ('skipReason' in banco) return t.skip(banco.skipReason);
+  const db = banco.client;
   await limpar(db);
   try {
     await corpo(db);

@@ -90,6 +90,10 @@ const MODEL_PRICING: Record<string, ModelPrice> = {
   'deepseek-v4-pro': { input: 0.435, output: 0.87 },
   'claude-sonnet-5': { input: 3, output: 15 },
   'claude-haiku-4-5': { input: 1, output: 5 },
+  // Official pricing page, 2026-11-04. Valid for prompts up to 100K tokens; the
+  // digest prompt is a few thousand. Cache reads cost US$ 0.01, which is the
+  // 0.1x that `estimateCostUsd` already applies (issue #58).
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
 };
 
 export function knownModel(model: string): boolean {

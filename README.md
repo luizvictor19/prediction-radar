@@ -243,8 +243,10 @@ ones behind a decision write a dated report into `probes/` rather than printing
 and vanishing: `npm run medir:tela-regra` and `medir:digest-nulo` do;
 `medir:idioma` and `medir:texto-perdido` print to stdout.
 
-Migrations are written but never applied by the tooling: `supabase migration new`
-produces the `.sql`, and applying it is a human decision. There are 48 of them.
+Migrations are written with `supabase migration new` and applied from the
+issue's worktree right before its merge, after a logical backup and a dry run
+(see `AGENTS.md`); one that deletes rows needs the owner's approval, by name, in
+the PR. There are 48 of them.
 
 ---
 
