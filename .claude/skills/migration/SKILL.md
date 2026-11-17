@@ -7,7 +7,8 @@ description: The ritual for a database migration in prediction-radar, from measu
 
 Adapted from chelsea-st-app. This repository has no RLS policies to verify and
 no generated types, so those two steps are not here. What is left is the part
-that cost something every time it was skipped: measure, write, stop, report.
+that cost something every time it was skipped: measure, write, apply only in
+the ritual, report.
 
 ## Steps
 
@@ -21,11 +22,16 @@ that cost something every time it was skipped: measure, write, stop, report.
      with no index there is a production incident, not a lookup.
    - `psql` is denied. Read through a script under `scripts/medicoes/`, which
      is also how the number gets a command that can redo it.
-2. **Write it, never apply it.** Create the file with
-   `supabase migration new <name>` and stop there. Name it for what the change
-   means, not for the mechanics (`prob_self_tem_lado`, not `alter_column`).
-   Luiz applies. `supabase db push`, `db reset`, `db pull`, `migration up` and
-   `psql` are on the deny list; do not look for an equivalent path around them.
+2. **Write it; apply it only in the ritual.** Create the file with
+   `supabase migration new <name>`. Name it for what the change means, not for
+   the mechanics (`prob_self_tem_lado`, not `alter_column`). It is applied from
+   the issue worktree right before the merge, after code-review, with a
+   logical backup and `supabase db push --dry-run` first (Migrations in
+   `docs/commands.md`, conditions in "Merge" in `AGENTS.md`); the guard-main
+   hook denies `db push` anywhere else. A migration that deletes rows waits
+   for Luiz's explicit approval, by name, in the PR. `db reset`, `db pull`,
+   `migration up` and `psql` stay on the deny list; do not look for an
+   equivalent path around them.
 3. **Language.** `--` comments are code comments: English. A `comment on` is a
    schema object and follows the language of the neighbouring comments on the
    same table. Older migrations stay as they are.
@@ -44,8 +50,8 @@ that cost something every time it was skipped: measure, write, stop, report.
    - the numbers measured in step 1, with the date and the command that
      produced them;
    - the review findings, with what was fixed and what was not, and why;
-   - the reminder that the migration is written and NOT applied, so nothing
-     that depends on it runs or deploys until Luiz applies it.
+   - whether the migration is applied, with the read query that confirms it.
+     Until it is, nothing that depends on it runs or deploys.
 
 ## Known traps
 
