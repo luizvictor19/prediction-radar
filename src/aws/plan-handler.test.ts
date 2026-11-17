@@ -144,7 +144,27 @@ test('plano: o corte de 100 vale e cada item leva o hash do texto atual', async 
   const { handler } = setup({ markets });
   const plan = await handler({});
   assert.equal(plan.items.length, 100);
-  assert.equal(plan.items[0]?.sha256, hashDescription('Rule text of m000.'));
+  for (const item of plan.items) {
+    assert.equal(item.sha256, hashDescription(`Rule text of ${item.event_id}.`));
+  }
+});
+
+test('plano: a ordem gira por dia, para falhas repetidas não ocuparem o corte para sempre', async () => {
+  const markets = Array.from({ length: 150 }, (_, i) => market(`m${String(i).padStart(3, '0')}`));
+  const { handler } = setup({ markets });
+  const day1 = await handler({ run_started_at: '2026-11-17T09:00:00.000Z' });
+  const day1Retry = await handler({ run_started_at: '2026-11-17T09:00:00.000Z' });
+  const day2 = await handler({ run_started_at: '2026-11-18T09:00:00.000Z' });
+  const ids = (plan: { items: { event_id: string }[] }) => plan.items.map((i) => i.event_id);
+  assert.deepEqual(ids(day1Retry), ids(day1), 'o mesmo dia tem que montar a mesma lista');
+  const union = new Set([...ids(day1), ...ids(day2)]);
+  assert.ok(union.size > 100, `dois dias leram só ${union.size} mercados distintos`);
+});
+
+test('plano: índice do que já foi lido incompleto derruba a corrida em vez de reler tudo', async () => {
+  const partial = { ...index(), tabelaExiste: false };
+  const { handler } = setup({ markets: [market('a')], digested: partial });
+  await assert.rejects(handler({}), /market_rule_digests/);
 });
 
 test('plano: carrega modelo, versão, prazo e o início da corrida para as leituras', async () => {

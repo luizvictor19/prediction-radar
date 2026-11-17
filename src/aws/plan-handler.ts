@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
+
 import { hashDescription, knownModel } from '../digest/digest.js';
 import { jaDigerido, type DigestedIndex } from '../digest/leituras.js';
-import { filtrarDigeriveis } from '../digest/queue.js';
+import { filterDigestible } from '../digest/queue.js';
 import type { MarketToDigest } from '../digest/store.js';
 import { DEFAULT_MODEL_ROUTES, routeFor } from '../llm/registry.js';
 import { monthOf } from './record-store.js';
@@ -59,6 +61,20 @@ export interface PlanDeps {
 const COMPONENT = 'aws_digest_plan';
 const DEFAULT_MAX_ITEMS = 100;
 
+/**
+ * The order in which pending markets enter a run: a hash of the run's UTC day
+ * and the event id.
+ *
+ * Not id order. A market whose reading keeps failing (invalid output,
+ * truncation, refusal) is never written, so it stays pending; in a fixed order
+ * 100 of them at the front would take every run and nothing behind them would
+ * ever be read. A different order per day lets the rest through. Same day,
+ * same order, so a retried plan task builds the same list.
+ */
+function rotationKey(day: string, eventId: string): string {
+  return createHash('sha256').update(`${day}|${eventId}`).digest('hex');
+}
+
 function runStart(input: PlanInput, now: () => Date): string {
   const given = input.run_started_at;
   if (typeof given === 'string' && !Number.isNaN(Date.parse(given))) return given;
@@ -96,13 +112,21 @@ export function createPlanHandler(deps: PlanDeps): (input: PlanInput) => Promise
     const spent = await deps.readSpend(monthOf(now()));
     if (spent >= deps.monthlyCapUsd) return finish('BUDGET', [], { spent_usd: spent });
 
-    const markets = await deps.readMarkets();
-    const { digeriveis, descartados } = filtrarDigeriveis(markets);
-    const digested = await deps.readDigested();
+    const [markets, digested] = await Promise.all([deps.readMarkets(), deps.readDigested()]);
+    // `readDigested` answers `tabelaExiste: false` on ANY read error, with
+    // whatever pages it got. The table exists in production, so here that flag
+    // means a partial index, and a plan built on it would send already-read
+    // markets to be read again. Failing the run is the honest outcome.
+    if (!digested.tabelaExiste) {
+      throw new Error(
+        'leitura de market_rule_digests falhou: o índice do que já foi lido veio incompleto',
+      );
+    }
+    const { digestible, discarded } = filterDigestible(markets);
 
     const pending: PlanItem[] = [];
     let alreadyRead = 0;
-    for (const market of digeriveis) {
+    for (const market of digestible) {
       const sha256 = hashDescription(market.input.description);
       const key = {
         eventId: market.eventId,
@@ -117,11 +141,16 @@ export function createPlanHandler(deps: PlanDeps): (input: PlanInput) => Promise
       pending.push({ event_id: market.eventId, sha256 });
     }
 
-    const items = pending.slice(0, maxItems);
+    const day = base.run_started_at.slice(0, 10);
+    const ordered = pending
+      .map((item) => ({ item, key: rotationKey(day, item.event_id) }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map(({ item }) => item);
+    const items = ordered.slice(0, maxItems);
     return finish('OK', items, {
       spent_usd: spent,
       roster: markets.length,
-      descartados_por_status: Object.fromEntries(descartados),
+      descartados_por_status: Object.fromEntries(discarded),
       ja_lidos: alreadyRead,
       fora_do_corte: pending.length - items.length,
     });
