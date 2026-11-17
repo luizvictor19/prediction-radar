@@ -19,8 +19,8 @@ test('rota: deepseek-v4-flash vai para a DeepSeek com o mesmo id', () => {
 });
 
 test('rota: modelo fora da tabela devolve null, mesmo com prefixo conhecido', () => {
-  // `providerFor` aceitaria pelo prefixo; a tabela de rotas não, e é de propósito:
-  // modelo sem rota declarada para a corrida antes de qualquer chamada paga.
+  // `providerFor` would accept it by prefix; the route table does not, on
+  // purpose: a model with no declared route stops the run before a paid call.
   assert.equal(routeFor('claude-sonnet-5'), null);
   assert.equal(routeFor('gpt-5'), null);
 });
