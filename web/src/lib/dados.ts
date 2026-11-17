@@ -1,115 +1,72 @@
-import { supabase } from './supabase';
 import { montarIndice, type IndiceDeBoilerplate, type LinhaDeTrecho } from './boilerplate';
 import { chaveDaLinha } from './concordancia';
-import { COLUNAS_CONTAGEM, ordenarContagens, paginar, type Resposta } from './paginacao';
 import type { TextoGuardado } from './regulamento';
 import type {
-  Achado,
   Contradicao,
   ContagemDigest,
+  CorpusCru,
   LeituraRegra,
+  Leg,
   LinhaAchados,
   MercadoRadar,
+  Previsao,
 } from './tipos';
 
 /**
- * As leituras do banco. Todas são SELECT sobre view, exceto o texto original da
- * regra (que é lookup por chave primária em `events`) e as duas escritas do
- * final.
+ * The screen's access to the database, from the browser.
  *
- * Nenhuma varre `events`, `polymarket_snapshots` ou `system_logs`: o timeout do
- * PostgREST é de 8s e um seq scan nos 711 MB de `events` é incidente de
- * produção, não consulta.
+ * Since issue 85 there is no database client here. Each function calls one
+ * route handler under `/api`, which runs the query on the server with the
+ * service key (`servidor/consultas.ts`) after checking the session. The
+ * exported names and types are the ones the screens already used, so the
+ * screens did not change.
  */
 
-// `PAGINA`, `paginar`, `COLUNAS_CONTAGEM` and the counts' ordering live in
-// `paginacao.ts` since issue #6: this module loads the browser client, and a
-// Node test cannot import it. See the header over there.
+export type { Leg, Previsao };
 
-const COLUNAS_RADAR = [
-  'id',
-  'slug',
-  // `event_group_slug` entra AQUI quando
-  // `20260825024030_v_radar_expoe_event_group_slug.sql` for aplicada. Pedir
-  // agora derruba a query inteira: a view ainda não tem a coluna. Até lá
-  // `urlPolymarket` recebe `undefined` e cai no fallback `/market/<slug>`, que
-  // foi medido abrindo 55/55 no mercado certo.
-  'pergunta',
-  'categoria',
-  'tema',
-  'assunto',
-  'outcome',
-  'best_bid',
-  'best_ask',
-  'mid_price',
-  'spread',
-  'preco_em',
-  'preco_idade_min',
-  'var_24h',
-  'var_24h_base',
-  'var_7d',
-  'var_7d_base',
-  'liquidez',
-  'fecha_em',
-  'dias_restantes',
-  'tamanho_regra',
-  'prob_self',
-  'prob_self_em',
-  'prob_self_estrategia',
-].join(', ');
+/**
+ * One call to a route. A 401 means the session ended (expired, or the password
+ * changed): the browser goes back to the login page. Any other failure carries
+ * the server's message, which for a query is the database's own.
+ */
+async function pedir<T>(caminho: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(caminho, { ...init, credentials: 'same-origin', cache: 'no-store' });
+  if (r.status === 401) {
+    window.location.assign('/entrar');
+    throw new Error('a sessão acabou: entre de novo');
+  }
+  const corpo: unknown = await r.json().catch(() => null);
+  if (!r.ok) {
+    const erro = (corpo as { erro?: unknown } | null)?.erro;
+    throw new Error(typeof erro === 'string' ? erro : `HTTP ${r.status} em ${caminho}`);
+  }
+  return corpo as T;
+}
+
+function enviar<T>(caminho: string, dados: unknown): Promise<T> {
+  return pedir<T>(caminho, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(dados),
+  });
+}
 
 export function lerRadar(): Promise<MercadoRadar[]> {
-  return paginar<MercadoRadar>((de, ate) =>
-    supabase.from('v_radar').select(COLUNAS_RADAR).order('id').range(de, ate),
-  );
+  return pedir('/api/radar');
 }
 
-/**
- * As contagens da digestão, sem o jsonb `achados` — que é o campo pesado e só
- * faz falta quando um mercado é aberto.
- *
- * The ordering comes from `ordenarContagens`, and it is a TOTAL order because
- * pagination requires one — the why is in `paginacao.ts`, next to the test that
- * measures it.
- */
 export function lerContagens(): Promise<ContagemDigest[]> {
-  return paginar<ContagemDigest>((de, ate) =>
-    ordenarContagens(supabase.from('digest_achados_por_mercado').select(COLUNAS_CONTAGEM)).range(
-      de,
-      ate,
-    ),
+  return pedir('/api/contagens');
+}
+
+export function lerAchados(eventId: string): Promise<LinhaAchados[]> {
+  return pedir(`/api/mercados/${encodeURIComponent(eventId)}/achados`);
+}
+
+export function lerLeituras(eventId: string, sha: string): Promise<LeituraRegra[]> {
+  return pedir(
+    `/api/mercados/${encodeURIComponent(eventId)}/leituras?sha=${encodeURIComponent(sha)}`,
   );
-}
-
-/**
- * A digestão de um mercado, agora com os achados.
- *
- * Devolve LISTA e não um objeto: a granularidade da view é (mercado, texto de
- * regra). Hoje nenhum mercado tem dois textos, mas a Polymarket editar uma
- * descrição produz a segunda linha — e `.single()` passaria a estourar em
- * produção no dia em que isso acontecesse.
- */
-export async function lerAchados(eventId: string): Promise<LinhaAchados[]> {
-  const { data, error } = await supabase
-    .from('digest_achados_por_mercado')
-    .select(`${COLUNAS_CONTAGEM}, slug, title, achados`)
-    .eq('event_id', eventId);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as LinhaAchados[];
-}
-
-/** Todas as leituras de UM texto de regra dentro de UM mercado. */
-export async function lerLeituras(eventId: string, sha: string): Promise<LeituraRegra[]> {
-  const { data, error } = await supabase
-    .from('market_rule_digests')
-    .select(
-      'id, event_id, description_sha256, leitura_n, resolve_sim, resolve_nao, fonte, prazo, anula_se, model, prompt_version, created_at',
-    )
-    .eq('event_id', eventId)
-    .eq('description_sha256', sha)
-    .order('leitura_n');
-  if (error) throw new Error(error.message);
-  return (data ?? []) as LeituraRegra[];
 }
 
 /**
@@ -133,6 +90,10 @@ export async function lerLeituras(eventId: string, sha: string): Promise<Leitura
  * `market_rule_digests`, 3980 em `digest_pegadinhas`, 3252 em
  * `digest_ambiguidades` — cerca de 8,5 mil linhas, ~10 idas ao servidor pela
  * paginação de 500. Uma vez por sessão.
+ *
+ * Since issue 85 the three reads run on the server (`/api/corpus`) and arrive
+ * as one response; the index is still built here, from those rows, because it
+ * holds `Map`s and JSON does not carry them.
  *
  * ## Uma promessa em voo, reaproveitada
  *
@@ -169,41 +130,7 @@ export function lerCorpusDigerido(): Promise<CorpusDigerido> {
 }
 
 async function carregarIndice(): Promise<CorpusDigerido> {
-  type LinhaDigest = { id: string; description_sha256: string };
-  type LinhaFilha = {
-    digest_id: string;
-    tipo: string | null;
-    trecho: string | null;
-    trecho_conflito?: string | null;
-  };
-
-  const [digests, pegadinhas, ambiguidades] = await Promise.all([
-    paginar<LinhaDigest>((de, ate) =>
-      supabase
-        .from('market_rule_digests')
-        .select('id, description_sha256')
-        .order('id')
-        .range(de, ate),
-    ),
-    paginar<LinhaFilha>((de, ate) =>
-      supabase
-        .from('digest_pegadinhas')
-        // `severidade` vira `tipo`: é o campo que `montarIndice` lê, e na
-        // pegadinha a severidade é o subtipo.
-        .select('digest_id, tipo:severidade, trecho')
-        .order('id')
-        .range(de, ate),
-    ),
-    paginar<LinhaFilha>((de, ate) =>
-      supabase
-        .from('digest_ambiguidades')
-        // `trecho_conflito` entra por causa da contradição interna: a chave dela
-        // são as DUAS passagens.
-        .select('digest_id, tipo, trecho, trecho_conflito')
-        .order('id')
-        .range(de, ate),
-    ),
-  ]);
+  const { digests, pegadinhas, ambiguidades } = await pedir<CorpusCru>('/api/corpus');
 
   const shaPorDigest = new Map(digests.map((d) => [d.id, d.description_sha256]));
 
@@ -247,167 +174,50 @@ async function carregarIndice(): Promise<CorpusDigerido> {
   return { indice: montarIndice(linhas, [...shaPorDigest.values()]), leiturasPorChave };
 }
 
+/** The route takes at most this many ids per call (`MAXIMO_DE_IDS`). */
+const IDS_POR_PEDIDO = 200;
+
 /**
  * O alcance de cada contradição: em quantos mercados aquele defeito de texto
- * aparece.
- *
- * `digest_contradicoes` não expõe `event_id` em lugar nenhum — nem no jsonb. A
- * ponte é que `achados[].achado_id` de classe `contradicao` é o MESMO md5 que
- * `defeito_id` (mesma fórmula nas duas migrations, declarado em
- * `20260817040920_...sql:439`). Ligar por `slug` seria o outro caminho, e slug
- * é nullable e não-unique.
+ * aparece. The ids go in batches, so a market with more findings than one
+ * request takes still gets every one.
  */
 export async function lerContradicoes(defeitoIds: string[]): Promise<Contradicao[]> {
-  if (defeitoIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from('digest_contradicoes')
-    .select(
-      'defeito_id, mercados_atingidos, mercados_acusados, mercados_herdados, textos_de_regra, liquidez_total, trecho, trecho_conflito',
-    )
-    .in('defeito_id', defeitoIds);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Contradicao[];
-}
-
-/**
- * The market's CURRENT description. Primary-key lookup -- a one-row index scan,
- * not a table scan.
- *
- * "Current" is the word that matters: `events.description` is overwritten in
- * place when Polymarket edits the rule, so this can be a different document from
- * the one that produced the findings. What decides whether it serves is
- * `escolherRegulamento`, and its answer depends on the hash.
- */
-export async function lerTextoDaRegra(eventId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('events')
-    .select('description')
-    .eq('id', eventId)
-    .single();
-  if (error) throw new Error(error.message);
-  return (data as { description: string | null } | null)?.description ?? null;
-}
-
-/**
- * Does the table not exist, or did the query fail?
- *
- * Both arrive as an error and they mean the opposite of each other. A missing
- * table is an ANSWER -- before the `20260823190031` apply no text is stored, and
- * that is what the screen should say. A network failure is the absence of an
- * answer, and asserting "not stored" on top of it would accuse the database of a
- * loss that may not exist.
- *
- * `42P01` is Postgres's `undefined_table`; `PGRST205` is PostgREST's "no such
- * table in the schema cache", which is what arrives first in practice.
- */
-function tabelaAusente(error: { code?: string; message: string }): boolean {
-  if (error.code === '42P01' || error.code === 'PGRST205') return true;
-  return (
-    /market_rule_texts/.test(error.message) && /(does not exist|not find)/i.test(error.message)
-  );
-}
-
-/**
- * The rule text stored under a hash -- `market_rule_texts`, issue #9.
- *
- * It is the screen's only read that does not depend on `events`: the digested
- * text is here because it was stored at the moment of digestion (or recovered by
- * the backfill while that was still possible), and it stays here after Polymarket
- * edits the description. Primary-key lookup on a table of a few hundred rows.
- */
-export async function lerTextoGuardado(sha: string): Promise<TextoGuardado> {
-  const { data, error } = await supabase
-    .from('market_rule_texts')
-    .select('description')
-    .eq('description_sha256', sha)
-    .maybeSingle();
-
-  if (error) {
-    const e = error as { code?: string; message: string };
-    return tabelaAusente(e) ? { fase: 'ausente' } : { fase: 'erro', motivo: e.message };
+  const lotes: string[][] = [];
+  for (let i = 0; i < defeitoIds.length; i += IDS_POR_PEDIDO) {
+    lotes.push(defeitoIds.slice(i, i + IDS_POR_PEDIDO));
   }
-
-  const linha = data as { description: string } | null;
-  return linha === null ? { fase: 'ausente' } : { fase: 'guardado', texto: linha.description };
+  const respostas = await Promise.all(
+    lotes.map((ids) =>
+      pedir<Contradicao[]>(`/api/contradicoes?ids=${ids.map(encodeURIComponent).join(',')}`),
+    ),
+  );
+  return respostas.flat();
 }
 
-export type Previsao = {
-  eventId: string;
-  /** Em 0–1, como sai de `lerProbabilidade`. Nunca em %. */
-  prob: number;
-  categoria: string | null;
-  nota: string | null;
-  precoMercado: number | null;
-  precoMercadoEm: string | null;
-  precoMercadoOutcome: string | null;
-  /**
-   * Which outcome the probability is about.
-   *
-   * Same value as `precoMercadoOutcome` on this screen, and a separate field
-   * on purpose: they are two different facts that happen to coincide. The
-   * price's side is whatever the last snapshot quoted; the probability's side
-   * is what the person was answering about. They only agree because the screen
-   * now names the side in the question, and the day the collector changes,
-   * one of the two moves and the other does not.
-   */
-  probSelfOutcome: string | null;
-};
+/** The market's CURRENT description; see `lerTextoDaRegra` in `servidor/consultas.ts`. */
+export async function lerTextoDaRegra(eventId: string): Promise<string | null> {
+  const r = await pedir<{ texto: string | null }>(
+    `/api/mercados/${encodeURIComponent(eventId)}/texto`,
+  );
+  return r.texto;
+}
+
+/** The rule text stored under a hash -- `market_rule_texts`, issue #9. */
+export function lerTextoGuardado(sha: string): Promise<TextoGuardado> {
+  return pedir(`/api/textos/${encodeURIComponent(sha)}`);
+}
 
 /**
- * Grava a previsão: uma linha de `my_bets` SEM leg.
- *
- * Bet sem leg é previsão sem operação — derivável, sem flag. Auditado em
- * 19/08/2026: `v_minhas_posicoes`, `bankroll.ts`, `/positions`, `/status`,
- * `/edit` e o `resolved-detector` são todos dirigidos pela leg e ignoram esta
- * linha. Ver `CONTEXTO-RADAR.md`.
- *
- * `placed_at` NÃO é enviado: o default é `now()` do Postgres. O relógio do
- * navegador não decide a hora de uma previsão datada.
+ * Grava a previsão: uma linha de `my_bets` SEM leg. The row is built on the
+ * server, from a whitelist (`servidor/entrada.ts`); `placed_at` stays the
+ * database's `now()`.
  */
 export async function gravarPrevisao(p: Previsao): Promise<string> {
-  const linha: Record<string, unknown> = {
-    event_id: p.eventId,
-    prob_self: p.prob,
-    estrategia: 'radar',
-    polymarket_category: p.categoria,
-    preco_mercado: p.precoMercado,
-    preco_mercado_em: p.precoMercadoEm,
-    preco_mercado_outcome: p.precoMercadoOutcome,
-    prob_self_outcome: p.probSelfOutcome,
-  };
-  if (p.nota) {
-    linha['thesis'] = p.nota;
-    linha['thesis_type'] = 'radar';
-  }
-
-  const { data, error } = await supabase.from('my_bets').insert(linha).select('id').single();
-  if (error) throw new Error(error.message);
-  return (data as { id: string }).id;
+  return (await enviar<{ id: string }>('/api/previsoes', p)).id;
 }
 
-export type Leg = {
-  betId: string;
-  eventId: string;
-  outcome: string;
-  entryPrice: number;
-  stakeUsd: number;
-};
-
-/**
- * A operação, depois. Opcional — o campo obrigatório é a probabilidade.
- *
- * `preco_mercado` da leg fica NULO de propósito: a linha de base já foi gravada
- * no bet, no instante da previsão, que é o instante que importa. Repetir aqui o
- * preço de agora seria uma segunda base, medida depois de operar.
- */
+/** A operação, depois. `shares` is computed on the server. */
 export async function gravarLeg(l: Leg): Promise<void> {
-  const { error } = await supabase.from('my_bet_legs').insert({
-    bet_id: l.betId,
-    event_id: l.eventId,
-    outcome: l.outcome,
-    entry_price: l.entryPrice,
-    stake_usd: l.stakeUsd,
-    shares: Math.round((l.stakeUsd / l.entryPrice) * 10000) / 10000,
-  });
-  if (error) throw new Error(error.message);
+  await enviar('/api/legs', l);
 }

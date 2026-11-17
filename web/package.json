@@ -3,22 +3,25 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "dev": "next dev -H 127.0.0.1 -p 5173",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 5173",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "next": "16.4.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.0.5",
-    "typescript": "^7.0.2",
-    "vite": "^8.2.4"
+    "typescript": "^7.0.2"
   }
 }

@@ -10,6 +10,9 @@ node_modules/
 dist/
 coverage/
 web/dist/
+web/.next/
+web/next-env.d.ts
+.vercel/
 package-lock.json
 web/package-lock.json
 supabase/.temp/

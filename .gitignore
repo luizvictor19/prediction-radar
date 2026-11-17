@@ -38,6 +38,13 @@ probes/digest/degrau-3-v4.md
 web/node_modules/
 web/.env.local
 
+# Next.js build output and generated types (issue 85), and the Vercel CLI's
+# local link, which names the project.
+web/.next/
+web/next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
 # Keys and certificates. Vite's `server.fs.deny` already refuses to serve
 # these; git has no equivalent, so the pattern is the whole defence.
 *.pem

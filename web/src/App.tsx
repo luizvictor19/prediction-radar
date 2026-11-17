@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useMemo, useState } from 'react';
 import { lerContagens, lerRadar } from './lib/dados';
 import { juntarRadarComDigest } from './lib/regras';
@@ -59,11 +61,10 @@ export function App() {
         <h1>Não deu para ler o banco</h1>
         <pre>{erro}</pre>
         <p>
-          Esta tela lê o banco através do proxy do dev server (<code>/sb</code>), porque o Supabase
-          recusa service key vinda de navegador. Duas causas prováveis: <code>web/.env.local</code>{' '}
-          sem <code>SUPABASE_URL</code> / <code>SUPABASE_SERVICE_KEY</code> (sem o prefixo{' '}
-          <code>VITE_</code>), ou a página aberta a partir de um build em vez de{' '}
-          <code>npm run dev</code> — aí não existe proxy.
+          Esta tela lê o banco pelas rotas do servidor em <code>/api</code>. Duas causas prováveis:
+          falta <code>SUPABASE_URL</code> ou <code>SUPABASE_SERVICE_KEY</code> no servidor (em{' '}
+          <code>web/.env.local</code> localmente, sem prefixo nenhum), ou o banco devolveu o erro
+          acima.
         </p>
       </div>
     );
