@@ -6,26 +6,26 @@ import { hasTerminalStatus } from '../lib/market-status.js';
  * Moved from `scripts/lib/fila-digestao.ts` (issue 93) so the scheduled run in
  * `src/aws/` filters with the same function as the manual script, without
  * `src/` importing from `scripts/`. The old path re-exports everything here,
- * and the names stay as they were: they are the vocabulary of the digestion
- * spec, and renaming them would cut that link for no behavior change.
+ * and keeps the Portuguese names its callers in `scripts/` use; the
+ * names here follow the `src/` rule (English).
  *
  * This module imports no database client, so it is testable without a network.
  */
 
 /** The least this module needs to know about a market. */
-export interface MercadoFiltravel {
+export interface FilterableMarket {
   eventId: string;
   status: string | null;
 }
 
-export interface Descarte<T> {
-  digeriveis: T[];
+export interface QueueSplit<T> {
+  digestible: T[];
   /** How many left, by status. A discard nobody counts is lost coverage. */
-  descartados: Map<string, number>;
+  discarded: Map<string, number>;
 }
 
 /** The bucket label for a market with no readable status. */
-export const SEM_STATUS = '(nulo/ausente)';
+export const NO_STATUS = '(nulo/ausente)';
 
 /**
  * Removes the markets whose outcome already arrived.
@@ -36,18 +36,18 @@ export const SEM_STATUS = '(nulo/ausente)';
  * counted, because a new value in `events.status` is news and must not arrive
  * as silence.
  */
-export function filtrarDigeriveis<T extends MercadoFiltravel>(mercados: readonly T[]): Descarte<T> {
-  const digeriveis: T[] = [];
-  const descartados = new Map<string, number>();
+export function filterDigestible<T extends FilterableMarket>(markets: readonly T[]): QueueSplit<T> {
+  const digestible: T[] = [];
+  const discarded = new Map<string, number>();
 
-  for (const mercado of mercados) {
-    if (hasTerminalStatus(mercado.status)) {
-      const rotulo = mercado.status ?? SEM_STATUS;
-      descartados.set(rotulo, (descartados.get(rotulo) ?? 0) + 1);
+  for (const market of markets) {
+    if (hasTerminalStatus(market.status)) {
+      const label = market.status ?? NO_STATUS;
+      discarded.set(label, (discarded.get(label) ?? 0) + 1);
       continue;
     }
-    digeriveis.push(mercado);
+    digestible.push(market);
   }
 
-  return { digeriveis, descartados };
+  return { digestible, discarded };
 }

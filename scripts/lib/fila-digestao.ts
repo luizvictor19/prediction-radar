@@ -1,14 +1,27 @@
-import { filtrarDigeriveis, type Descarte, type MercadoFiltravel } from '../../src/digest/queue.js';
+import { filterDigestible, NO_STATUS, type FilterableMarket } from '../../src/digest/queue.js';
 
-// `filtrarDigeriveis` and its types lived here until issue 93. They now live in
-// `src/digest/queue.ts`, so the scheduled run filters with the SAME function;
-// the reasoning below about who filters still holds.
-export {
-  filtrarDigeriveis,
-  SEM_STATUS,
-  type Descarte,
-  type MercadoFiltravel,
-} from '../../src/digest/queue.js';
+// The filter itself lives in `src/digest/queue.ts` since issue 93, so the
+// scheduled run filters with the SAME function. These are the Portuguese names
+// the scripts already use, kept as thin adapters; the reasoning below about
+// who filters still holds.
+
+/** O mínimo que este módulo precisa saber de um mercado. */
+export type MercadoFiltravel = FilterableMarket;
+
+export interface Descarte<T> {
+  digeriveis: T[];
+  /** Quantos saíram, por status. Descarte que ninguém conta é cobertura perdida. */
+  descartados: Map<string, number>;
+}
+
+/** O rótulo do balde de quem não tem status legível. */
+export const SEM_STATUS = NO_STATUS;
+
+/** Tira da fila os mercados cujo desfecho já veio (ver `filterDigestible`). */
+export function filtrarDigeriveis<T extends MercadoFiltravel>(mercados: readonly T[]): Descarte<T> {
+  const { digestible, discarded } = filterDigestible(mercados);
+  return { digeriveis: digestible, descartados: discarded };
+}
 
 /**
  * Quem entra na fila que PAGA modelo, e quem fica de fora.
