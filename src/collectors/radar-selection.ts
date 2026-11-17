@@ -1,4 +1,4 @@
-import { extractEntities, jaccard, tokenize } from '../../scripts/lib/market-pairing.js';
+import { extractEntities, jaccard, tokenize } from '../lib/market-pairing.js';
 import type { GammaMarket } from '../types/index.js';
 
 /**

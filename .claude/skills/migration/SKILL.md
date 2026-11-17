@@ -63,5 +63,3 @@ the ritual, report.
   Check the plan of any new predicate on `events`.
 - Repair data only when the affected rows can be identified with certainty. If
   they cannot, say so in the report instead of repairing by approximation.
-- `supabase/migrations-adiadas/` holds migrations deliberately not applied.
-  Moving one into `supabase/migrations/` is a decision for Luiz, not a cleanup.
